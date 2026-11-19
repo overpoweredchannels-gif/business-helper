@@ -8,7 +8,7 @@
     "USER-JWT": 68
   },
   "ratchet": {
-    "pending_direct_cloud_fetches": 47,
+    "pending_direct_cloud_fetches": 44,
     "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47 — it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower this baseline to the new count; never raise it."
   },
   "routes": {
@@ -213,11 +213,12 @@
     "/api/auth/provision": {
       "methods": "POST",
       "classification": "CLOUD",
-      "called_from_desktop": "yes (4 files)",
+      "called_from_desktop": "yes (3 files via cloud-endpoint helper)",
       "access_today": "createSupabaseService via module helper getSupabaseService (route.ts:9-10); auth.admin updateUserById (route.ts:62)",
       "purpose": "Create org + profile + write the organization_id claim (auth.admin)",
-      "desktop_today": "500s",
-      "notes": "B1-B4 item 1 (onboarding + org claim). Only claim writer; must run on Vercel."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 1)",
+      "notes": "B1-B4 item 1 (onboarding + org claim). Only claim writer; must run on Vercel. Slice 1: Bearer verified with the anon client before any service call (401 without a valid token); org/user from the token only; claim-fail shows a blocking error screen, never a zero dashboard.",
+      "migrated": true
     },
     "/api/identity/employees": {
       "methods": "GET, POST",

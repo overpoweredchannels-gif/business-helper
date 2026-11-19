@@ -71,10 +71,12 @@
  * Smoke mode (--smoke): boots the built standalone server and proves the
  * packaged build has no service key:
  *  (a) GET /login -> 200 (server healthy);
- *  (b) POST /api/auth/provision with a fake Bearer token -> 500 with
- *      "Service client creation failed" (the service client throws before any
- *      auth check; if a key had leaked into the bundle/env, the request would
- *      proceed past client creation and return 401 for the fake token);
+ *  (b) POST /api/auth/provision with a fake Bearer token -> 401 (Slice 1:
+ *      the route verifies the Bearer token with the anon client BEFORE any
+ *      service client is created, so an unverifiable token answers 401 even
+ *      with no service key present. A 500 here would mean the route still
+ *      creates the service client before auth. Key-leak detection is check
+ *      3's name scan, not this probe);
  *  (c) POST /api/monitoring/client-error with no auth -> 401 (a LOCAL route
  *      executes its auth path and does not 500 on the missing key).
  *
@@ -103,8 +105,10 @@
  *  - §8 rule 7's example CLOUD probe (GET /api/products/list, unauthenticated)
  *    does not 500: that route is USER-JWT (not CLOUD) and checks auth first
  *    (403 before any service call). The smoke probe instead POSTs
- *    /api/auth/provision with a fake Bearer token, which reaches service-
- *    client creation before any user lookup.
+ *    /api/auth/provision with a fake Bearer token, which the route answers
+ *    401 — Slice 1 verifies the Bearer with the anon client before any
+ *    service client is created, so the fake token never reaches the
+ *    missing-key throw.
  */
 
 import { readFileSync, existsSync, readdirSync, statSync, writeSync } from "node:fs";
@@ -732,10 +736,12 @@ async function runSmoke(standaloneArg, portArg) {
     }
     info("GET /login -> 200 (server healthy)");
 
-    // CLOUD probe: provision creates the service client before any user
-    // lookup, so a fake Bearer token reaches the missing-key throw and must
-    // 500 with "Service client creation failed". If a key had leaked into the
-    // bundle/env, the request would proceed to getUser and 401 instead.
+    // CLOUD probe (Slice 1): provision verifies the Bearer token with the
+    // anon client BEFORE any service client is created, so a fake Bearer
+    // token must 401 — with or without a service key in the build. A 500
+    // here would mean the route still creates the service client before
+    // auth (the pre-Slice-1 shape). Key-leak detection is check 3's name
+    // scan, not this probe.
     const prov = await fetchWithTimeout(
       `${base}/api/auth/provision`,
       {
@@ -746,11 +752,11 @@ async function runSmoke(standaloneArg, portArg) {
       10000,
     );
     const provBody = await prov.text();
-    if (prov.status === 500 && provBody.includes("Service client creation failed")) {
-      info("POST /api/auth/provision (fake Bearer) -> 500 'Service client creation failed' (no service key in the packaged build)");
+    if (prov.status === 401) {
+      info("POST /api/auth/provision (fake Bearer) -> 401 (Bearer verification runs before any service call)");
     } else {
       fail(
-        `POST /api/auth/provision (fake Bearer) -> ${prov.status}, expected 500 'Service client creation failed' — a non-500 here means the route shape changed or a service key leaked into the build (body: ${provBody.slice(0, 200)})`,
+        `POST /api/auth/provision (fake Bearer) -> ${prov.status}, expected 401 — a non-401 here means the route shape changed (body: ${provBody.slice(0, 200)})`,
       );
       return false;
     }

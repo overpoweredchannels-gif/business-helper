@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseService } from "@/lib/supabase/server";
+import { createSupabaseService, createSupabaseUserClient } from "@/lib/supabase/server";
 import { buildLegacyPermissionRow } from "@/lib/identity/legacy";
 import { normalizeRole } from "@/lib/identity/permissions";
 import type { UserIdentity } from "@supabase/supabase-js";
@@ -10,19 +10,13 @@ const getSupabaseService = () => {
   return createSupabaseService();
 };
 
-const getAccessToken = async (request: NextRequest) => {
+// The access token comes ONLY from the Authorization Bearer header
+// (hardening rule 1: org/user come from the verified token, never from the
+// request body). A token in the body is not accepted.
+const getAccessToken = (request: NextRequest) => {
   const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
   if (authorization?.toLowerCase().startsWith("bearer ")) {
     return authorization.slice(7).trim();
-  }
-
-  try {
-    const body = await request.json();
-    if (body?.access_token && typeof body.access_token === "string") {
-      return body.access_token;
-    }
-  } catch {
-    // ignore malformed JSON
   }
 
   return null;
@@ -88,14 +82,53 @@ const ensureOrgClaim = async (
   }
 };
 
+// CORS for the desktop app (hardening rule 1: desktop origin only, never a
+// wildcard). The desktop serves its pages from the local standalone server
+// on a RANDOM loopback port, so no fixed origin can be allowlisted. The only
+// origins that can ever be the desktop are loopback origins, which by
+// definition come from the user's own machine — reflecting one is safe, and
+// a website origin can never be loopback. Same-origin web calls carry no
+// Origin header and need no CORS headers.
+const DESKTOP_ORIGIN_RE = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
+
+const corsHeadersFor = (request: NextRequest): Record<string, string> => {
+  const origin = request.headers.get("origin");
+  if (!origin || !DESKTOP_ORIGIN_RE.test(origin)) return {};
+  return { "Access-Control-Allow-Origin": origin, Vary: "Origin" };
+};
+
+const applyCors = (response: NextResponse, headers: Record<string, string>): NextResponse => {
+  for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
+  return response;
+};
+
+// Preflight for desktop cross-origin calls (a POST with Authorization +
+// Content-Type triggers one). The browser must be able to read every
+// response — including 401s — so POST applies the same headers via applyCors.
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      ...corsHeadersFor(request),
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
+  return applyCors(await runProvision(request), corsHeadersFor(request));
+}
+
+async function runProvision(request: NextRequest) {
   const logTag = `[PROVISION ${Date.now()}]`;
   console.log(`${logTag} ===== PROVISION REQUEST RECEIVED =====`);
 
-  // ── 1. Access token extraction ──
+  // ── 1. Access token extraction (Bearer header only) ──
   const hasAuthHeader = request.headers.has("authorization") || request.headers.has("Authorization");
   console.log(`${logTag} CHECKPOINT 1: Authorization header present? ${hasAuthHeader}`);
-  const accessToken = await getAccessToken(request);
+  const accessToken = getAccessToken(request);
   console.log(`${logTag} CHECKPOINT 1b: accessToken extracted? ${Boolean(accessToken)}, length=${accessToken?.length ?? 0}`);
   if (!accessToken) {
     console.log(`${logTag} FAIL: accessToken null/undefined, returning 401`);
@@ -103,6 +136,9 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 1b. Optional body params (for onboarding) ──
+  // Only the display name of a new organization is read from the body.
+  // Identity (user id, organization_id) always comes from the verified
+  // token below, never from the body (hardening rule 1).
   let requestBodyOrgName: string | null = null;
   try {
     const body = await request.clone().json();
@@ -113,11 +149,44 @@ export async function POST(request: NextRequest) {
     // body not JSON or no org name — fine
   }
 
-  // ── 2. Supabase service client ──
+  // ── 2. Verify the Bearer token with the anon (user) client — BEFORE any
+  // service client is created. This is the same verification resolveActor
+  // performs (createSupabaseUserClient + auth.getUser), and it needs only
+  // the public env vars, so a Bearer-less or fake-Bearer call answers 401
+  // even on a server with no SUPABASE_SERVICE_ROLE_KEY (desktop smoke
+  // probe, Slice 1). The service client is created only after the token
+  // is proven valid, in step 3.
+  let user;
+  try {
+    const userClient = createSupabaseUserClient(accessToken);
+    const { data: userData, error: userError } = await userClient.auth.getUser(accessToken);
+    console.log(`${logTag} CHECKPOINT 2: getUser() completed. userData.user? ${Boolean(userData?.user)}, userError? ${userError?.message ?? "null"}`);
+    if (userError || !userData?.user) {
+      console.log(`${logTag} FAIL: getUser failed. userError=${userError?.message ?? "null"}, user?.id=${userData?.user?.id ?? "null"}`);
+      if (userError) {
+        console.error("Provisioning auth verification failed:", userError.message);
+      }
+      return makeErrorResponse(
+        "Unable to verify authenticated user.",
+        401,
+        "auth_invalid_token"
+      );
+    }
+    user = userData.user;
+    console.log(`${logTag} CHECKPOINT 2b: user id = ${user.id}, email = ${user.email ?? "N/A"}`);
+  } catch (verifyErr) {
+    console.log(`${logTag} CRASH: Bearer verification THREW:`, verifyErr);
+    return NextResponse.json(
+      { ok: false, error: `Bearer verification failed: ${verifyErr instanceof Error ? verifyErr.message : String(verifyErr)}` },
+      { status: 500 }
+    );
+  }
+
+  // ── 3. Supabase service client (admin work below needs it) ──
   let supabaseService;
   try {
     supabaseService = getSupabaseService();
-    console.log(`${logTag} CHECKPOINT 2: supabaseService created OK`);
+    console.log(`${logTag} CHECKPOINT 3: supabaseService created OK`);
   } catch (svcErr) {
     console.log(`${logTag} CRASH: getSupabaseService() threw:`, svcErr);
     return NextResponse.json(
@@ -125,37 +194,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-
-  // ── 3. getUser(accessToken) ──
-  let userData, userError;
-  try {
-    const result = await supabaseService.auth.getUser(accessToken);
-    userData = result.data;
-    userError = result.error;
-    console.log(`${logTag} CHECKPOINT 3: getUser() completed. userData.user? ${Boolean(userData?.user)}, userError? ${userError?.message ?? "null"}`);
-    console.log(`${logTag} CHECKPOINT 3b: user id = ${userData?.user?.id ?? "N/A"}, email = ${userData?.user?.email ?? "N/A"}`);
-  } catch (getUserErr) {
-    console.log(`${logTag} CRASH: supabaseService.auth.getUser(accessToken) THREW:`, getUserErr);
-    console.log(`${logTag} CRASH details:`, JSON.stringify(getUserErr, Object.getOwnPropertyNames(getUserErr)));
-    return NextResponse.json(
-      { ok: false, error: `getUser threw: ${getUserErr instanceof Error ? getUserErr.message : String(getUserErr)}` },
-      { status: 500 }
-    );
-  }
-
-  if (userError || !userData?.user) {
-    console.log(`${logTag} FAIL: getUser failed. userError=${userError?.message ?? "null"}, user?.id=${userData?.user?.id ?? "null"}`);
-    if (userError) {
-      console.error("Provisioning auth verification failed:", userError.message);
-    }
-    return makeErrorResponse(
-      "Unable to verify authenticated user.",
-      401,
-      "auth_invalid_token"
-    );
-  }
-
-  const user = userData.user;
 
   // ── 4. Email verification check ──
   const emailConfirmed = Boolean(

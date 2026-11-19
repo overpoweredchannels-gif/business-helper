@@ -114,6 +114,7 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
+import { provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
 import { RecordHistoryPanel } from "@/components/sales/RecordHistoryPanel";
 import { useDashboardOrder } from "@/lib/preferences/use-dashboard-order";
@@ -868,6 +869,9 @@ export default function Home() {
   const dashboardAccountIdRef = useRef<string | null>(null);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  // HYBRID must-have 2 (Slice 1): provision succeeded but the org claim is
+  // missing — the dashboard must not render with zero data.
+  const [workspaceBlocked, setWorkspaceBlocked] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTitle, setTaskTitle] = useState("");
@@ -2395,23 +2399,28 @@ export default function Home() {
     offlineIdentityRestoredRef.current = false;
     if (user?.id) {
       try {
-        // Desktop provision skip (2026-11-19): the provision POST can
-        // never succeed on desktop — the local standalone server has no
-        // SUPABASE_SERVICE_ROLE_KEY, so /api/auth/provision always 500s
-        // and the catch below used to null the profile/org and invalidate
-        // the dashboard session, leaving every card "Not loaded". Skip
-        // it on desktop and load the profile directly instead (its JWT
-        // read works on desktop). Slice S1's offline skip is preserved
-        // inside shouldRunProvision. The web app is unchanged: provision
-        // always runs there.
-        if (shouldRunProvision({ isDesktop: isDesktopApp(), isOnline: typeof navigator === "undefined" || navigator.onLine })) {
-          console.log(`${logTag} calling provisionWorkspace...`);
-          await provisionWorkspace();
-          if (authRequestId !== authCheckRequestRef.current) return;
-          console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
-        } else {
-          console.log(`${logTag} provisionWorkspace skipped (desktop), calling loadProfile...`);
+        // Slice 1: provision runs on the cloud endpoint via the helper —
+        // the desktop's local server has no service key, so the relative
+        // URL would 500 there. The helper picks the Vercel origin on
+        // desktop and the relative URL on web. Offline the fetch throws a
+        // network error, which the catch below still handles with the
+        // cached-identity fallback.
+        console.log(`${logTag} calling provisionWorkspace...`);
+        const provisionResult = await provisionWorkspace();
+        if (authRequestId !== authCheckRequestRef.current) return;
+        // HYBRID must-have 2: provision can succeed while the org claim
+        // still fails to land in the session token. Loading the profile
+        // then would render a dashboard of zeros (RLS reads the claim).
+        // Block with a clear error screen instead.
+        if (!provisionResult.claimOk) {
+          console.error(`${logTag} provision succeeded but the organization_id claim is missing — blocking the dashboard`);
+          setWorkspaceBlocked(true);
+          setCurrentProfile(null);
+          setCurrentOrganizationId(null);
+          invalidateDashboardSession();
+          return;
         }
+        console.log(`${logTag} provisionWorkspace succeeded, calling loadProfile...`);
         await loadProfile(user.id);
         console.log(`${logTag} loadProfile succeeded`);
       } catch (provisionErr) {
@@ -2490,9 +2499,13 @@ setCustomerOrganizationName("");
     }
   };
 
-  // Provision the workspace for the authenticated user via the server endpoint.
-  // Idempotent: returns alreadyProvisioned=true when the workspace already exists.
-  // Throws on failure so the caller's existing error path can surface the message.
+  // Provision the workspace for the authenticated user via the cloud
+  // endpoint (helper). Idempotent: returns alreadyProvisioned=true when the
+  // workspace already exists. Throws on failure so the caller's existing
+  // error path can surface the message. Returns claimOk=false when
+  // provisioning succeeded but the organization_id claim did not land in
+  // the session token — the caller blocks the dashboard instead of
+  // rendering zeros (HYBRID must-have 2).
   const provisionWorkspace = async () => {
     const logTag = `[CLIENT_PROVISION ${Date.now()}]`;
     console.log(`${logTag} ===== CLIENT PROVISION STARTED =====`);
@@ -2505,51 +2518,17 @@ setCustomerOrganizationName("");
       throw new Error(t('page.authSessionUnavailable'));
     }
 
-    const provisionResponse = await fetch("/api/auth/provision", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    console.log(`${logTag} fetch completed. status=${provisionResponse.status}, ok=${provisionResponse.ok}`);
-    console.log(`${logTag} content-type=${provisionResponse.headers.get("content-type")}`);
-
-    if (!provisionResponse.ok) {
-      let responseBodyText: string;
-      try {
-        responseBodyText = await provisionResponse.text();
-      } catch {
-        responseBodyText = "<failed to read body>";
-      }
-      console.log(`${logTag} FAIL: response body text (first 500 chars): ${responseBodyText.slice(0, 500)}`);
-      let provisionBody: Record<string, unknown> = {};
-      try {
-        provisionBody = JSON.parse(responseBodyText);
-        console.log(`${logTag} FAIL: parsed JSON body:`, JSON.stringify(provisionBody));
-      } catch {
-        console.log(`${logTag} FAIL: response body is NOT valid JSON — likely HTML error page`);
-      }
-      throw new Error((provisionBody.error as string) || t('page.workspaceProvisionFailed'));
-    }
-
-    const responseBodyText = await provisionResponse.text();
-    console.log(`${logTag} SUCCESS: response body: ${responseBodyText.slice(0, 300)}`);
-    let provisionBody: Record<string, unknown> = {};
-    try {
-      provisionBody = JSON.parse(responseBodyText);
-    } catch {
-      console.log(`${logTag} WARN: success response body not parseable as JSON`);
-    }
+    const provisionBody = await provisionViaCloud({ accessToken });
+    console.log(`${logTag} SUCCESS: alreadyProvisioned=${provisionBody.alreadyProvisioned ?? false}, organization_id=${provisionBody.organization_id ?? "N/A"}`);
 
     // The current access token was minted before the organization_id claim
     // was written. Force a refresh so every RLS-gated request immediately
-    // carries the claim (best-effort; the app still loads on failure).
-    await ensureOrganizationClaimInSession();
+    // carries the claim, and verify it landed.
+    const claimOk = await ensureOrganizationClaimInSession();
+    console.log(`${logTag} claim present after refresh? ${claimOk}`);
 
     console.log(`${logTag} ===== CLIENT PROVISION COMPLETE =====`);
-    return provisionBody as { alreadyProvisioned?: boolean };
+    return { alreadyProvisioned: provisionBody.alreadyProvisioned, claimOk };
   };
 
   const handleLogin = async () => {
@@ -20761,6 +20740,33 @@ setCustomerOrganizationName("");
         </div>
       </div>
     </main>
+    );
+  }
+
+  // HYBRID must-have 2 (Slice 1): the org claim is missing after
+  // provisioning — show a blocking error screen, never a zero dashboard.
+  if (workspaceBlocked) {
+    return (
+      <main className="min-h-screen bg-muted">
+        <div className="mx-auto flex min-h-screen max-w-5xl items-center px-4 py-8">
+          <div className="w-full rounded-xl bg-card p-6 shadow-sm">
+            <h1 className="text-2xl font-semibold text-foreground">Workspace setup incomplete</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Your workspace was created, but the organization claim could not be written to your session, so the dashboard cannot load your data yet. Nothing was lost — try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setWorkspaceBlocked(false);
+                void checkAuthUser();
+              }}
+              className="mt-4 min-h-11 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary-hover"
+            >
+              Retry setup
+            </button>
+          </div>
+        </div>
+      </main>
     );
   }
 

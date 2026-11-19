@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
+import { provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { isDesktopApp } from "@/lib/offline/identity-cache";
 import { resolveDesktopCallbackRoute, shouldRunProvision } from "@/lib/offline/desktop-provision";
 
@@ -66,22 +67,10 @@ export default function AuthCallbackPage() {
       }
 
       try {
-        const provisionRes = await fetch("/api/auth/provision", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        });
-
-        if (!provisionRes.ok) {
-          const body = await provisionRes.json().catch(() => ({}));
-          if (body.code === "email_not_verified") {
-            router.push("/login");
-            return;
-          }
-          router.push("/login");
-          return;
-        }
-
-        const provisionBody = await provisionRes.json();
+        // Slice 1: provision runs on the cloud endpoint via the helper —
+        // on desktop the local server has no service key and the relative
+        // URL would 500; on web the helper keeps the relative URL.
+        const provisionBody = await provisionViaCloud({ accessToken: token });
 
         // The token minted during the OAuth exchange predates provisioning.
         // Force a refresh so the browser session immediately carries the
