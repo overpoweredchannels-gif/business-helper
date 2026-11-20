@@ -33,14 +33,23 @@
  * must NEVER fail because this sync failed: the page-level hook is
  * fire-and-forget and fail-open (try/catch, log only).
  *
+ * Extension (2026-11-20, same rules): sales returns and purchase
+ * returns hook the same path — a return changes the same
+ * customer/supplier figures the sale/purchase hooks cover (a return
+ * cancel reverses them again, so it hooks too) — and expense saves
+ * hook it for the separate `expenses` source type. Cross-tab refresh
+ * (see `ai-alert-sync-broadcast.ts`) keeps a second open tab fresh.
+ *
  * Invalidation is TARGETED, not blanket: a save only resolves the
  * alerts for the party whose figures it changed —
- *   sale / customer payment  -> the customer's `customer_credit`
- *                                (overdue) alerts;
- *   purchase / supplier payment -> the supplier's `supplier_ledger`
- *                                (payable) alerts.
- * Unrelated alerts (other parties, other source types — market, expense,
- * staff) are untouched. Regeneration is the generator's own full pass,
+ *   sale / customer payment / sales return -> the customer's
+ *     `customer_credit` (overdue) alerts;
+ *   purchase / supplier payment / purchase return -> the supplier's
+ *     `supplier_ledger` (payable) alerts;
+ *   expense -> that day's `expenses` alert (source_entity_id is the
+ *     day, e.g. today — see the generator's `expense_day` candidate).
+ * Unrelated alerts (other parties, other source types — market, staff)
+ * are untouched. Regeneration is the generator's own full pass,
  * which only inserts genuinely-new alerts (its dedupe skips the ones
  * that are still active with the same title), so untouched alerts are
  * never churned.
@@ -51,8 +60,7 @@
  * card falls to its honest fallback until an owner regenerates (next
  * owner save, daily briefing, or voice summary).
  *
- * Deliberately OUT of scope here: returns (figures change, but UMAIR's
- * requirement names sale/purchase/payment); the brain health-score
+ * Deliberately OUT of scope here: the brain health-score
  * formula (the chat's 60 vs the dashboard ring's 75 is a DIFFERENT
  * formula in `memory-writer.ts`, not staleness); the hardcoded "PKR"
  * labels in the business-brain context text
@@ -68,14 +76,19 @@ export type AiAlertSyncSaveKind =
   | "sale"
   | "purchase"
   | "customer_payment"
-  | "supplier_payment";
+  | "supplier_payment"
+  | "sales_return"
+  | "purchase_return"
+  | "expense";
 
 export interface AiAlertSyncSave {
   kind: AiAlertSyncSaveKind;
-  /** Customer whose overdue figures the save changed (sale / customer payment). */
+  /** Customer whose overdue figures the save changed (sale / customer payment / sales return). */
   customerId?: string | null;
-  /** Supplier whose payable figures the save changed (purchase / supplier payment). */
+  /** Supplier whose payable figures the save changed (purchase / supplier payment / purchase return). */
   supplierId?: string | null;
+  /** Day (YYYY-MM-DD) whose expense total the save changed (expense only — the `expense_day` key). */
+  expenseDay?: string | null;
 }
 
 /** Minimal shape of an `ai_alerts` row the sync decision needs. */
@@ -99,6 +112,9 @@ export const AI_ALERT_SYNC_SAVE_KIND_LABEL: Record<AiAlertSyncSaveKind, string> 
   purchase: "purchase",
   customer_payment: "customer payment",
   supplier_payment: "supplier payment",
+  sales_return: "sales return",
+  purchase_return: "purchase return",
+  expense: "expense",
 };
 
 /**
@@ -106,24 +122,31 @@ export const AI_ALERT_SYNC_SAVE_KIND_LABEL: Record<AiAlertSyncSaveKind, string> 
  * party whose figures the save changed, in the source type that carries
  * those figures. Returns alert ids (deduped, in input order).
  *
- * - sale / customer_payment with a customer id: that customer's
- *   `customer_credit` (overdue) alerts.
- * - purchase / supplier_payment with a supplier id: that supplier's
- *   `supplier_ledger` (payable) alerts.
+ * - sale / customer_payment / sales_return with a customer id: that
+ *   customer's `customer_credit` (overdue) alerts.
+ * - purchase / supplier_payment / purchase_return with a supplier id:
+ *   that supplier's `supplier_ledger` (payable) alerts.
+ * - expense with a day: that day's `expenses` alert (the generator's
+ *   `expense_day` candidate keys the alert by day, not by expense id).
  * - a save with no party id (e.g. a walk-in cash sale, which has no
  *   customer record) changes no party's overdue/payable figures, so
- *   nothing is invalidated.
+ *   nothing is invalidated; an expense save with no day invalidates
+ *   nothing.
  * - already-resolved/archived alerts and alerts for other parties or
- *   other source types (market, expense, staff) are untouched.
+ *   other source types (market, staff) are untouched.
  */
 export function staleAiAlertIdsForSave(
   save: AiAlertSyncSave,
   alerts: ReadonlyArray<AiAlertLike>,
 ): string[] {
   const target =
-    save.kind === "sale" || save.kind === "customer_payment"
-      ? { sourceType: "customer_credit", entityId: save.customerId ?? null }
-      : { sourceType: "supplier_ledger", entityId: save.supplierId ?? null };
+    save.kind === "expense"
+      ? { sourceType: "expenses", entityId: save.expenseDay ?? null }
+      : save.kind === "sale" ||
+          save.kind === "customer_payment" ||
+          save.kind === "sales_return"
+        ? { sourceType: "customer_credit", entityId: save.customerId ?? null }
+        : { sourceType: "supplier_ledger", entityId: save.supplierId ?? null };
   const entityId = typeof target.entityId === "string" ? target.entityId.trim() : "";
   if (entityId === "") return [];
 

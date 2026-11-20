@@ -29,6 +29,14 @@
  * invalidate only (the generator is owner-gated). Offline-parked saves
  * never sync — their figures have not reached the server yet.
  *
+ * Extension (2026-11-20): sales returns and purchase returns hook the
+ * same path (a return changes the same customer/supplier figures; a
+ * return cancel reverses them, so it hooks too), expense saves hook it
+ * for the separate `expenses` source type (keyed by day), and a save in
+ * one tab broadcasts so a second open tab re-reads its rows instead of
+ * staying stale until reload (BroadcastChannel + storage-event fallback
+ * — see `src/lib/ai/ai-alert-sync-broadcast.ts`).
+ *
  * This test imports the production helpers directly (no mirroring)
  * and asserts the wiring on the real page.tsx / formatters.ts sources.
  *
@@ -44,6 +52,14 @@ import {
   staleAiAlertIdsForSave,
   type AiAlertLike,
 } from "../src/lib/ai/ai-alert-sync";
+import {
+  AI_ALERTS_CROSS_TAB_CHANNEL,
+  AI_ALERTS_CROSS_TAB_STORAGE_KEY,
+  aiAlertsInvalidatedMessage,
+  broadcastAiAlertsInvalidated,
+  isAiAlertsInvalidatedMessage,
+  subscribeAiAlertsInvalidated,
+} from "../src/lib/ai/ai-alert-sync-broadcast";
 import { dashboardAiInsightKind } from "../src/lib/dashboard/ai-insight";
 
 let passed = 0;
@@ -158,6 +174,12 @@ function main(): void {
     "save-kind labels exist for the audit entry",
   );
   check(
+    AI_ALERT_SYNC_SAVE_KIND_LABEL.sales_return === "sales return" &&
+      AI_ALERT_SYNC_SAVE_KIND_LABEL.purchase_return === "purchase return" &&
+      AI_ALERT_SYNC_SAVE_KIND_LABEL.expense === "expense",
+    "extension save-kind labels exist for the audit entry (returns + expense)",
+  );
+  check(
     SHOWN_AI_ALERT_STATUSES.includes("active") && SHOWN_AI_ALERT_STATUSES.includes("new"),
     "shown statuses are active + new (the card's read filter)",
   );
@@ -228,7 +250,7 @@ function main(): void {
     "sale hook passes the confirmed transaction's customer id (narrowed from unknown)",
   );
 
-  console.log("(f) all five save completions are hooked; offline saves are not");
+  console.log("(f) all save completions are hooked; offline saves are not");
   check(
     pageSource.includes("refreshAiAlertsAfterSave({ kind: \"sale\", customerId: order.customer_id })"),
     "draft approval hooks the sale sync with the order's customer id",
@@ -246,8 +268,54 @@ function main(): void {
     "supplier payment save hooks the supplier sync",
   );
   check(
-    !pageSource.includes("refreshAiAlertsAfterSave({ kind: \"return\""),
-    "returns are NOT hooked (out of scope by design)",
+    pageSource.includes('refreshAiAlertsAfterSave({ kind: "sales_return", customerId: srCustomerId })'),
+    "sales return save hooks the customer sync with the form's customer id",
+  );
+  check(
+    pageSource.includes('refreshAiAlertsAfterSave({ kind: "purchase_return", supplierId: returnSupplierId })'),
+    "purchase return save hooks the supplier sync with the form's supplier id",
+  );
+  check(
+    pageSource.includes('refreshAiAlertsAfterSave({ kind: "sales_return", customerId: salesReturn.customer_id })'),
+    "sales return cancel hooks the customer sync (the receivable offset restores)",
+  );
+  check(
+    pageSource.includes('refreshAiAlertsAfterSave({ kind: "purchase_return", supplierId: purchaseReturn.supplier_id })'),
+    "purchase return cancel hooks the supplier sync (the payable offset restores)",
+  );
+  check(
+    pageSource.includes('refreshAiAlertsAfterSave({ kind: "expense", expenseDay: expensePayload.expense_date })'),
+    "expense save hooks the expense-day sync with the saved payload's date",
+  );
+  const purchaseReturnFn = pageSource.slice(
+    pageSource.indexOf("const handleCreatePurchaseReturn"),
+    pageSource.indexOf("const handleCancelPurchaseReturn"),
+  );
+  check(
+    purchaseReturnFn.indexOf('refreshAiAlertsAfterSave({ kind: "purchase_return"') > 0 &&
+      purchaseReturnFn.indexOf("if (isDesktopApp() && typeof navigator !== \"undefined\" && !navigator.onLine) {") <
+        purchaseReturnFn.indexOf('refreshAiAlertsAfterSave({ kind: "purchase_return"'),
+    "offline-parked purchase return returns before the hook — no invalidation for unconfirmed returns",
+  );
+  const salesReturnFn = pageSource.slice(
+    pageSource.indexOf("const handleCreateSalesReturn"),
+    pageSource.indexOf("const handleCancelSalesReturn"),
+  );
+  check(
+    salesReturnFn.indexOf('refreshAiAlertsAfterSave({ kind: "sales_return"') > 0 &&
+      salesReturnFn.indexOf("if (isDesktopApp() && typeof navigator !== \"undefined\" && !navigator.onLine) {") <
+        salesReturnFn.indexOf('refreshAiAlertsAfterSave({ kind: "sales_return"'),
+    "offline-parked sales return returns before the hook — no invalidation for unconfirmed returns",
+  );
+  const expenseFn = pageSource.slice(
+    pageSource.indexOf("const saveExpense"),
+    pageSource.indexOf("const handleAddPurchaseExpense"),
+  );
+  check(
+    expenseFn.indexOf('refreshAiAlertsAfterSave({ kind: "expense"') > 0 &&
+      expenseFn.indexOf("if (expenseOffline) {") <
+        expenseFn.indexOf('refreshAiAlertsAfterSave({ kind: "expense"'),
+    "offline-parked expense returns before the hook — no invalidation for unconfirmed expenses",
   );
   const saleHookIndex = pageSource.indexOf(
     'refreshAiAlertsAfterSave({ kind: "sale", customerId: saleCustomerId })',
@@ -304,6 +372,232 @@ function main(): void {
   check(
     pageSource.includes("confidence: 85,") && pageSource.includes("confidence: 90,"),
     "confidence 85/90 are untouched by this slice (separate tracker item)",
+  );
+
+  console.log("(i) extension: returns invalidate the same party figures as the sale/purchase");
+  const expenseDay2 = alert("alert-expense-2", "active", "expenses", "2026-11-19");
+  const expenseResolvedToday = alert("alert-expense-3", "resolved", "expenses", "2026-11-18");
+  const alertsWithExpenseDays = [...allAlerts, expenseDay2, expenseResolvedToday];
+  check(
+    JSON.stringify(staleAiAlertIdsForSave({ kind: "sales_return", customerId: "customer-1" }, allAlerts)) ===
+      JSON.stringify(["alert-overdue-1", "alert-overdue-3"]),
+    "sales return from C1 resolves C1's active AND new customer_credit alerts",
+  );
+  check(
+    JSON.stringify(staleAiAlertIdsForSave({ kind: "purchase_return", supplierId: "supplier-1" }, allAlerts)) ===
+      JSON.stringify(["alert-payable-1"]),
+    "purchase return to S1 resolves only S1's active supplier_ledger alert",
+  );
+  check(
+    JSON.stringify(staleAiAlertIdsForSave({ kind: "sales_return", customerId: "customer-2" }, allAlerts)) ===
+      JSON.stringify(["alert-overdue-2"]),
+    "sales return from C2 resolves only C2's customer_credit alert",
+  );
+  check(
+    JSON.stringify(staleAiAlertIdsForSave({ kind: "purchase_return", supplierId: "supplier-2" }, allAlerts)) ===
+      JSON.stringify(["alert-payable-2"]),
+    "purchase return to S2 resolves only S2's supplier_ledger alert",
+  );
+  check(
+    !staleAiAlertIdsForSave({ kind: "sales_return", customerId: "customer-1" }, allAlerts).includes("alert-payable-1") &&
+      !staleAiAlertIdsForSave({ kind: "purchase_return", supplierId: "supplier-1" }, allAlerts).includes("alert-overdue-1"),
+    "a return never touches the other side's alerts",
+  );
+  check(
+    !staleAiAlertIdsForSave({ kind: "sales_return", customerId: "customer-1" }, allAlerts).includes("alert-expense-1") &&
+      !staleAiAlertIdsForSave({ kind: "purchase_return", supplierId: "supplier-1" }, allAlerts).includes("alert-market-1"),
+    "a return never touches expense / market alerts",
+  );
+  check(
+    staleAiAlertIdsForSave({ kind: "sales_return", customerId: null }, allAlerts).length === 0 &&
+      staleAiAlertIdsForSave({ kind: "purchase_return", supplierId: undefined }, allAlerts).length === 0,
+    "return with no party id invalidates nothing",
+  );
+  check(
+    JSON.stringify(
+      staleAiAlertIdsForSave({ kind: "sales_return", customerId: "customer-1" }, [overdueC1, overdueC1]),
+    ) === JSON.stringify(["alert-overdue-1"]),
+    "duplicate alert rows resolve to one id for a sales return too",
+  );
+
+  console.log("(j) extension: expense saves invalidate only that day's expense alert");
+  check(
+    JSON.stringify(staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays)) ===
+      JSON.stringify(["alert-expense-1"]),
+    "expense save resolves only the active expense alert for that day",
+  );
+  check(
+    JSON.stringify(staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-19" }, alertsWithExpenseDays)) ===
+      JSON.stringify(["alert-expense-2"]),
+    "expense save for another day resolves only that day's alert",
+  );
+  check(
+    staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-20" }, alertsWithExpenseDays).length === 0,
+    "expense save for a day with no alert invalidates nothing",
+  );
+  check(
+    !staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays).includes("alert-expense-3"),
+    "already-resolved expense alerts are never re-resolved",
+  );
+  check(
+    staleAiAlertIdsForSave({ kind: "expense", expenseDay: null }, alertsWithExpenseDays).length === 0 &&
+      staleAiAlertIdsForSave({ kind: "expense", expenseDay: "   " }, alertsWithExpenseDays).length === 0,
+    "expense save with no day invalidates nothing",
+  );
+  check(
+    !staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays).includes("alert-overdue-1") &&
+      !staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays).includes("alert-payable-1") &&
+      !staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays).includes("alert-market-1"),
+    "an expense save never touches customer / supplier / market alerts",
+  );
+
+  console.log("(k) extension: cross-tab signal is emitted on save and heard by a second tab");
+  check(
+    aiAlertsInvalidatedMessage("org-1", "2026-11-20T07:00:00.000Z").type === "ai-alerts-invalidated" &&
+      aiAlertsInvalidatedMessage("org-1", "2026-11-20T07:00:00.000Z").organizationId === "org-1" &&
+      aiAlertsInvalidatedMessage("org-1", "2026-11-20T07:00:00.000Z").at === "2026-11-20T07:00:00.000Z",
+    "invalidation message carries type + org + timestamp",
+  );
+  check(
+    isAiAlertsInvalidatedMessage(aiAlertsInvalidatedMessage("org-1")) === true,
+    "a built message validates",
+  );
+  check(
+    isAiAlertsInvalidatedMessage({ type: "ai-alerts-invalidated", organizationId: "", at: "2026-11-20T07:00:00.000Z" }) === false &&
+      isAiAlertsInvalidatedMessage({ type: "ai-alerts-invalidated", at: "2026-11-20T07:00:00.000Z" }) === false &&
+      isAiAlertsInvalidatedMessage({ type: "other", organizationId: "org-1", at: "2026-11-20T07:00:00.000Z" }) === false &&
+      isAiAlertsInvalidatedMessage({ type: "ai-alerts-invalidated", organizationId: "org-1" }) === false &&
+      isAiAlertsInvalidatedMessage(null) === false &&
+      isAiAlertsInvalidatedMessage("ai-alerts-invalidated") === false &&
+      isAiAlertsInvalidatedMessage([]) === false,
+    "malformed messages are rejected (empty/missing org, wrong type, missing timestamp, non-object)",
+  );
+
+  // Two-tab simulation with in-memory fakes (no real browser): the
+  // module's singleton channel is tab A; a second FakeBroadcastChannel
+  // instance is tab B. The fakes are installed before the module's
+  // lazy channel is first created, so the module uses them.
+  class FakeBroadcastChannel {
+    static instances: FakeBroadcastChannel[] = [];
+    private listeners = new Set<(event: { data: unknown }) => void>();
+    constructor(public readonly name: string) {
+      FakeBroadcastChannel.instances.push(this);
+    }
+    postMessage(message: unknown): void {
+      // BroadcastChannel never delivers to the object that posted.
+      for (const instance of FakeBroadcastChannel.instances) {
+        if (instance === this) continue;
+        for (const listener of [...instance.listeners]) listener({ data: message });
+      }
+    }
+    addEventListener(_type: string, listener: (event: { data: unknown }) => void): void {
+      this.listeners.add(listener);
+    }
+    removeEventListener(_type: string, listener: (event: { data: unknown }) => void): void {
+      this.listeners.delete(listener);
+    }
+    close(): void {}
+  }
+  const storageData = new Map<string, string>();
+  const fakeStorage = {
+    getItem: (key: string): string | null => storageData.get(key) ?? null,
+    setItem: (key: string, value: string): void => {
+      storageData.set(key, value);
+    },
+  };
+  const storageListeners = new Set<(event: { key: string | null; newValue: string | null }) => void>();
+  const fakeWindow = {
+    addEventListener: (
+      _type: string,
+      listener: (event: { key: string | null; newValue: string | null }) => void,
+    ): void => {
+      storageListeners.add(listener);
+    },
+    removeEventListener: (
+      _type: string,
+      listener: (event: { key: string | null; newValue: string | null }) => void,
+    ): void => {
+      storageListeners.delete(listener);
+    },
+  };
+  (globalThis as unknown as Record<string, unknown>).BroadcastChannel = FakeBroadcastChannel;
+  (globalThis as unknown as Record<string, unknown>).window = fakeWindow;
+  (globalThis as unknown as Record<string, unknown>).localStorage = fakeStorage;
+
+  let invalidationsHeard = 0;
+  const unsubscribe = subscribeAiAlertsInvalidated("org-1", () => {
+    invalidationsHeard++;
+  });
+  const tabB = new FakeBroadcastChannel(AI_ALERTS_CROSS_TAB_CHANNEL);
+  tabB.postMessage(aiAlertsInvalidatedMessage("org-1"));
+  check(invalidationsHeard === 1, "tab B's broadcast reaches tab A's listener for the same org");
+  tabB.postMessage(aiAlertsInvalidatedMessage("org-2"));
+  check(invalidationsHeard === 1, "a broadcast for another org is ignored");
+  tabB.postMessage({ type: "ai-alerts-invalidated" });
+  check(invalidationsHeard === 1, "a malformed broadcast is ignored");
+  tabB.postMessage({ type: "something-else", organizationId: "org-1", at: "2026-11-20T07:00:00.000Z" });
+  check(invalidationsHeard === 1, "a different message type is ignored");
+
+  const tabBReceived: unknown[] = [];
+  tabB.addEventListener("message", (event) => {
+    tabBReceived.push(event.data);
+  });
+  broadcastAiAlertsInvalidated("org-1");
+  check(
+    tabBReceived.length === 1 &&
+      isAiAlertsInvalidatedMessage(tabBReceived[0]) &&
+      (tabBReceived[0] as { organizationId: string }).organizationId === "org-1",
+    "broadcast reaches the other tab with a valid invalidation for the org",
+  );
+  check(invalidationsHeard === 1, "the broadcasting tab does NOT hear its own broadcast (no self-echo)");
+  const stored = storageData.get(AI_ALERTS_CROSS_TAB_STORAGE_KEY);
+  check(
+    typeof stored === "string" &&
+      isAiAlertsInvalidatedMessage(JSON.parse(stored) as unknown) &&
+      (JSON.parse(stored) as { organizationId: string }).organizationId === "org-1",
+    "broadcast also writes the storage fallback with a valid invalidation",
+  );
+  broadcastAiAlertsInvalidated("   ");
+  check(tabBReceived.length === 1, "broadcast with a blank org sends nothing");
+  check(subscribeAiAlertsInvalidated("   ", () => {})() === undefined, "subscribing with a blank org is a safe no-op");
+
+  const fireStorageEvent = (key: string | null, newValue: string | null): void => {
+    for (const listener of [...storageListeners]) listener({ key, newValue });
+  };
+  fireStorageEvent(AI_ALERTS_CROSS_TAB_STORAGE_KEY, JSON.stringify(aiAlertsInvalidatedMessage("org-1")));
+  check(invalidationsHeard === 2, "storage event for the same org triggers a refresh (fallback transport)");
+  fireStorageEvent(AI_ALERTS_CROSS_TAB_STORAGE_KEY, JSON.stringify(aiAlertsInvalidatedMessage("org-2")));
+  check(invalidationsHeard === 2, "storage event for another org is ignored");
+  fireStorageEvent("some-other-key", JSON.stringify(aiAlertsInvalidatedMessage("org-1")));
+  check(invalidationsHeard === 2, "storage event for another key is ignored");
+  fireStorageEvent(AI_ALERTS_CROSS_TAB_STORAGE_KEY, "{not json");
+  check(invalidationsHeard === 2, "malformed storage payload is ignored, never throws");
+  fireStorageEvent(AI_ALERTS_CROSS_TAB_STORAGE_KEY, null);
+  check(invalidationsHeard === 2, "storage event with no value is ignored");
+
+  unsubscribe();
+  tabB.postMessage(aiAlertsInvalidatedMessage("org-1"));
+  fireStorageEvent(AI_ALERTS_CROSS_TAB_STORAGE_KEY, JSON.stringify(aiAlertsInvalidatedMessage("org-1")));
+  check(invalidationsHeard === 2, "after unsubscribe neither transport reaches the handler");
+
+  console.log("(l) extension: the page hook broadcasts and the page subscribes");
+  check(
+    hookSource.includes("broadcastAiAlertsInvalidated(currentOrganizationId)"),
+    "refreshAiAlertsAfterSave broadcasts after the save refresh",
+  );
+  check(
+    pageSource.includes('import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";'),
+    "page.tsx imports the cross-tab helpers",
+  );
+  check(
+    pageSource.includes("subscribeAiAlertsInvalidated(currentOrganizationId, () => {") &&
+      pageSource.includes("void fetchAiAlerts(currentOrganizationId);"),
+    "a cross-tab effect subscribes for the current org and re-reads its alerts",
+  );
+  check(
+    pageSource.indexOf("subscribeAiAlertsInvalidated(currentOrganizationId, () => {") >
+      pageSource.indexOf("const refreshAiAlertsAfterSave"),
+    "the cross-tab effect sits with the save hook (same org, same refresh)",
   );
 
   console.log(`\nAll ${passed} checks passed.`);

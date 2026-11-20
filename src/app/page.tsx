@@ -134,6 +134,7 @@ import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-module
 import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
 import { AI_ALERT_SYNC_SAVE_KIND_LABEL, shouldRegenerateAiAlertsAfterSave, staleAiAlertIdsForSave, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
+import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -6321,6 +6322,12 @@ setCustomerOrganizationName("");
       },
     });
 
+    // AI Insight cache sync: the confirmed expense changed today's
+    // expense total. The saved payload's date is always today, and it
+    // is the day the generator keys the `expense_day` alert by. (The
+    // offline-parked paths return before this line, so an unconfirmed
+    // expense never invalidates.)
+    refreshAiAlertsAfterSave({ kind: "expense", expenseDay: expensePayload.expense_date });
     setExpenseMessage(statusUpdateWarning ?? t('page.expenseSavedOk'));
     setExpenseType("");
     setExpenseAmount("");
@@ -11865,6 +11872,11 @@ setCustomerOrganizationName("");
         },
       });
 
+      // AI Insight cache sync: the confirmed purchase return changed
+      // this supplier's payable figures. (The offline-parked paths
+      // return before this line, so an unconfirmed return never
+      // invalidates.)
+      refreshAiAlertsAfterSave({ kind: "purchase_return", supplierId: returnSupplierId });
       setReturnMessage(t('page.purchaseReturnCreated'));
       setReturnSupplierId("");
       setReturnDate(toDateInputValue(new Date()));
@@ -11925,6 +11937,10 @@ setCustomerOrganizationName("");
     setCancellingReturnId(returnId);
     try {
       await cancelPurchaseReturnAtomic(supabase, returnId);
+      // AI Insight cache sync: cancelling the return restores the
+      // payable offset, so the supplier's payable figures changed again.
+      // (Cancelling a pending local-only return returns before this line.)
+      refreshAiAlertsAfterSave({ kind: "purchase_return", supplierId: purchaseReturn.supplier_id });
       setReturnMessage(t('page.purchaseReturnCancelled'));
       setReturnError(null);
       await fetchPurchaseReturns();
@@ -12709,6 +12725,10 @@ setCustomerOrganizationName("");
       // rule A.2). A return linked to a credit invoice only offsets
       // the receivable, and a card refund goes back to the card —
       // neither moves cash, so neither kicks.
+      // AI Insight cache sync: the confirmed sales return changed this
+      // customer's overdue figures. (The offline-parked paths return
+      // before this line, so an unconfirmed return never invalidates.)
+      refreshAiAlertsAfterSave({ kind: "sales_return", customerId: srCustomerId });
       kickReturnDrawer(result.returnId ?? null);
 
       setSrMessage(t('page.salesReturnSaved').replace('{number}', result.returnNumber));
@@ -12773,6 +12793,10 @@ setCustomerOrganizationName("");
     setCancellingReturnId(returnId);
     try {
       await cancelSalesReturnAtomic(supabase, returnId);
+      // AI Insight cache sync: cancelling the return restores the
+      // receivable offset, so the customer's overdue figures changed again.
+      // (Cancelling a pending local-only return returns before this line.)
+      refreshAiAlertsAfterSave({ kind: "sales_return", customerId: salesReturn.customer_id });
       setSrMessage(t('page.salesReturnCancelled'));
       setSrError(null);
       await fetchSalesReturns();
@@ -17523,9 +17547,16 @@ setCustomerOrganizationName("");
           // Re-read state so the generator's dedupe sees the resolved
           // rows; otherwise it would skip recreating them.
           await fetchAiAlerts(currentOrganizationId);
+          // Cross-tab: the other tabs drop the stale alert now, before
+          // regeneration below broadcasts the fresh rows.
+          broadcastAiAlertsInvalidated(currentOrganizationId);
         }
         if (shouldRegenerateAiAlertsAfterSave(currentProfile?.role ?? null)) {
           await generateAiBusinessAlerts({ silent: true });
+          // Cross-tab: the fresh alerts are on the server now, so the
+          // other tabs pick them up. Staff saves skip this block, but
+          // a staff save that resolved alerts already broadcast above.
+          broadcastAiAlertsInvalidated(currentOrganizationId);
         }
       } catch (err) {
         // Fail-open: a sync failure must never surface in the save flow.
@@ -17533,6 +17564,23 @@ setCustomerOrganizationName("");
       }
     })();
   };
+
+  // AI Insight cross-tab sync: a save in ANOTHER tab resolves /
+  // regenerates alerts on the server and broadcasts; this tab re-reads
+  // its rows so the card never stays stale until reload. Listening
+  // never rebroadcasts (the effect only fetches), so there is no
+  // ping-pong. Re-subscribes when the org changes so the closure never
+  // refreshes a stale org.
+  // fetchAiAlerts is re-created every render (it only reads server
+  // state), so listing it would re-subscribe on every render; the org
+  // is the meaningful dependency.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!currentOrganizationId) return undefined;
+    return subscribeAiAlertsInvalidated(currentOrganizationId, () => {
+      void fetchAiAlerts(currentOrganizationId);
+    });
+  }, [currentOrganizationId]);
 
   const updateAiAlertStatus = async (alert: AiAlert, nextStatus: "active" | "resolved" | "archived") => {
     setAiBriefingMessage(null);
