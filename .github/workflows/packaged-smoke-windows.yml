@@ -1,0 +1,185 @@
+# Packaged smoke (Windows) — cheap stand-in for a clean-PC test.
+#
+# Builds the Windows installer exactly like desktop.yml, silent-installs
+# it on a fresh windows-latest runner, launches the installed app,
+# probes its local server on localhost, and checks server.log for
+# errors. It does NOT sign in and does NOT touch any Supabase project:
+# the packaged app only needs to start and answer on loopback.
+#
+# Trigger: workflow_dispatch ONLY — never on push/PR, never on a fork PR.
+# Every job also carries a repo guard (`github.repository == ...`), so a
+# fork that dispatches this workflow by hand still runs nothing.
+#
+# Build env reuses the same repository VARIABLES as desktop.yml
+# (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY). No secret
+# is used anywhere in this workflow — the installer must never contain
+# a service key, and the Slice 0 route gate below enforces that.
+#
+# How the port is found: the app picks a random loopback port at launch
+# and never writes it to server.log (electron/main.ts keeps it in
+# memory; server.log gets only the server child's stderr). So the probe
+# enumerates loopback listeners (Get-NetTCPConnection) and tries
+# GET /login on each until one answers HTTP 200.
+#
+# Known limits (this is a stand-in, not a real clean PC): the runner
+# has a GUI session, so the window can open — a real user's first
+# launch also meets Windows Defender / SmartScreen, which can block or
+# delay an unsigned installer. If the silent install hangs, SmartScreen
+# is the first suspect: the install step times out after 10 minutes
+# instead of hanging the job forever.
+name: Packaged smoke (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packaged-smoke:
+    if: github.repository == 'overpoweredchannels-gif/business-helper'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Slice 0 — desktop route classification gate (same as desktop.yml).
+      - name: Check desktop route classification (Slice 0 gate)
+        run: node scripts/check-desktop-routes.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      # Same build as desktop.yml, but --win --publish never: this is a
+      # smoke run, it must not publish anything.
+      - name: Build the Windows installer
+        run: npm run desktop:build -- --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      # Slice 0 — smoke-test the packaged server before install (same as
+      # desktop.yml): no service key in the bundle, LOCAL routes must not
+      # 500 on the missing key.
+      - name: Smoke-test packaged server (no service key)
+        run: node scripts/check-desktop-routes.mjs --smoke --standalone dist-electron/win-unpacked/resources/standalone/server.js --port 3101
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: aankh-windows-installer-smoke
+          path: dist-electron/*.exe
+          if-no-files-found: error
+
+      - name: Silent-install the app (NSIS /S)
+        timeout-minutes: 10
+        run: |
+          $installer = Get-ChildItem -Path dist-electron -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw "no installer found in dist-electron" }
+          Write-Host "installing $($installer.FullName) silently..."
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait
+          # NSIS silent install uses the default per-user directory
+          # ($LOCALAPPDATA\Programs\Aankh); Program Files is the fallback,
+          # then a recursive search if the default ever changes.
+          $candidates = @(
+            "$env:LOCALAPPDATA\Programs\Aankh\Aankh.exe",
+            "$env:ProgramFiles\Aankh\Aankh.exe"
+          )
+          $exe = $null
+          for ($i = 0; $i -lt 24 -and -not $exe; $i++) {
+            foreach ($c in $candidates) { if (Test-Path $c) { $exe = $c; break } }
+            if (-not $exe) { Start-Sleep -Seconds 5 }
+          }
+          if (-not $exe) {
+            $found = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Filter Aankh.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $exe = $found.FullName }
+          }
+          if (-not $exe) {
+            Write-Host "installer processes still running:"
+            Get-Process | Where-Object { $_.ProcessName -match "Aankh|setup" } | Format-Table ProcessName, Id -AutoSize | Out-String | Write-Host
+            throw "Aankh.exe not found after silent install (if SmartScreen blocked the unsigned installer, this is where it shows)"
+          }
+          Write-Host "installed at $exe"
+          echo "AANKH_EXE=$exe" >> $env:GITHUB_ENV
+
+      - name: Launch the app and probe localhost
+        timeout-minutes: 10
+        run: |
+          $logPath = "$env:APPDATA\Aankh\server.log"
+          if (Test-Path $logPath) { Remove-Item $logPath -Force }
+          Write-Host "launching $env:AANKH_EXE ..."
+          Start-Process -FilePath $env:AANKH_EXE
+          # Wait for the app server: poll loopback listeners and try
+          # GET /login on each until one answers HTTP 200 (max ~180s;
+          # first launch on a cold runner can be slow under Defender).
+          $port = $null
+          for ($i = 0; $i -lt 36 -and -not $port; $i++) {
+            $listeners = Get-NetTCPConnection -LocalAddress 127.0.0.1 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalPort -Unique
+            foreach ($p in $listeners) {
+              try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:$p/login" -TimeoutSec 2 -UseBasicParsing
+                if ($r.StatusCode -eq 200) { $port = $p; break }
+              } catch { }
+            }
+            if (-not $port) { Start-Sleep -Seconds 5 }
+          }
+          if (-not $port) {
+            if (Test-Path $logPath) { Get-Content $logPath | Write-Host }
+            throw "no loopback listener answered GET /login within 180s — the app server did not come up"
+          }
+          Write-Host "PASS: app server answered GET /login on http://127.0.0.1:$port/login"
+          echo "AANKH_PORT=$port" >> $env:GITHUB_ENV
+
+      - name: Check the app is still running
+        run: |
+          $proc = Get-Process -Name Aankh -ErrorAction SilentlyContinue
+          if (-not $proc) { throw "Aankh.exe is not running after launch" }
+          Write-Host "Aankh.exe running (PID $($proc.Id))"
+
+      - name: Check server.log for errors
+        run: |
+          $logPath = "$env:APPDATA\Aankh\server.log"
+          if (-not (Test-Path $logPath)) {
+            Write-Host "server.log absent — the server child wrote nothing to stderr (healthy)"
+            exit 0
+          }
+          $content = Get-Content $logPath -Raw
+          if ([string]::IsNullOrWhiteSpace($content)) {
+            Write-Host "server.log empty (healthy)"
+            exit 0
+          }
+          Write-Host "--- server.log ---"
+          Write-Host $content
+          Write-Host "--- end server.log ---"
+          $markers = @("MODULE_NOT_FOUND", "EADDRINUSE", "Uncaught", "FATAL", "Error:")
+          foreach ($m in $markers) {
+            if ($content -match [regex]::Escape($m)) {
+              throw "server.log contains error marker '$m' — see the log above"
+            }
+          }
+          Write-Host "server.log has content but no error markers"
+
+      - name: Upload server.log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aankh-server-log
+          path: ${{ env.APPDATA }}\Aankh\server.log
+          if-no-files-found: warn
+
+      - name: Stop the app
+        if: always()
+        run: |
+          Stop-Process -Name Aankh -Force -ErrorAction SilentlyContinue
+          Write-Host "app stopped"

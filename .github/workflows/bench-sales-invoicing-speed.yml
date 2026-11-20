@@ -1,0 +1,80 @@
+# Sales-invoicing speed benchmark — ONLINE part (CI).
+# SCRATCH COPY — not pushed anywhere. The script it runs lives on the
+# benchmark/sales-invoicing-speed branch until it is merged to main.
+#
+# Trigger: Actions tab > "Bench — sales invoicing speed" > Run workflow.
+# workflow_dispatch ONLY — it never runs on a pull request (including forks).
+# It seeds 5,000 products + 2,000 customers into the DISPOSABLE Supabase
+# project, signs in as a fresh throwaway test owner, times sequential
+# 100-line online saves, then deletes every row + the test user it made.
+# The service key is read from the secret and is NEVER printed: the script
+# never logs env values, and the pre-check below only tests for emptiness.
+#
+# What the owner must add (ONE secret, nothing else):
+#   Repo Settings > Secrets and variables > Actions > New repository secret
+#   Name:  DISPOSABLE_SUPABASE_SERVICE_KEY
+#   Value: the disposable project's service_role key (NOT the production key)
+# The URL + anon key below are the disposable project's PUBLISHABLE values
+# (the anon key is designed to be public; it is also in .env.local).
+
+name: Bench — sales invoicing speed
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to benchmark (must contain scripts/bench-sales-invoicing-speed.ts)"
+        default: "benchmark/sales-invoicing-speed"
+        required: false
+      online_runs:
+        description: "Sequential 100-line online saves to time"
+        default: "5"
+        required: false
+
+permissions:
+  contents: read
+
+# Benchmarks must not overlap: a second dispatch queues behind the first.
+concurrency:
+  group: bench-sales-invoicing-speed
+  cancel-in-progress: false
+
+jobs:
+  bench-online:
+    if: github.repository == 'overpoweredchannels-gif/business-helper'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://rtfowunsyrdygyvubnvs.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0Zm93dW5zeXJkeWd5dnVibnZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3OTI2ODksImV4cCI6MjEwNjM2ODY4OX0.ZziM-bfifjxso7kU7RGpPv0UkhzXwh471ez7BIOwX9Y
+      DISPOSABLE_SUPABASE_SERVICE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+      BENCH_COMMIT: ${{ github.sha }}
+    steps:
+      - name: Check required secret is present
+        run: |
+          if [ -z "$DISPOSABLE_SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::Add the DISPOSABLE_SUPABASE_SERVICE_KEY secret (repo Settings > Secrets and variables > Actions) with the disposable project's service_role key."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run online benchmark (100-line saves, disposable project)
+        run: npx tsx scripts/bench-sales-invoicing-speed.ts --mode online --online-runs "${{ inputs.online_runs }}" --out bench-results.json
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-sales-invoicing-speed
+          path: bench-results.json
