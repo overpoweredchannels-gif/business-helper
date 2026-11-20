@@ -67,17 +67,27 @@
 // DISPOSABLE DB ONLY. Never run this against production: it creates real
 // auth users (all with unmistakable EMAILAUTH-TEST markers) and deletes
 // them again afterwards. The script needs NEXT_PUBLIC_SUPABASE_URL,
-// NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY in the
-// environment. The admin calls (createUser, generateLink, deleteUser) need
-// a valid service key, so the script cannot run at all until one is stored
-// in the vault — it fails fast with a clear message instead of mocking
-// Supabase or touching production.
+// NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY_APIKEY and
+// SUPABASE_SERVICE_ROLE_KEY_BEARER in the environment. The admin calls
+// (createUser, generateLink, deleteUser) need a valid service key, so the
+// script cannot run at all until one is stored in the vault — it fails
+// fast with a clear message instead of mocking Supabase or touching
+// production.
 //
 // NOT wired into `npm test` (and no `test:email-auth-regression` npm
 // script): it is slow (live network calls) and non-hermetic (needs the
 // disposable service key and network access). CI and Vercel intentionally
 // have no service key, so the script would fail there. Manual runs only,
 // against the disposable project.
+//
+// TWO SURROGATES: the egress swaps a surrogate only into the header its
+// placement names, so the admin client needs the service key in BOTH
+// headers from TWO surrogates — `SUPABASE_SERVICE_ROLE_KEY_APIKEY`
+// (apikey placement, custom.supabase-service-role) for the `apikey`
+// header and `SUPABASE_SERVICE_ROLE_KEY_BEARER` (bearer placement,
+// custom.supabase-service-role-bearer) for `Authorization: Bearer`.
+// A single surrogate in both headers fails with 403 bad_jwt (verified
+// 2026-11-20). The vault-backed wrapper supplies both.
 
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -90,11 +100,19 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+const SERVICE_KEY_APIKEY = process.env.SUPABASE_SERVICE_ROLE_KEY_APIKEY ?? "";
+const SERVICE_KEY_BEARER = process.env.SUPABASE_SERVICE_ROLE_KEY_BEARER ?? "";
 
 assert.ok(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set (export the disposable .env.local first)");
 assert.ok(ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set (export the disposable .env.local first)");
-assert.ok(SERVICE_KEY, "SUPABASE_SERVICE_ROLE_KEY must be set (export the disposable .env.local first)");
+assert.ok(
+  SERVICE_KEY_APIKEY,
+  "SUPABASE_SERVICE_ROLE_KEY_APIKEY must be set (run via the vault-backed wrapper)",
+);
+assert.ok(
+  SERVICE_KEY_BEARER,
+  "SUPABASE_SERVICE_ROLE_KEY_BEARER must be set (run via the vault-backed wrapper)",
+);
 
 // Disposable project only: refuse to run against any other Supabase URL,
 // so a wrong env file can never point this test at production.
@@ -103,26 +121,46 @@ assert.ok(
   `Refusing to run: NEXT_PUBLIC_SUPABASE_URL is not the disposable project (${SUPABASE_URL})`,
 );
 
-// Fail fast when the service key is a placeholder, not a JWT. As of
+// Fail fast when a service key is a placeholder, not a JWT. As of
 // 2026-11-20 the disposable .env.local carries the sentinel
 // "qa-fail-closed-dummy-key" instead of a real service key — Supabase
 // rejects it with 401 Invalid API key. A real key arrives either as a JWT
-// (from the env file) or as an `hsurr:` surrogate supplied by the Secure
-// Vault connector (custom.supabase-service-role), which the egress swaps
-// for the real key on requests to the disposable project. Anything else
-// still fails here.
+// (from the env file, manual use) or as an `hsurr:` surrogate supplied by
+// the Secure Vault connectors (custom.supabase-service-role for the apikey
+// header, custom.supabase-service-role-bearer for the Bearer header),
+// which the egress swaps for the real key on requests to the disposable
+// project. Anything else still fails here.
 const looksLikeServiceKey = (value: string): boolean =>
   /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value) ||
   value.startsWith("hsurr:");
 assert.ok(
-  looksLikeServiceKey(SERVICE_KEY),
-  "SUPABASE_SERVICE_ROLE_KEY must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
+  looksLikeServiceKey(SERVICE_KEY_APIKEY),
+  "SUPABASE_SERVICE_ROLE_KEY_APIKEY must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
+);
+assert.ok(
+  looksLikeServiceKey(SERVICE_KEY_BEARER),
+  "SUPABASE_SERVICE_ROLE_KEY_BEARER must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
 );
 
 const suffix = () => randomBytes(4).toString("hex");
 
-const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+// The admin client must send the service key in BOTH headers, from TWO
+// surrogates: the egress swaps each surrogate only into the header its
+// placement names, so one surrogate cannot fill both. The custom fetch
+// below sets `apikey` from the apikey-placement surrogate and
+// `Authorization: Bearer` from the bearer-placement surrogate, while the
+// createClient key argument (apikey surrogate) covers any call that only
+// sets the apikey header itself.
+const adminFetch: typeof fetch = (input, init = {}) => {
+  const headers = new Headers(init.headers);
+  headers.set("apikey", SERVICE_KEY_APIKEY);
+  headers.set("Authorization", `Bearer ${SERVICE_KEY_BEARER}`);
+  return fetch(input, { ...init, headers });
+};
+
+const admin = createClient(SUPABASE_URL, SERVICE_KEY_APIKEY, {
   auth: { autoRefreshToken: false, persistSession: false },
+  global: { fetch: adminFetch },
 });
 
 function freshAnon(): SupabaseClient {
