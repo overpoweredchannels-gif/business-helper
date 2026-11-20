@@ -34,7 +34,9 @@ import { createLocalStore, type LocalCustomerRow, type StoredIdentity } from "..
 // stamped in the file's `meta` table. The raw `store.backup()` copy
 // is unscoped and unstamped (legacy) — the main process never writes
 // one anymore, it always goes through `writeScopedBackup` /
-// `runDailyBackup` with a scope.
+// `runDailyBackup` with a scope. Sunday small fix — a legacy restore
+// needs explicit confirmation (`allowLegacy`); without it the
+// restore refuses with `legacy-backup` before any side effect.
 
 const IDENTITY: StoredIdentity = {
   profileId: "profile-1",
@@ -239,6 +241,21 @@ async function main(): Promise<void> {
     await otherStore.backup(sourcePath);
     otherStore.close();
     assert.deepEqual(validateBackupFile(sourcePath), { ok: true }, "the restore source validates");
+    // Sunday small fix — the source is a raw (unstamped) legacy copy,
+    // so it refuses until the restore is explicitly confirmed.
+    const legacyRefused = await restoreFromBackup({
+      store,
+      dbPath,
+      userDataPath: userData,
+      sourcePath,
+      expectedScope: scope,
+      now,
+      restart: () => {
+        restarts += 1;
+      },
+    });
+    assert.deepEqual(legacyRefused, { ok: false, error: "legacy-backup" }, "a legacy backup refuses without confirmation");
+    assert.equal(restarts, 0, "a refused legacy restore never restarts");
     const restoredResult = await restoreFromBackup({
       store,
       dbPath,
@@ -246,6 +263,7 @@ async function main(): Promise<void> {
       sourcePath,
       expectedScope: scope,
       now,
+      allowLegacy: true,
       restart: () => {
         restarts += 1;
       },
