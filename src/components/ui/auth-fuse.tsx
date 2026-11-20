@@ -508,13 +508,15 @@ function SignUpForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
             full_name: fullName.trim(),
             organization_name: `${fullName.trim().split(" ")[0]}'s Business`,
           },
-          // Desktop only: without this Supabase uses the Site URL (the
-          // web app), so the verification link opens the browser and
-          // the desktop app stays stuck on the verify screen. The web
-          // flow passes undefined — unchanged.
+          // Slice 1b: the web link must land on /auth/callback, which
+          // redeems token_hash (verifyOtp, any browser) and falls back to
+          // the PKCE code exchange. The old value (undefined) let Supabase
+          // use the Site URL, so the verification link landed on `/` and
+          // the ?code= died on the login page with no exchange. Desktop
+          // keeps the aankh:// deep link, unchanged.
           emailRedirectTo: isDesktopApp()
             ? DESKTOP_AUTH_CALLBACK_URL
-            : undefined,
+            : `${window.location.origin}/auth/callback`,
         },
       });
       if (signUpError) throw signUpError;
@@ -678,15 +680,16 @@ function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view:
     if (!email) return;
     setResending(true);
     try {
-      // Same desktop seam as sign-up: the resent link must come back
-      // to the app, not the web Site URL.
+      // Same Slice 1b seam as sign-up: the resent link must come back
+      // to /auth/callback on web (see the sign-up comment), not the
+      // Site URL, and to the app on desktop.
       await supabase.auth.resend({
         type: "signup",
         email,
         options: {
           emailRedirectTo: isDesktopApp()
             ? DESKTOP_AUTH_CALLBACK_URL
-            : undefined,
+            : `${window.location.origin}/auth/callback`,
         },
       });
       setResent(true);
