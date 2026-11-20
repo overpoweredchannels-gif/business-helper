@@ -52,6 +52,7 @@ import {
   staleAiAlertIdsForSave,
   type AiAlertLike,
 } from "../src/lib/ai/ai-alert-sync";
+import { dayKeyedAlertEntityId } from "../src/lib/ai/ai-alert-entity-ids";
 import {
   AI_ALERTS_CROSS_TAB_CHANNEL,
   AI_ALERTS_CROSS_TAB_STORAGE_KEY,
@@ -95,7 +96,11 @@ function main(): void {
   const overdueC1 = alert("alert-overdue-1", "active", "customer_credit", "customer-1");
   const overdueC2 = alert("alert-overdue-2", "active", "customer_credit", "customer-2");
   const marketAlert = alert("alert-market-1", "active", "market_intelligence", "market-1");
-  const expenseAlert = alert("alert-expense-1", "active", "expenses", "2026-11-18");
+  // Stored expense alerts are keyed by the deterministic UUID derived
+  // from the day (see ai-alert-entity-ids.ts), never the raw date
+  // string — the UUID column rejects that, and a date-string row could
+  // never have been stored in the first place.
+  const expenseAlert = alert("alert-expense-1", "active", "expenses", dayKeyedAlertEntityId("expense_day", "2026-11-18"));
   const resolvedPayable = alert("alert-payable-3", "resolved", "supplier_ledger", "supplier-1");
   const newOverdue = alert("alert-overdue-3", "new", "customer_credit", "customer-1");
   const allAlerts = [
@@ -375,8 +380,8 @@ function main(): void {
   );
 
   console.log("(i) extension: returns invalidate the same party figures as the sale/purchase");
-  const expenseDay2 = alert("alert-expense-2", "active", "expenses", "2026-11-19");
-  const expenseResolvedToday = alert("alert-expense-3", "resolved", "expenses", "2026-11-18");
+  const expenseDay2 = alert("alert-expense-2", "active", "expenses", dayKeyedAlertEntityId("expense_day", "2026-11-19"));
+  const expenseResolvedToday = alert("alert-expense-3", "resolved", "expenses", dayKeyedAlertEntityId("expense_day", "2026-11-18"));
   const alertsWithExpenseDays = [...allAlerts, expenseDay2, expenseResolvedToday];
   check(
     JSON.stringify(staleAiAlertIdsForSave({ kind: "sales_return", customerId: "customer-1" }, allAlerts)) ===
@@ -449,6 +454,13 @@ function main(): void {
       !staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays).includes("alert-payable-1") &&
       !staleAiAlertIdsForSave({ kind: "expense", expenseDay: "2026-11-18" }, alertsWithExpenseDays).includes("alert-market-1"),
     "an expense save never touches customer / supplier / market alerts",
+  );
+  check(
+    staleAiAlertIdsForSave(
+      { kind: "expense", expenseDay: "2026-11-18" },
+      [alert("alert-expense-raw", "active", "expenses", "2026-11-18")],
+    ).length === 0,
+    "a stored row keyed by the raw date string is never matched — the generator keys by the derived UUID, and a date-string row could never have been stored (UUID column)",
   );
 
   console.log("(k) extension: cross-tab signal is emitted on save and heard by a second tab");

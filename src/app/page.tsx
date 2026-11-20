@@ -137,6 +137,7 @@ import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilte
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
 import { AI_ALERT_SYNC_SAVE_KIND_LABEL, shouldRegenerateAiAlertsAfterSave, staleAiAlertIdsForSave, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
 import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";
+import { dayKeyedAlertEntityId } from "@/lib/ai/ai-alert-entity-ids";
 import { aiAlertThresholdsRelative } from "@/lib/ai/ai-alert-thresholds";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -6334,9 +6335,12 @@ export default function Home() {
 
     // AI Insight cache sync: the confirmed expense changed today's
     // expense total. The saved payload's date is always today, and it
-    // is the day the generator keys the `expense_day` alert by. (The
-    // offline-parked paths return before this line, so an unconfirmed
-    // expense never invalidates.)
+    // is the day the generator keys the `expense_day` alert by (the
+    // stored id is the deterministic UUID derived from that day, see
+    // `dayKeyedAlertEntityId` — never the raw date string, which the
+    // UUID column rejects and which would poison the whole batch
+    // insert). (The offline-parked paths return before this line, so
+    // an unconfirmed expense never invalidates.)
     refreshAiAlertsAfterSave({ kind: "expense", expenseDay: expensePayload.expense_date });
     setExpenseMessage(statusUpdateWarning ?? t('page.expenseSavedOk'));
     setExpenseType("");
@@ -17495,7 +17499,7 @@ export default function Home() {
         severity: todayExpenseTotal >= alertThresholds.expenseDayHigh ? "high" : "medium",
         source_type: "expenses",
         source_entity_type: "expense_day",
-        source_entity_id: todayDateValue,
+        source_entity_id: dayKeyedAlertEntityId("expense_day", todayDateValue),
         recommended_action: t('page.reviewExpenseCategories'),
       });
     }
@@ -17508,7 +17512,7 @@ export default function Home() {
         severity: "medium",
         source_type: "staff_duty",
         source_entity_type: "staff_duty",
-        source_entity_id: todayDateValue,
+        source_entity_id: dayKeyedAlertEntityId("staff_duty", todayDateValue),
         recommended_action: t('page.confirmDutyTracking'),
       });
     }

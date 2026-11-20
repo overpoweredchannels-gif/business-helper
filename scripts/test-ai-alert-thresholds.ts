@@ -56,6 +56,7 @@ import {
   AI_ALERT_THRESHOLD_RATIOS,
   aiAlertThresholdsRelative,
 } from "../src/lib/ai/ai-alert-thresholds";
+import { dayKeyedAlertEntityId, isValidUuid } from "../src/lib/ai/ai-alert-entity-ids";
 import { computeInventoryValuation } from "../src/lib/inventory/valuation";
 
 let passed = 0;
@@ -227,6 +228,89 @@ function main(): void {
       ]).totalValue,
     ) === cents(mixed.totalValue - 2.2),
     "an unrelated €0.58-cost product is untouched by the return — the €0.58 read gap is not the return path",
+  );
+
+  console.log("(h) day-keyed alert ids are valid UUIDs, never raw date strings");
+  // Regression (2026-11-20, live QA): the generator inserted ALL alert
+  // candidates in ONE batch into ai_alerts, but the expense-day and
+  // no-staff-on-duty candidates carried source_entity_id "2026-11-20"
+  // (the raw date string) while the column is UUID — Postgres rejected
+  // the whole batch, so no NATURA supplier alert ever appeared even
+  // though the threshold rule was correct. The fix derives a
+  // deterministic UUID from the day instead. These checks pin that.
+  const expenseId = dayKeyedAlertEntityId("expense_day", "2026-11-20");
+  const staffId = dayKeyedAlertEntityId("staff_duty", "2026-11-20");
+  check(
+    dayKeyedAlertEntityId("expense_day", "2026-11-20") === expenseId &&
+      dayKeyedAlertEntityId("staff_duty", "2026-11-20") === staffId,
+    "the derived id is deterministic — the same day always maps to the same UUID (dedupe + invalidation rely on it)",
+  );
+  check(isValidUuid(expenseId), "the expense-day id is a valid UUID");
+  check(isValidUuid(staffId), "the staff-duty id is a valid UUID");
+  check(
+    expenseId.charAt(14) === "5" && staffId.charAt(14) === "5",
+    "both derived ids carry version nibble 5 (name-based)",
+  );
+  check(
+    ["8", "9", "a", "b"].includes(expenseId.charAt(19)) && ["8", "9", "a", "b"].includes(staffId.charAt(19)),
+    "both derived ids carry a 10xx variant nibble",
+  );
+  check(expenseId !== staffId, "expense-day and staff-duty ids differ for the same day (the kind is part of the key)");
+  check(
+    dayKeyedAlertEntityId("expense_day", "2026-11-19") !== expenseId,
+    "the same kind on a different day gives a different id",
+  );
+  check(
+    dayKeyedAlertEntityId("expense_day", " 2026-11-20 ") === expenseId,
+    "a day with surrounding whitespace maps to the same id (trimmed before hashing)",
+  );
+  const blankExpenseId = dayKeyedAlertEntityId("expense_day", "");
+  const blankStaffId = dayKeyedAlertEntityId("staff_duty", "   ");
+  check(isValidUuid(blankExpenseId) && isValidUuid(blankStaffId), "a blank day still yields a valid UUID, never a throw");
+  check(
+    dayKeyedAlertEntityId("expense_day", "") === blankExpenseId,
+    "the blank-day fallback is deterministic too",
+  );
+  check(blankExpenseId !== blankStaffId, "the blank-day fallback still differs per kind");
+  check(!isValidUuid("2026-11-20"), "the raw date string is NOT a valid UUID — it is the poison that killed the batch");
+  check(
+    !isValidUuid("") && !isValidUuid(null) && !isValidUuid(undefined) && !isValidUuid("not-a-uuid") &&
+      !isValidUuid("2026-11-20T00:00:00.000Z"),
+    "isValidUuid rejects empty, null, malformed and timestamp strings",
+  );
+  check(
+    pageSource.includes('source_entity_id: dayKeyedAlertEntityId("expense_day", todayDateValue)'),
+    "the generator's expense-day candidate uses the derived UUID, not the raw date",
+  );
+  check(
+    pageSource.includes('source_entity_id: dayKeyedAlertEntityId("staff_duty", todayDateValue)'),
+    "the generator's staff-duty candidate uses the derived UUID, not the raw date",
+  );
+  check(
+    !pageSource.includes("source_entity_id: todayDateValue"),
+    "no candidate in page.tsx still stores the raw date string as source_entity_id",
+  );
+  check(
+    pageSource.includes('import { dayKeyedAlertEntityId } from "@/lib/ai/ai-alert-entity-ids";'),
+    "page.tsx imports the day-keyed id helper",
+  );
+  const syncSource = readFileSync(new URL("../src/lib/ai/ai-alert-sync.ts", import.meta.url), "utf8");
+  check(
+    syncSource.includes('dayKeyedAlertEntityId("expense_day", save.expenseDay)'),
+    "expense invalidation matches the derived UUID, not the raw day string",
+  );
+  // The exact regression: a batch shaped like the generator's — supplier
+  // rows (real UUIDs) plus the expense-day and staff-duty rows — must
+  // have every source_entity_id a valid UUID (or null). The same batch
+  // with the raw date string in place of either derived id fails.
+  const batchIds = ["e356d4df-86f2-4f7c-bf1d-751bd7f801c1", expenseId, staffId];
+  check(
+    batchIds.every((id) => isValidUuid(id)),
+    "every source_entity_id in a batch with expense-day + staff-duty rows is a valid UUID",
+  );
+  check(
+    ["e356d4df-86f2-4f7c-bf1d-751bd7f801c1", "2026-11-20", staffId].some((id) => !isValidUuid(id)),
+    "the same batch with the raw date string in place of the expense id would fail validation — this check would have caught the incident",
   );
 
   console.log(`\nAll ${passed} checks passed.`);

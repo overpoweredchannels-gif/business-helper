@@ -47,7 +47,10 @@
  *   purchase / supplier payment / purchase return -> the supplier's
  *     `supplier_ledger` (payable) alerts;
  *   expense -> that day's `expenses` alert (source_entity_id is the
- *     day, e.g. today — see the generator's `expense_day` candidate).
+ *     deterministic UUID derived from the day — see
+ *     `dayKeyedAlertEntityId` in ai-alert-entity-ids.ts — never the raw
+ *     date string, which the UUID column rejects and which poisoned the
+ *     whole batch insert on 2026-11-20).
  * Unrelated alerts (other parties, other source types — market, staff)
  * are untouched. Regeneration is the generator's own full pass,
  * which only inserts genuinely-new alerts (its dedupe skips the ones
@@ -77,6 +80,8 @@
  * discarded on the user's correction (a stale rate would silently
  * mis-set the threshold).
  */
+
+import { dayKeyedAlertEntityId } from "./ai-alert-entity-ids";
 
 export type AiAlertSyncSaveKind =
   | "sale"
@@ -133,7 +138,9 @@ export const AI_ALERT_SYNC_SAVE_KIND_LABEL: Record<AiAlertSyncSaveKind, string> 
  * - purchase / supplier_payment / purchase_return with a supplier id:
  *   that supplier's `supplier_ledger` (payable) alerts.
  * - expense with a day: that day's `expenses` alert (the generator's
- *   `expense_day` candidate keys the alert by day, not by expense id).
+ *   `expense_day` candidate keys the alert by day, not by expense id —
+ *   the stored id is the deterministic UUID derived from the day, so
+ *   this matches against that derived id, never the raw date string).
  * - a save with no party id (e.g. a walk-in cash sale, which has no
  *   customer record) changes no party's overdue/payable figures, so
  *   nothing is invalidated; an expense save with no day invalidates
@@ -147,7 +154,17 @@ export function staleAiAlertIdsForSave(
 ): string[] {
   const target =
     save.kind === "expense"
-      ? { sourceType: "expenses", entityId: save.expenseDay ?? null }
+      ? {
+          sourceType: "expenses",
+          // The stored expense alert is keyed by the deterministic UUID
+          // derived from the day (see ai-alert-entity-ids.ts), never the
+          // raw date string — the UUID column rejects that, and matching
+          // the raw day here would leave expense invalidation dead.
+          entityId:
+            typeof save.expenseDay === "string" && save.expenseDay.trim() !== ""
+              ? dayKeyedAlertEntityId("expense_day", save.expenseDay)
+              : null,
+        }
       : save.kind === "sale" ||
           save.kind === "customer_payment" ||
           save.kind === "sales_return"
