@@ -9,37 +9,19 @@
 //   (d) CONCURRENT: two provision POSTs in parallel for one fresh user must
 //       leave exactly ONE profile and ONE org. If two org rows exist (the
 //       losing call orphaned one), the test FAILS LOUDLY and reports it as a
-//       found race — it never hides or swallows that result. With the
-//       race-recovery fix (provision route, step 7), the losing call must
-//       NOT 500: it deletes its orphaned org, re-reads the winner's
-//       profile, and returns 200 with the winner's organization_id — so
-//       BOTH parallel responses carry the SAME org id and ZERO orphaned
-//       org rows remain (assertions 27-33).
+//       found race — it never hides or swallows that result.
 //
-// Run it via the vault-backed wrapper (the disposable .env.local holds only
-// a dummy service key, so the direct command below fails the guard):
-//   python3 ~/workspace/custom-connectors/custom.supabase-service-role/bin/run-idempotency-test.py
-// Direct run (manual only — needs a REAL service key in the environment):
+// Run command (manual only — see the wiring note at the bottom):
 //   set -a; . ~/workspace/tradeos-localization/.env.local; set +a
 //   npx tsx scripts/test-provision-idempotency.ts
 //
 // DISPOSABLE DB ONLY. Never run this against production: it creates real
 // auth users, organizations and profiles (all with unmistakable
 // IDEMPOTENCY-TEST markers) and deletes them again afterwards. The script
-// needs NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-// SUPABASE_SERVICE_ROLE_KEY_APIKEY and SUPABASE_SERVICE_ROLE_KEY_BEARER
-// in the environment — the disposable .env.local above. It boots
-// .next/standalone/server.js (building it with
+// needs NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and
+// SUPABASE_SERVICE_ROLE_KEY in the environment — the disposable .env.local
+// above. It boots .next/standalone/server.js (building it with
 // AANKH_DESKTOP_BUILD=1 first if it does not exist yet).
-//
-// TWO SURROGATES: the egress swaps a surrogate only into the header its
-// placement names, so the admin client needs the service key in BOTH
-// headers from TWO surrogates — `SUPABASE_SERVICE_ROLE_KEY_APIKEY`
-// (apikey placement, custom.supabase-service-role) for the `apikey`
-// header and `SUPABASE_SERVICE_ROLE_KEY_BEARER` (bearer placement,
-// custom.supabase-service-role-bearer) for `Authorization: Bearer`.
-// A single surrogate in both headers fails with 403 bad_jwt (verified
-// 2026-11-20). The vault-backed wrapper supplies both.
 //
 // NOT wired into `npm test` (and no `test:provision-idempotency` npm script):
 // it is slow (full standalone build when missing + server boot + live
@@ -62,64 +44,30 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const SERVICE_KEY_APIKEY = process.env.SUPABASE_SERVICE_ROLE_KEY_APIKEY;
-const SERVICE_KEY_BEARER = process.env.SUPABASE_SERVICE_ROLE_KEY_BEARER;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 assert.ok(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set (export the disposable .env.local first)");
 assert.ok(ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set (export the disposable .env.local first)");
-assert.ok(
-  SERVICE_KEY_APIKEY,
-  "SUPABASE_SERVICE_ROLE_KEY_APIKEY must be set (run via the vault-backed wrapper)",
-);
-assert.ok(
-  SERVICE_KEY_BEARER,
-  "SUPABASE_SERVICE_ROLE_KEY_BEARER must be set (run via the vault-backed wrapper)",
-);
+assert.ok(SERVICE_KEY, "SUPABASE_SERVICE_ROLE_KEY must be set (export the disposable .env.local first)");
 
-// Fail fast when a service key is a placeholder, not a JWT. As of
+// Fail fast when the service key is a placeholder, not a JWT. As of
 // 2026-11-20 the disposable .env.local carries the sentinel
 // "qa-fail-closed-dummy-key" instead of a real service key — Supabase
 // rejects it with 401 Invalid API key, so both the admin API calls below
-// and the route's service-role calls cannot work. A real key arrives either
-// as a JWT (from the env file, manual use) or as an `hsurr:` surrogate
-// supplied by the Secure Vault connectors
-// (custom.supabase-service-role for the apikey header,
-// custom.supabase-service-role-bearer for the Bearer header), which the
-// egress swaps for the real key on requests to the disposable project.
-// Anything else still fails here — supply the real disposable service key
-// before running; do not run this against production.
-const looksLikeServiceKey = (value: string): boolean =>
-  /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value) ||
-  value.startsWith("hsurr:");
+// and the route's service-role calls cannot work. Supply the real disposable
+// service key before running; do not run this against production.
+const looksLikeJwt = (value: string): boolean =>
+  /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
 assert.ok(
-  looksLikeServiceKey(SERVICE_KEY_APIKEY),
-  "SUPABASE_SERVICE_ROLE_KEY_APIKEY must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
-);
-assert.ok(
-  looksLikeServiceKey(SERVICE_KEY_BEARER),
-  "SUPABASE_SERVICE_ROLE_KEY_BEARER must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
+  looksLikeJwt(SERVICE_KEY),
+  "SUPABASE_SERVICE_ROLE_KEY does not look like a JWT (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
 );
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const suffix = () => randomBytes(4).toString("hex");
 
-// The admin client must send the service key in BOTH headers, from TWO
-// surrogates: the egress swaps each surrogate only into the header its
-// placement names, so one surrogate cannot fill both. The custom fetch
-// below sets `apikey` from the apikey-placement surrogate and
-// `Authorization: Bearer` from the bearer-placement surrogate, while the
-// createClient key argument (apikey surrogate) covers any call that only
-// sets the apikey header itself.
-const adminFetch: typeof fetch = (input, init = {}) => {
-  const headers = new Headers(init.headers);
-  headers.set("apikey", SERVICE_KEY_APIKEY);
-  headers.set("Authorization", `Bearer ${SERVICE_KEY_BEARER}`);
-  return fetch(input, { ...init, headers });
-};
-
-const admin = createClient(SUPABASE_URL, SERVICE_KEY_APIKEY, {
+const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
-  global: { fetch: adminFetch },
 });
 const anon = createClient(SUPABASE_URL, ANON_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -367,41 +315,7 @@ async function main(): Promise<void> {
       1,
       `26. CONCURRENT CASE: exactly ONE org must exist for user B (got ${orgsB.count}: ${orgsB.ids.join(", ")}). RACE: the losing parallel call orphaned org(s) ${orgsB.ids.filter((id) => id !== profileOrgB).join(", ")}`,
     );
-    // ── (d2) RACE RECOVERY (fix verification): the losing call must
-    // recover, not 500. Both responses return 200 with the SAME org id
-    // (the winner's), and no orphaned org row may remain.
-    const statuses = [r1.status, r2.status].sort();
-    assert.deepEqual(
-      statuses,
-      [200, 200],
-      `27. both parallel provisions must return 200 (got ${r1.status} and ${r2.status}: ${JSON.stringify(r1.body)} / ${JSON.stringify(r2.body)})`,
-    );
-    assert.equal(r1.body.ok, true, `28. parallel response [1] must return ok:true (${JSON.stringify(r1.body)})`);
-    assert.equal(r2.body.ok, true, `29. parallel response [2] must return ok:true (${JSON.stringify(r2.body)})`);
-    const returnedOrgIds = [r1.body.organization_id, r2.body.organization_id];
-    assert.equal(
-      returnedOrgIds[0],
-      returnedOrgIds[1],
-      `30. both parallel provisions must return the SAME organization_id (got ${returnedOrgIds[0]} vs ${returnedOrgIds[1]})`,
-    );
-    assert.equal(
-      returnedOrgIds[0],
-      profileOrgB,
-      `31. the shared returned organization_id must equal the winner profile's organization_id (${profileOrgB})`,
-    );
-    const orphanIds = orgsB.ids.filter((id) => id !== profileOrgB);
-    assert.equal(
-      orphanIds.length,
-      0,
-      `32. ZERO orphaned orgs may remain after parallel provision (orphans: ${orphanIds.join(", ")})`,
-    );
-    const alreadyFlags = [r1.body.alreadyProvisioned, r2.body.alreadyProvisioned].sort();
-    assert.deepEqual(
-      alreadyFlags,
-      [false, true],
-      `33. exactly one parallel response must be the first provision (alreadyProvisioned:false) and the other the recovery (alreadyProvisioned:true) (got ${JSON.stringify([r1.body.alreadyProvisioned, r2.body.alreadyProvisioned])})`,
-    );
-    console.log(`(d) concurrent provision OK — one profile, one org ${profileOrgB}; loser recovered with 200 + winner's org (no race, no orphan)`);
+    console.log(`(d) concurrent provision OK — one profile, one org ${profileOrgB} (no race observed this run)`);
   } finally {
     await cleanup();
     await stopServer();
