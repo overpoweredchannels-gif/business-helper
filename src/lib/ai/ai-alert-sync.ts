@@ -66,10 +66,16 @@
  * labels in the business-brain context text
  * (`context-retriever.ts` / `business-memory.ts`); the brain store
  * itself, which is built once at load and never refreshed on save
- * (a separate, heavier item); and the currency-blind alert thresholds
- * (`payable >= 100000` compares a books-currency amount against a
- * hardcoded 100,000, so in EUR the payable alert effectively never
- * fires — the stale Rs alert was the only reason the card showed one).
+ * (a separate, heavier item). The currency-blind alert thresholds
+ * were out of scope here too — they are fixed in
+ * `src/lib/ai/ai-alert-thresholds.ts` (2026-11-20) as a RELATIVE rule:
+ * each threshold is a share of the org's own live figures (5% of total
+ * outstanding payables, 10% of trailing-30-day expenses, 10% of total
+ * outstanding receivables), so a EUR org's €660 payable qualifies
+ * instead of never firing. No stored exchange rate is involved: the
+ * first version of that slice scaled at the stored rate and was
+ * discarded on the user's correction (a stale rate would silently
+ * mis-set the threshold).
  */
 
 export type AiAlertSyncSaveKind =

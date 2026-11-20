@@ -315,6 +315,60 @@ async function main() {
   assert.equal((await oldExpenseRead).status, "ignored", "late expenses from the prior organization are ignored");
   assert.deepEqual((switchExpenseRows as ExpenseRow[]).map((row) => row.id), ["org-b-current"], "late prior-scope rows cannot overwrite current expenses");
 
+  // One automatic retry (2026-11-20): a single transient read failure
+  // (network blip, Supabase hiccup, query racing a JWT refresh) left a
+  // metric "Unavailable" until a manual Retry — the Payables tile showed
+  // exactly that on 2026-11-20 12:05 with "Supabase fetch purchase
+  // transactions error", while the same tile read fine before and after.
+  // The tracker now re-attempts once after a short pause; the state
+  // stays "loading" through it, and only a second failure is reported.
+  let retryStates = emptyDashboardSourceStates();
+  const retryTracker = new DashboardReadTracker((next) => { retryStates = next; });
+  retryTracker.activate("retry-account", "retry-org");
+
+  let transientAttempts = 0;
+  let transientCommitted: string[] = [];
+  const transient = await retryTracker.read("purchase-transactions", "retry-account", "retry-org", async () => {
+    transientAttempts += 1;
+    if (transientAttempts === 1) throw new Error("transient Supabase hiccup");
+    return ["purchase-a"];
+  }, (rows) => { transientCommitted = rows; });
+  assert.equal(transient.status, "success", "a transient failure recovers on the automatic retry");
+  assert.equal(transientAttempts, 2, "the load ran exactly twice: the failure plus one retry");
+  assert.deepEqual(transientCommitted, ["purchase-a"], "the retried read commits its rows");
+  assert.equal(retryStates["purchase-transactions"].status, "successful-populated", "no Unavailable flicker on a recovered read");
+
+  let persistentAttempts = 0;
+  let persistentReports = 0;
+  const persistent = await runDashboardSourceRead(
+    retryTracker, "purchase-transactions", "retry-account", "retry-org",
+    async () => { persistentAttempts += 1; throw new Error("persistent failure"); },
+    () => assert.fail("failed rows must not be committed"),
+    () => { persistentReports += 1; },
+  );
+  assert.equal(persistent.status, "failed", "a failure that survives the retry is still a failure");
+  assert.equal(persistentAttempts, 2, "a persistent failure is attempted exactly twice, not endlessly");
+  assert.equal(persistentReports, 1, "the error is reported exactly once, not once per attempt");
+  assert.equal(retryStates["purchase-transactions"].status, "failed");
+
+  let offlineAttempts = 0;
+  const offline = await retryTracker.read("products", "retry-account", "retry-org", async () => {
+    offlineAttempts += 1;
+    throw new Error("Offline and no cached products");
+  }, () => assert.fail("offline rows must not be committed"));
+  assert.equal(offline.status, "failed", "an offline read still fails");
+  assert.equal(offlineAttempts, 1, "the explicit offline signal is NOT retried — it cannot recover in 400ms");
+
+  let supersededAttempts = 0;
+  const supersededRead = retryTracker.read("tasks", "retry-account", "retry-org", async () => {
+    supersededAttempts += 1;
+    throw new Error("first attempt fails, retry pending");
+  }, () => assert.fail("a superseded read must not commit"));
+  const currentRead2 = await retryTracker.read("tasks", "retry-account", "retry-org", async () => ["current task"], () => undefined);
+  assert.equal(currentRead2.status, "success");
+  assert.equal((await supersededRead).status, "ignored", "a read superseded during its retry delay never retries");
+  assert.equal(supersededAttempts, 1, "the superseded read's load ran once — no retry after a newer read started");
+
   console.log("Dashboard read-state regressions passed: delayed, empty, partial failure, refresh failure, retry recovery, org/account scope, superseded reads, expense-aware Business Health, module summaries, and shared KPI/alert rendering.");
 }
 

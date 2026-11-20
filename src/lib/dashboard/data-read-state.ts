@@ -200,11 +200,55 @@ export class DashboardReadTracker {
     const request = this.begin(source, accountId, organizationId);
     if (!request) return Promise.resolve({ status: "ignored" });
     // Defer invocation so synchronous exceptions follow the same failed-read path.
-    return Promise.resolve()
-      .then(load)
-      .then((data): DashboardReadResult<T> => this.succeed(request, data, commit) ? { status: "success", data } : { status: "ignored" })
-      .catch((error: unknown): DashboardReadResult<T> => this.fail(request) ? { status: "failed", error } : { status: "ignored" });
+    return Promise.resolve().then(() => this.readWithRetry(request, load, commit));
   }
+
+  private async readWithRetry<T>(
+    request: DashboardReadRequest,
+    load: () => Promise<T[]>,
+    commit: (data: T[]) => void,
+  ): Promise<DashboardReadResult<T>> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= DASHBOARD_READ_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        const data = await load();
+        return this.succeed(request, data, commit)
+          ? { status: "success", data }
+          : { status: "ignored" };
+      } catch (error) {
+        lastError = error;
+        if (!this.isCurrent(request)) return { status: "ignored" };
+        if (attempt >= DASHBOARD_READ_RETRY_ATTEMPTS) break;
+        if (isOfflineReadError(error)) break;
+        await new Promise((resolve) => setTimeout(resolve, DASHBOARD_READ_RETRY_DELAY_MS));
+        if (!this.isCurrent(request)) return { status: "ignored" };
+      }
+    }
+    return this.fail(request) ? { status: "failed", error: lastError } : { status: "ignored" };
+  }
+}
+
+/**
+ * A single transient dashboard read failure (network blip, Supabase
+ * hiccup, or a query racing a JWT refresh) must not leave a metric
+ * "Unavailable" until the user clicks Retry: one automatic re-attempt
+ * after a short pause, then the failure is real and is reported exactly
+ * as before. The state stays "loading" through the retry, so the tile
+ * never flickers to Unavailable on a failure that recovers. The delay
+ * matches the one-retry precedent in page.tsx fetchSelfStaffPermission
+ * ("the first attempt can race the session being restored").
+ *
+ * No retry for the explicit offline signal ("Offline and no cached …"):
+ * retrying a read that cannot reach the network only delays the
+ * offline fallback. A superseded request (newer read for the same
+ * source, or an account/org switch) never retries after it stops being
+ * current.
+ */
+export const DASHBOARD_READ_RETRY_ATTEMPTS = 1;
+export const DASHBOARD_READ_RETRY_DELAY_MS = 400;
+
+function isOfflineReadError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Offline");
 }
 
 export async function runDashboardSourceRead<T>(

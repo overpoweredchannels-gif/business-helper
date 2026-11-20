@@ -360,10 +360,10 @@ function main(): void {
     "state is re-read after resolving, so the generator's dedupe sees the resolved rows",
   );
 
-  console.log("(h) scope: thresholds and schema untouched, no migration");
+  console.log("(h) scope: thresholds are relative to the org's own figures, no migration");
   check(
-    generatorSource.includes("payable >= 100000"),
-    "payable threshold is UNCHANGED (currency-blind threshold is a reported follow-up, not this slice)",
+    generatorSource.includes("item.payable >= alertThresholds.supplierPayable"),
+    "payable threshold is the relative books-currency value (threshold slice, 2026-11-20 — the old hardcoded 100,000 is gone)",
   );
   check(
     !readdirSync("src/lib/migrations").some((f) => f.includes("ai_alert") || f.includes("stale")),

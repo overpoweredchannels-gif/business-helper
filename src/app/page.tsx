@@ -135,6 +135,7 @@ import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilte
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
 import { AI_ALERT_SYNC_SAVE_KIND_LABEL, shouldRegenerateAiAlertsAfterSave, staleAiAlertIdsForSave, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
 import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";
+import { aiAlertThresholdsRelative } from "@/lib/ai/ai-alert-thresholds";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -17292,6 +17293,44 @@ setCustomerOrganizationName("");
     };
 
     const candidates: AlertCandidate[] = [];
+    // Alert thresholds are RELATIVE (see src/lib/ai/ai-alert-thresholds.ts):
+    // each is a share of the org's own live figures in books currency, so
+    // they track the business instead of a hardcoded PKR-era constant or
+    // a stored exchange rate that can go stale. The supplier and customer
+    // lists are computed once here and reused by their sections below.
+    const supplierPayables = suppliers.map((supplier) => {
+      const transactionIds = purchaseTransactions
+        .filter((transaction) => transaction.supplier_id === supplier.id)
+        .map((transaction) => transaction.id);
+      const payable = transactionIds.reduce(
+        (sum, transactionId) =>
+          sum + Math.max(0, supplierPaymentAllocationByPurchaseTransaction[transactionId]?.remainingPayableAmount ?? 0),
+        0
+      );
+      return { supplier, payable };
+    });
+    const totalOutstandingPayables = supplierPayables.reduce((sum, item) => sum + item.payable, 0);
+    const customerOverdues = customers.map((customer) => ({ customer, summary: getCustomerCreditSummary(customer) }));
+    const totalOutstandingReceivables = customerOverdues.reduce(
+      (sum, item) => sum + Math.max(0, item.summary.overdueAmount),
+      0
+    );
+    // Trailing 30 days inclusive of today, from the fully-loaded expenses
+    // list (the loader fetches all expenses, no date filter). A missing
+    // window start means no expense baseline — the threshold then does
+    // not fire (see the module's zero-baseline guard).
+    const trailing30DayStart = addDaysToDateInputValue(todayDateValue, -29);
+    const trailing30DayExpenses =
+      trailing30DayStart === null
+        ? 0
+        : expenses
+            .filter((expense) => isDateInRange(expense.expense_date ?? expense.created_at, trailing30DayStart, todayDateValue))
+            .reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
+    const alertThresholds = aiAlertThresholdsRelative({
+      totalOutstandingPayables,
+      trailing30DayExpenses,
+      totalOutstandingReceivables,
+    });
     reorderRecommendations
       .filter((recommendation) => recommendation.status === "Out of Stock" || recommendation.status === "Urgent Reorder")
       .slice(0, 30)
@@ -17354,8 +17393,7 @@ setCustomerOrganizationName("");
         });
       });
 
-    customers
-      .map((customer) => ({ customer, summary: getCustomerCreditSummary(customer) }))
+    customerOverdues
       .filter((item) => item.summary.overdueAmount > 0)
       .sort((a, b) => b.summary.overdueAmount - a.summary.overdueAmount)
       .slice(0, 10)
@@ -17364,7 +17402,7 @@ setCustomerOrganizationName("");
           alert_type: "payment",
           title: t('page.overdueReceivable').replace('{customer}', customer.customer_name),
           summary: t('page.overdueSummary').replace('{amount}', formatBooksMoney(summary.overdueAmount)).replace('{count}', String(summary.overdueInvoiceCount)),
-          severity: summary.overdueAmount >= 50000 ? "high" : "medium",
+          severity: summary.overdueAmount >= alertThresholds.customerOverdueHigh ? "high" : "medium",
           source_type: "customer_credit",
           source_entity_type: "customer",
           source_entity_id: customer.id,
@@ -17372,19 +17410,8 @@ setCustomerOrganizationName("");
         });
       });
 
-    suppliers
-      .map((supplier) => {
-        const transactionIds = purchaseTransactions
-          .filter((transaction) => transaction.supplier_id === supplier.id)
-          .map((transaction) => transaction.id);
-        const payable = transactionIds.reduce(
-          (sum, transactionId) =>
-            sum + Math.max(0, supplierPaymentAllocationByPurchaseTransaction[transactionId]?.remainingPayableAmount ?? 0),
-          0
-        );
-        return { supplier, payable };
-      })
-      .filter((item) => item.payable >= 100000)
+    supplierPayables
+      .filter((item) => item.payable >= alertThresholds.supplierPayable)
       .sort((a, b) => b.payable - a.payable)
       .slice(0, 10)
       .forEach(({ supplier, payable }) => {
@@ -17392,7 +17419,7 @@ setCustomerOrganizationName("");
           alert_type: "payment",
           title: t('page.supplierPayablePressure').replace('{supplier}', supplier.supplier_name),
           summary: t('page.currentPayableMsg').replace('{amount}', formatBooksMoney(payable)),
-          severity: payable >= 250000 ? "high" : "medium",
+          severity: payable >= alertThresholds.supplierPayableHigh ? "high" : "medium",
           source_type: "supplier_ledger",
           source_entity_type: "supplier",
           source_entity_id: supplier.id,
@@ -17402,12 +17429,12 @@ setCustomerOrganizationName("");
 
     const todayExpenses = expenses.filter((expense) => getDateOnly(expense.expense_date ?? expense.created_at) === todayDateValue);
     const todayExpenseTotal = todayExpenses.reduce((sum, expense) => sum + safeNumber(expense.amount), 0);
-    if (todayExpenses.length > 0 && todayExpenseTotal >= 25000) {
+    if (todayExpenses.length > 0 && todayExpenseTotal >= alertThresholds.expenseDay) {
       candidates.push({
         alert_type: "expense",
         title: t('page.highExpensesToday'),
         summary: t('page.todayExpensesSummary').replace('{count}', String(todayExpenses.length)).replace('{total}', formatBooksMoney(todayExpenseTotal)),
-        severity: todayExpenseTotal >= 75000 ? "high" : "medium",
+        severity: todayExpenseTotal >= alertThresholds.expenseDayHigh ? "high" : "medium",
         source_type: "expenses",
         source_entity_type: "expense_day",
         source_entity_id: todayDateValue,
