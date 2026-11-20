@@ -57,6 +57,7 @@ import {
   clearIdentityCache,
   identityCacheForUser,
   isDesktopApp,
+  isIdentityCacheExpired,
   isNetworkError,
   readIdentityCache,
   readIdentityCacheAsync,
@@ -2361,21 +2362,26 @@ export default function Home() {
       console.error(`${logTag} sessionError:`, sessionError);
       // Slice 3 (HYBRID, desktop only): a getSession failure is not proof
       // of sign-out — a transient storage/network hiccup throws here too.
-      // When a cached identity exists, restore it so the app opens on the
-      // last workspace instead of dropping to the login screen. The cached
-      // profile id IS the auth user id, so the restored user keeps the
-      // dashboard's identity; the online-transition effect re-validates
-      // live (and signs out if the session is genuinely dead) as soon as
-      // the network returns. No cached identity → sign out as before.
-      if (isDesktopApp()) {
+      // Slice 7 narrows the restore: it happens ONLY when the failure is
+      // a NETWORK failure (offline cold start, or an expired token whose
+      // refresh cannot reach Supabase — gotrue returns the refresh error
+      // here) AND the cached identity is inside the 7-day grace. A
+      // non-network failure means the refresh actually failed while
+      // online — the session is dead — so the user signs out cleanly
+      // below instead of staying "logged in" on a dead session.
+      if (isDesktopApp() && isNetworkError(sessionError)) {
         const cached = await readIdentityCacheAsync();
-        if (cached) {
+        if (cached && !isIdentityCacheExpired(cached)) {
           setCurrentUser({ id: cached.profileId, email: cached.email ?? "" });
           lastResolvedAuthUserIdRef.current = cached.profileId;
           restoreCachedIdentity(cached);
           return;
         }
       }
+      // Slice 7 — clean sign-out: the session cannot be refreshed (or
+      // the cache is past grace). Drop the cached identity too, so a
+      // later offline launch cannot resurrect the dead session.
+      clearIdentityCache();
       lastResolvedAuthUserIdRef.current = null;
       setCurrentUser(null);
       setCurrentProfile(null);
@@ -2386,6 +2392,10 @@ export default function Home() {
 
     if (!sessionData?.session) {
       console.log(`${logTag} no session found — user not authenticated`);
+      // Slice 7: the stored session is definitively gone (gotrue clears
+      // it after a failed refresh) — drop the cached identity with it,
+      // so a later offline launch cannot restore a user with no session.
+      clearIdentityCache();
       lastResolvedAuthUserIdRef.current = null;
       setCurrentUser(null);
       setCurrentProfile(null);
@@ -2405,7 +2415,8 @@ export default function Home() {
       // Trust the cached session + cached identity and continue offline.
       // A non-network auth error (invalid token, 401) still signs out
       // below. The cached identity is only restored for the session's own
-      // user, never for a different (stale) account.
+      // user, never for a different (stale) account. Slice 7: the
+      // restore is grace-gated inside `identityCacheForUser` (7 days).
       if (isDesktopApp() && isNetworkError(error)) {
         const sessionUser = sessionData.session?.user ?? null;
         const cached = identityCacheForUser(await readIdentityCacheAsync(), sessionUser?.id ?? null);
@@ -2417,6 +2428,9 @@ export default function Home() {
           return;
         }
       }
+      // Slice 7 — clean sign-out: a non-network getUser error means the
+      // session is dead (invalid token). Drop the cached identity too.
+      clearIdentityCache();
       setCurrentUser(null);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);

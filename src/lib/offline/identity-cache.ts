@@ -27,6 +27,12 @@
  *   also exists (see checkAuthUser). It is cleared on sign-out.
  * - A cache written for a different user is never restored for the
  *   current user (see `identityCacheForUser`).
+ * - Slice 7 — offline grace period (hardening rule 5): a cached
+ *   identity is only trusted for 7 days after its last live write
+ *   (`cachedAt` refreshes on every successful online load). Past that
+ *   the user must sign in again — enforced in `identityCacheForUser`
+ *   and at the getSession-error restore site, so every restore path
+ *   is gated the same way.
  */
 
 import type { Currency } from "@/lib/regional/settings";
@@ -52,6 +58,31 @@ export interface CachedIdentity {
 
 /** Storage key. Exported for tests/maintenance only — callers use the functions. */
 export const IDENTITY_CACHE_STORAGE_KEY = "aankh:identity-cache:v1";
+
+/**
+ * Slice 7 — offline grace period (hardening rule 5): a cached identity
+ * is only trusted for 7 days after its last live write. `cachedAt` is
+ * refreshed on every successful online profile/org load (see
+ * `saveIdentityCache`), so an active user never hits the cap; a device
+ * that has been offline longer than this must sign in again.
+ */
+export const OFFLINE_IDENTITY_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * True when the cached identity is too old to trust (or unusable).
+ * An unparseable `cachedAt` is treated as expired — never trust a
+ * timestamp we cannot read. Exactly at the boundary counts as fresh
+ * (expired only once the grace has actually elapsed).
+ */
+export function isIdentityCacheExpired(
+  entry: CachedIdentity | null,
+  now: number = Date.now(),
+): boolean {
+  if (!entry) return true;
+  const cachedAtMs = Date.parse(entry.cachedAt);
+  if (Number.isNaN(cachedAtMs)) return true;
+  return now - cachedAtMs > OFFLINE_IDENTITY_GRACE_MS;
+}
 
 type StorageLike = {
   getItem(key: string): string | null;
@@ -246,9 +277,18 @@ export function clearIdentityCache(): void {
 /**
  * The cached identity for this user only. A cache written for a different
  * user (stale after an account switch, or a shared device) is never
- * restored for the current session user.
+ * restored for the current session user. Slice 7: an expired cache (past
+ * the 7-day grace) is never restored either — the user must sign in
+ * again. Every auth-restore path in `src/app/page.tsx` goes through
+ * here, so the grace is enforced uniformly.
  */
-export function identityCacheForUser(entry: CachedIdentity | null, userId: string | null): CachedIdentity | null {
+export function identityCacheForUser(
+  entry: CachedIdentity | null,
+  userId: string | null,
+  now: number = Date.now(),
+): CachedIdentity | null {
   if (!entry || !userId) return null;
-  return entry.profileId === userId ? entry : null;
+  if (entry.profileId !== userId) return null;
+  if (isIdentityCacheExpired(entry, now)) return null;
+  return entry;
 }
