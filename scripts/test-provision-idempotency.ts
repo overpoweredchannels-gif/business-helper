@@ -9,7 +9,12 @@
 //   (d) CONCURRENT: two provision POSTs in parallel for one fresh user must
 //       leave exactly ONE profile and ONE org. If two org rows exist (the
 //       losing call orphaned one), the test FAILS LOUDLY and reports it as a
-//       found race — it never hides or swallows that result.
+//       found race — it never hides or swallows that result. With the
+//       race-recovery fix (provision route, step 7), the losing call must
+//       NOT 500: it deletes its orphaned org, re-reads the winner's
+//       profile, and returns 200 with the winner's organization_id — so
+//       BOTH parallel responses carry the SAME org id and ZERO orphaned
+//       org rows remain (assertions 27-33).
 //
 // Run it via the vault-backed wrapper (the disposable .env.local holds only
 // a dummy service key, so the direct command below fails the guard):
@@ -362,7 +367,41 @@ async function main(): Promise<void> {
       1,
       `26. CONCURRENT CASE: exactly ONE org must exist for user B (got ${orgsB.count}: ${orgsB.ids.join(", ")}). RACE: the losing parallel call orphaned org(s) ${orgsB.ids.filter((id) => id !== profileOrgB).join(", ")}`,
     );
-    console.log(`(d) concurrent provision OK — one profile, one org ${profileOrgB} (no race observed this run)`);
+    // ── (d2) RACE RECOVERY (fix verification): the losing call must
+    // recover, not 500. Both responses return 200 with the SAME org id
+    // (the winner's), and no orphaned org row may remain.
+    const statuses = [r1.status, r2.status].sort();
+    assert.deepEqual(
+      statuses,
+      [200, 200],
+      `27. both parallel provisions must return 200 (got ${r1.status} and ${r2.status}: ${JSON.stringify(r1.body)} / ${JSON.stringify(r2.body)})`,
+    );
+    assert.equal(r1.body.ok, true, `28. parallel response [1] must return ok:true (${JSON.stringify(r1.body)})`);
+    assert.equal(r2.body.ok, true, `29. parallel response [2] must return ok:true (${JSON.stringify(r2.body)})`);
+    const returnedOrgIds = [r1.body.organization_id, r2.body.organization_id];
+    assert.equal(
+      returnedOrgIds[0],
+      returnedOrgIds[1],
+      `30. both parallel provisions must return the SAME organization_id (got ${returnedOrgIds[0]} vs ${returnedOrgIds[1]})`,
+    );
+    assert.equal(
+      returnedOrgIds[0],
+      profileOrgB,
+      `31. the shared returned organization_id must equal the winner profile's organization_id (${profileOrgB})`,
+    );
+    const orphanIds = orgsB.ids.filter((id) => id !== profileOrgB);
+    assert.equal(
+      orphanIds.length,
+      0,
+      `32. ZERO orphaned orgs may remain after parallel provision (orphans: ${orphanIds.join(", ")})`,
+    );
+    const alreadyFlags = [r1.body.alreadyProvisioned, r2.body.alreadyProvisioned].sort();
+    assert.deepEqual(
+      alreadyFlags,
+      [false, true],
+      `33. exactly one parallel response must be the first provision (alreadyProvisioned:false) and the other the recovery (alreadyProvisioned:true) (got ${JSON.stringify([r1.body.alreadyProvisioned, r2.body.alreadyProvisioned])})`,
+    );
+    console.log(`(d) concurrent provision OK — one profile, one org ${profileOrgB}; loser recovered with 200 + winner's org (no race, no orphan)`);
   } finally {
     await cleanup();
     await stopServer();
