@@ -613,8 +613,19 @@ function checkVersionTag(cliTag) {
 
 // -------------------------------------------------------- checks (8) + (9)
 
-const BEARER_MARKERS = /getUser\s*\(|getClaims\s*\(|resolveActor\s*\(|requirePermission\s*\(|requireSalesTool\s*\(|Authorization/;
-const ORG_FROM_BODY = /(body|payload|parsedBody|input)\s*\.\s*organization_id|organization_id\s*:\s*(body|payload|parsedBody|input)\b|\(\s*await\s+[^)]*\.json\(\)\s*\)\s*\.\s*organization_id/;
+const BEARER_MARKERS = /getUser\s*\(|getClaims\s*\(|resolveActor\s*\(|requirePermission\s*\(|requireSalesTool\s*\(|requireAuthenticatedOrg\s*\(|Authorization/;
+// Note: requireAuthenticatedOrg (Slice 6, business-brain + conversation
+// routes) delegates to requireOrganization -> resolveActor -> getUser(token);
+// it verifies the Bearer itself, it only spells the check one level up.
+const ORG_FROM_BODY = /\b(body|payload|parsedBody|input)\s*\.\s*organization_id|\borderization_id\s*:\s*(body|payload|parsedBody|input)\b|\(\s*await\s+[^)]*\.json\(\)\s*\)\s*\.\s*organization_id/;
+// NOTE (Slice 6): the leading \b on both alternatives is load-bearing.
+// Without it, a Postgres RPC argument named p_organization_id fed from
+// the token-derived org — `p_organization_id: input.organizationId` in
+// /api/books/convert, where `input` is the conversion library's input,
+// not the request body — reads as `organization_id: input` and fails a
+// route that genuinely takes its org from the token. The boundary keeps
+// every true body read matching (body./input./{ organization_id: body.… })
+// while `p_organization_id` (preceded by `_`, a word char) no longer does.
 
 function checkMigratedHardening(manifest, onDisk) {
   console.log("\n[8] Migrated-route hardening (Bearer token + org from token, never body)");

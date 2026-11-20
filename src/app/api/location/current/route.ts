@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveActor } from "@/lib/identity/api-context";
 import { deriveTrackingStatus, trackingStatusLabel } from "@/lib/location/tracking-status";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,15 @@ function errorResponse(message: string, status: number = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "GET");
+}
+
 export async function GET(request: NextRequest) {
+  return applyCors(await runGet(request), corsHeadersFor(request));
+}
+
+async function runGet(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 

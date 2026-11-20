@@ -8,8 +8,8 @@
     "USER-JWT": 68
   },
   "ratchet": {
-    "pending_direct_cloud_fetches": 31,
-    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47, then 44 \u2014 it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower the baseline to the new count; never raise it. Slice 2 (2026-11-20): 44 -> 32 (staff login 1 + staff/me 11 direct fetches moved to the cloud-endpoint helper). Slice 4 (2026-11-20): 32 -> 31 (createPurchase in src/lib/purchases/client.ts moved to the cloud-endpoint helper; the purchase-sync submit was never counted \u2014 fetchImpl( does not match the gate scanner)."
+    "pending_direct_cloud_fetches": 9,
+    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47, then 44 \u2014 it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower the baseline to the new count; never raise it. Slice 2 (2026-11-20): 44 -> 32 (staff login 1 + staff/me 11 direct fetches moved to the cloud-endpoint helper). Slice 4 (2026-11-20): 32 -> 31 (createPurchase in src/lib/purchases/client.ts moved to the cloud-endpoint helper; the purchase-sync submit was never counted \u2014 fetchImpl( does not match the gate scanner). Slice 6 (2026-11-20): 31 -> 9 (ai-business-query 4 + ai/customers 3 + ai/purchases 1 + ai/sales 1 + ai/suppliers 3 + books/convert 1 + fx/rates 2 + location/device-session 5 + location/upload 2 direct fetches moved to the cloud-endpoint helper; location/current had no counted direct fetch \u2014 its call used a template literal, which the gate scanner misses \u2014 but it was migrated too)."
   },
   "routes": {
     "/api/ai-business-query": {
@@ -18,8 +18,9 @@
       "called_from_desktop": "yes",
       "access_today": "provider-router (Gemini/LLM, server AI key) + resolveActor",
       "purpose": "Business Query: direct answer from the business brain (no yes/no round-trip)",
-      "desktop_today": "Fails \u2014 no server AI key in desktop env",
-      "notes": "User rule: Business Query/AI -> Vercel endpoint; offline must show a clear 'Internet chahiye' message, never a 500."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetchAi() with Bearer (60s AI timeout); server verifies the token itself (requirePermission); loopback-only CORS; offline \u2192 'Internet chahiye' in the Business Query UI / voice operator",
+      "notes": "User rule: Business Query/AI -> Vercel endpoint; offline must show a clear 'Internet chahiye' message, never a 500. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/business-intelligence/dashboard": {
       "methods": "GET",
@@ -45,8 +46,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: create a customer",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/customer-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/customers/delete": {
       "methods": "POST",
@@ -54,8 +56,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: delete a customer",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/customer-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/customers/update": {
       "methods": "POST",
@@ -63,8 +66,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: update a customer",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/customer-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/executive": {
       "methods": "GET, POST",
@@ -99,8 +103,9 @@
       "called_from_desktop": "yes",
       "access_today": "PurchaseService default -> PurchaseRepository (service default ctor); create_purchase_atomic is service_role-only",
       "purpose": "AI chat action: create a purchase",
-      "desktop_today": "500s",
-      "notes": "Purchase RPC stays service-role-only (UMAIR decision 3, 2026-11-17); sync via cloud route."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/purchase-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "Purchase RPC stays service-role-only (UMAIR decision 3, 2026-11-17); sync via cloud route. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/sales/create": {
       "methods": "POST",
@@ -108,8 +113,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: create a sale",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/sales-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/suppliers/create": {
       "methods": "POST",
@@ -117,8 +123,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: create a supplier",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/supplier-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/suppliers/delete": {
       "methods": "POST",
@@ -126,8 +133,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: delete a supplier",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/supplier-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/ai/suppliers/update": {
       "methods": "POST",
@@ -135,8 +143,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService + resolveActor",
       "purpose": "AI chat action: update a supplier",
-      "desktop_today": "500s",
-      "notes": "AI chat action; service-backed."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer from src/lib/ai/supplier-executor.ts; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' (English, executor error strings are English-only)",
+      "notes": "AI chat action; service-backed. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/business-brain": {
       "methods": "POST",
@@ -144,8 +153,9 @@
       "called_from_desktop": "yes",
       "access_today": "provider-router (server AI key, process.env lookup)",
       "purpose": "Business Brain endpoint (LLM provider router)",
-      "desktop_today": "Fails \u2014 no server AI key in desktop env",
-      "notes": "Needs a server-side AI key; Vercel only."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetchAi() with Bearer (60s AI timeout) from src/lib/ai/server-chat.ts; server verifies the token itself (requireAuthenticatedOrg); loopback-only CORS; offline \u2192 'Internet chahiye' in the AI chat",
+      "notes": "Needs a server-side AI key; Vercel only. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/conversation/chat": {
       "methods": "POST",
@@ -662,7 +672,7 @@
       "access_today": "createSupabaseService (direct, in try/catch -> JSON 500)",
       "purpose": "Prepare / select the Walk-in customer for POS quick sale",
       "desktop_today": "Desktop never calls this route (Slice 5): the Walk-in row is a local seed with the same deterministic id; the customer-sync drain creates the server row on first sync, or reconciles with no write when it already exists.",
-      "notes": "Slice 5 (HYBRID) landed: desktop upserts the deterministic Walk-in row locally (src/lib/offline/walk-in-customer.ts) and never fetches this route. The route file keeps the service client for WEB same-origin calls only — the gate exempts LOCAL routes the desktop never calls (check 2) instead of failing on the web-only service use."
+      "notes": "Slice 5 (HYBRID) landed: desktop upserts the deterministic Walk-in row locally (src/lib/offline/walk-in-customer.ts) and never fetches this route. The route file keeps the service client for WEB same-origin calls only \u2014 the gate exempts LOCAL routes the desktop never calls (check 2) instead of failing on the web-only service use."
     },
     "/api/inventory/adjust": {
       "methods": "POST",
@@ -697,8 +707,9 @@
       "called_from_desktop": "yes (3 files)",
       "access_today": "createSupabaseService (direct, unguarded)",
       "purpose": "FX rates (owner-entered; display-currency conversion)",
-      "desktop_today": "500s; CurrencySwitcher shows the rate error and stops; RegionalProvider snaps display currency back to books",
-      "notes": "User rule: currency switch -> Vercel endpoint; offline must show a clear 'Internet chahiye' message, never a 500."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer; server verifies the token itself (requirePermission); loopback-only CORS; offline \u2192 'Internet chahiye' in CurrencySwitcher/FxRatesPanel; RegionalProvider snaps display currency back to books",
+      "notes": "User rule: currency switch -> Vercel endpoint; offline must show a clear 'Internet chahiye' message, never a 500. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/books/convert": {
       "methods": "POST",
@@ -706,8 +717,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService (direct, caught -> books.conversionFailed)",
       "purpose": "Books-currency switch (convert every stored amount)",
-      "desktop_today": "500s (caught; returns conversionFailed)",
-      "notes": "User rule: same as /api/fx/rates. Owner-only."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer; server verifies the token itself (requirePermission); loopback-only CORS; offline \u2192 'Internet chahiye' in CurrencySwitcher",
+      "notes": "User rule: same as /api/fx/rates. Owner-only. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/eur/invoices": {
       "methods": "GET, POST",
@@ -1048,8 +1060,9 @@
       "called_from_desktop": "yes",
       "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (NOT via createSupabaseService); RPC close_expired_duty_sessions + reads staff_location_points, employees, staff_duty_sessions",
       "purpose": "Live locations of on-duty staff",
-      "desktop_today": "Fails on desktop (empty key -> client auth error)",
-      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): the duty RPCs (close_expired_duty_sessions, start_employee_duty, stop_employee_duty) are revoked from authenticated and granted only to service_role (production_phase8_duty_tracking.sql:485-492); a user-JWT rewrite cannot call them (42501) without a future re-grant migration."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer; server verifies the token itself (resolveActor, org from token \u2014 the query-param org is checked against it); loopback-only CORS; offline \u2192 'Internet chahiye' in LocationDashboard",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): the duty RPCs (close_expired_duty_sessions, start_employee_duty, stop_employee_duty) are revoked from authenticated and granted only to service_role (production_phase8_duty_tracking.sql:485-492); a user-JWT rewrite cannot call them (42501) without a future re-grant migration. Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/location/device-session": {
       "methods": "POST",
@@ -1057,8 +1070,9 @@
       "called_from_desktop": "yes (3 files)",
       "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY; RPC start_employee_duty",
       "purpose": "Duty session start / register / signout / status / health",
-      "desktop_today": "Fails on desktop (empty key)",
-      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): same RPC-grant evidence as /api/location/current \u2014 start/stop_employee_duty and close_expired_duty_sessions are service_role-only (production_phase8_duty_tracking.sql:485-492)."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer; server verifies the token itself (resolveActor); loopback-only CORS; offline \u2192 'Internet chahiye' at duty start / signout; signout failure does not clear local duty state",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): same RPC-grant evidence as /api/location/current \u2014 start/stop_employee_duty and close_expired_duty_sessions are service_role-only (production_phase8_duty_tracking.sql:485-492). Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/location/upload": {
       "methods": "POST",
@@ -1066,8 +1080,9 @@
       "called_from_desktop": "yes (3 files)",
       "access_today": "Direct client with SUPABASE_SERVICE_ROLE_KEY (createClient, not createSupabaseService)",
       "purpose": "Upload a location point",
-      "desktop_today": "Fails on desktop (empty key)",
-      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): builds its client with SUPABASE_SERVICE_ROLE_KEY directly and calls close_expired_duty_sessions, which is service_role-only (production_phase8_duty_tracking.sql:485-492)."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 6): cloudFetch() with Bearer; server verifies the token itself (getUser(token)); loopback-only CORS; offline \u2192 'Internet chahiye' in page.tsx saveLocationPoint / EmployeeLiveTracking; failed points are NOT queued (offline-queue.ts exists but is unwired \u2014 follow-up)",
+      "notes": "Confirmed CLOUD 2026-11-19 (UMAIR, repo evidence): builds its client with SUPABASE_SERVICE_ROLE_KEY directly and calls close_expired_duty_sessions, which is service_role-only (production_phase8_duty_tracking.sql:485-492). Slice 6: migrated \u2014 Bearer token verified by the route itself (requirePermission / resolveActor / requireAuthenticatedOrg); loopback-only CORS; desktop calls go through the cloud-endpoint helper (cloudFetch / cloudFetchAi), never direct; offline shows the localized internet-required message, never a 500.",
+      "migrated": true
     },
     "/api/location/history": {
       "methods": "GET",

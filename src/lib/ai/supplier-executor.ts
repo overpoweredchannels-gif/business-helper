@@ -1,3 +1,7 @@
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
+import { messages } from "@/lib/regional/messages";
+
 type CreateSupplierInput = {
   organizationId: string;
   supplier_name: string;
@@ -57,7 +61,7 @@ export async function executeCreateSupplier(
   };
 
   try {
-    const response = await fetch("/api/ai/suppliers/create", {
+    const response = await cloudFetch("/api/ai/suppliers/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -82,7 +86,11 @@ export async function executeCreateSupplier(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while creating supplier",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while creating supplier",
     };
   }
 }
@@ -125,7 +133,7 @@ export async function executeUpdateSupplier(
   }
 
   try {
-    const response = await fetch("/api/ai/suppliers/update", {
+    const response = await cloudFetch("/api/ai/suppliers/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -150,7 +158,11 @@ export async function executeUpdateSupplier(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while updating supplier",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while updating supplier",
     };
   }
 }
@@ -169,7 +181,7 @@ export async function executeDeleteSupplier(
   }
 
   try {
-    const response = await fetch("/api/ai/suppliers/delete", {
+    const response = await cloudFetch("/api/ai/suppliers/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ organizationId, supplier_id: supplierId }),
@@ -194,7 +206,11 @@ export async function executeDeleteSupplier(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while deleting supplier",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while deleting supplier",
     };
   }
 }

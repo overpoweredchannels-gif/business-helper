@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { formatTime } from "@/lib/tradeos/formatters";
 import LiveMap from "./LiveMap";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
 import type { CurrentLocationView } from "../../lib/location/types";
 
 export default function LocationDashboard() {
@@ -20,7 +21,9 @@ export default function LocationDashboard() {
   const fetchLocations = useCallback(async () => {
     try {
       const orgId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("organizationId") : null;
-      const res = await authorizedFetch(`/api/location/current?organizationId=${orgId || ""}`);
+      // HYBRID Slice 6: live locations come from the Vercel endpoint
+      // (cloudFetch) — the local server has no service key and would 500.
+      const res = await cloudFetch(`/api/location/current?organizationId=${orgId || ""}`);
       const data = await res.json();
       if (data.ok) {
         setEmployees(data.employees || []);
@@ -29,7 +32,9 @@ export default function LocationDashboard() {
         setError(data.error || t('fsm.tracking.loadLocationsFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('tracking.networkError'));
+      setError(
+        isNetworkError(err) ? t('offline.internetRequired') : err instanceof Error ? err.message : t('tracking.networkError'),
+      );
     } finally {
       setLoading(false);
       setLastRefresh(formatTime(new Date()));

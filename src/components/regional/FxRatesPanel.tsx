@@ -4,11 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useRegional } from "./RegionalProvider";
 import { currencies, type Currency } from "@/lib/regional/settings";
 import { supabase } from "@/lib/supabase/client";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
 
 type LoadState =
   | { kind: "loading" }
   | { kind: "ready"; rate: string | null; rateDate: string | null }
   | { kind: "notSetup" }
+  | { kind: "offline" }
   | { kind: "error" };
 
 const control =
@@ -36,7 +39,9 @@ export function FxRatesPanel() {
         setState({ kind: "error" });
         return;
       }
-      const response = await fetch(`/api/fx/rates?currency=${currency}`, {
+      // HYBRID Slice 6: the rate comes from the Vercel endpoint
+      // (cloudFetch) — the local server has no service key and would 500.
+      const response = await cloudFetch(`/api/fx/rates?currency=${currency}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.status === 503) {
@@ -50,8 +55,10 @@ export function FxRatesPanel() {
       const payload = (await response.json()) as { rate?: string | null; rateDate?: string | null };
       setState({ kind: "ready", rate: payload.rate ?? null, rateDate: payload.rateDate ?? null });
       setRateInput(payload.rate ?? "");
-    } catch {
-      setState({ kind: "error" });
+    } catch (err) {
+      // A network failure is "offline", not a generic error, so the
+      // panel shows the internet-required message (HYBRID Slice 6).
+      setState({ kind: isNetworkError(err) ? "offline" : "error" });
     }
   }, []);
 
@@ -70,7 +77,7 @@ export function FxRatesPanel() {
         setSaveError(t("fx.error"));
         return;
       }
-      const response = await fetch("/api/fx/rates", {
+      const response = await cloudFetch("/api/fx/rates", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ currency: target, rate: rateInput.trim() }),
@@ -83,8 +90,8 @@ export function FxRatesPanel() {
       setState({ kind: "ready", rate: payload.rate ?? rateInput.trim(), rateDate: payload.rateDate ?? null });
       setSavedTick(true);
       refreshFxRate();
-    } catch {
-      setSaveError(t("fx.error"));
+    } catch (err) {
+      setSaveError(isNetworkError(err) ? t("offline.internetRequired") : t("fx.error"));
     } finally {
       setBusy(false);
     }
@@ -124,6 +131,7 @@ export function FxRatesPanel() {
 
       {state.kind === "loading" && <p role="status" className="text-sm text-muted-foreground">{t("fx.loading")}</p>}
       {state.kind === "notSetup" && <p role="alert" className="text-sm text-destructive">{t("fx.notSetup")}</p>}
+      {state.kind === "offline" && <p role="alert" className="text-sm text-destructive">{t("offline.internetRequired")}</p>}
       {state.kind === "error" && <p role="alert" className="text-sm text-destructive">{t("fx.error")}</p>}
       {state.kind === "ready" && (
         <p className="text-sm text-muted-foreground">

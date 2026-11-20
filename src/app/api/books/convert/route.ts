@@ -31,8 +31,16 @@ import {
   type BooksConversionEvent,
   type ControlTotals,
 } from '@/lib/books/service';
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from '@/lib/desktop/cors';
 
 export const runtime = 'nodejs';
+
+// HYBRID Slice 6: the desktop calls this CLOUD route on the Vercel
+// endpoint (cloudFetch), so preflight + CORS for the loopback desktop
+// origin — same pattern as provision / staff/me / purchases.
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, 'POST');
+}
 
 const STATUS_BY_CODE: Record<string, number> = {
   'books.currencyInvalid': 400,
@@ -100,6 +108,10 @@ function normalizeTotals(raw: unknown): ControlTotals {
 }
 
 export async function POST(request: NextRequest) {
+  return applyCors(await runPost(request), corsHeadersFor(request));
+}
+
+async function runPost(request: NextRequest) {
   // These two calls sit outside the conversion try/catch below, so a
   // throw here used to surface as a codeless platform 500 — which the
   // header could only render as its generic line. The 2026-10-30 QA

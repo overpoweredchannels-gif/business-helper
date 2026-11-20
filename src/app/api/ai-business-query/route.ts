@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
 import { requirePermission } from "@/lib/identity/authorization";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
+
+// HYBRID Slice 6: the desktop calls this CLOUD route on the Vercel
+// endpoint (cloudFetch), so preflight + CORS for the loopback desktop
+// origin — same pattern as provision / staff/me / purchases.
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "POST");
+}
 
 type BusinessQueryResult = {
   answer: string;
@@ -93,6 +101,10 @@ const buildLocalFallbackResult = (
 const localFallbackEnabled = () => safeText(process.env.AI_ENABLE_LOCAL_FALLBACK).toLowerCase() === "true";
 
 export async function POST(request: NextRequest) {
+  return applyCors(await runPost(request), corsHeadersFor(request));
+}
+
+async function runPost(request: NextRequest) {
   try {
     const permission = await requirePermission(request, "ai_assistant");
     if (!permission.allowed) {

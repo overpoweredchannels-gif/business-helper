@@ -5,6 +5,7 @@ import { sanitizeMessage, sanitizeHistory } from "@/lib/brain/sanitize";
 import { checkRateLimit } from "@/lib/brain/rate-limit";
 import { logPiiSafe, filterResponse } from "@/lib/brain/pii-filter";
 import { requireAuthenticatedOrg } from "@/lib/identity/authorization";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 // The provider router times out a single attempt after 20s by default;
@@ -12,7 +13,18 @@ export const runtime = "nodejs";
 // route room to finish (and to fail honestly) instead.
 export const maxDuration = 60;
 
+// HYBRID Slice 6: the desktop calls this CLOUD route on the Vercel
+// endpoint (cloudFetch), so preflight + CORS for the loopback desktop
+// origin — same pattern as provision / staff/me / purchases.
+export async function OPTIONS(req: NextRequest) {
+  return desktopPreflightResponse(req, "POST");
+}
+
 export async function POST(req: NextRequest) {
+  return applyCors(await runPost(req), corsHeadersFor(req));
+}
+
+async function runPost(req: NextRequest) {
   try {
     // Auth first (P0-5): this route spends LLM calls and reads business
     // data, so it must never answer an unauthenticated request. Any

@@ -16,7 +16,9 @@ import { GET as conversationStatusGET } from "../src/app/api/conversation/status
 // organization on every one of them (owner or staff; the AI chat is used
 // by staff too, so this is deliberately NOT owner-only), failing closed
 // with 401 when there is no session. The browser chat sends its session
-// token via authorizedFetch. Code-level only: no live Supabase or LLM
+// token via cloudFetchAi (HYBRID Slice 6 — the cloud-endpoint helper,
+// which reads the same session token and routes through the Vercel
+// endpoint on desktop). Code-level only: no live Supabase or LLM
 // call is made — the no-token path returns before any network call.
 
 function noAuthRequest(url: string, method: string): NextRequest {
@@ -137,30 +139,32 @@ async function main(): Promise<void> {
   );
 
   // --- (5) The browser chat sends its session token. ---
-  // server-chat.ts must default to authorizedFetch (Bearer token from the
-  // browser session), not bare fetch — otherwise the newly-authenticated
-  // route would 401 the signed-in owner and the AI chat would break.
+  // server-chat.ts must default to cloudFetchAi (HYBRID Slice 6: the
+  // cloud-endpoint helper — Bearer header from the browser session, via
+  // the Vercel endpoint on desktop, 60s AI timeout), not bare fetch —
+  // otherwise the newly-authenticated route would 401 the signed-in owner
+  // and the AI chat would break.
   const serverChatSource = readFileSync("src/lib/ai/server-chat.ts", "utf8");
   assert.ok(
-    serverChatSource.includes("authorizedFetch"),
-    "server-chat.ts uses authorizedFetch"
+    serverChatSource.includes("cloudFetchAi"),
+    "server-chat.ts uses cloudFetchAi"
   );
   assert.ok(
-    /chatWithBusinessBrain\([\s\S]*?=\s*authorizedFetch/.test(serverChatSource),
-    "authorizedFetch is the default transport for the browser chat"
+    /chatWithBusinessBrain\([\s\S]*?=\s*cloudFetchAi/.test(serverChatSource),
+    "cloudFetchAi is the default transport for the browser chat"
   );
   assert.ok(
     !/chatWithBusinessBrain\([\s\S]*?=\s*fetch\s*[,)]/.test(serverChatSource),
     "the browser chat no longer defaults to bare fetch"
   );
-  const authedFetchSource = readFileSync("src/lib/tradeos/authorized-fetch.ts", "utf8");
+  const cloudEndpointSource = readFileSync("src/lib/desktop/cloud-endpoint.ts", "utf8");
   assert.ok(
-    authedFetchSource.includes('headers.set("Authorization", `Bearer ${token}`)'),
-    "authorizedFetch attaches the session token as a Bearer header"
+    cloudEndpointSource.includes('headers.set("Authorization", `Bearer ${token}`)'),
+    "cloudFetch attaches the session token as a Bearer header"
   );
   assert.ok(
-    authedFetchSource.includes("supabase.auth.getSession()"),
-    "authorizedFetch reads the token from the browser session"
+    cloudEndpointSource.includes("getAccessToken()"),
+    "cloudFetch reads the token from the browser session"
   );
 
   // --- (6) No route is left unauthenticated. ---

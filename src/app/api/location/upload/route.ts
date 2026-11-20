@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseUserClient } from "@/lib/supabase/server";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,18 @@ function errorResponse(message: string, status: number = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+// HYBRID Slice 6: the desktop calls this CLOUD route on the Vercel
+// endpoint (cloudFetch), so preflight + CORS for the loopback desktop
+// origin — same pattern as provision / staff/me / purchases.
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "POST");
+}
+
 export async function POST(request: NextRequest) {
+  return applyCors(await runPost(request), corsHeadersFor(request));
+}
+
+async function runPost(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization") || request.headers.get("Authorization");
     if (!authorization?.toLowerCase().startsWith("bearer ")) {

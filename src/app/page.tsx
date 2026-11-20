@@ -116,7 +116,7 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { fetchStaffMe, provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
+import { cloudFetch, cloudFetchAi, fetchStaffMe, provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
 import { RecordHistoryPanel } from "@/components/sales/RecordHistoryPanel";
 import { useDashboardOrder } from "@/lib/preferences/use-dashboard-order";
@@ -143,7 +143,7 @@ import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/lo
 import { getGateway } from "@/lib/conversation";
 import { bootstrapOrganizationData } from "@/lib/brain/supabase-loader";
 import { getBusinessBrain } from "@/lib/brain";
-import { chatWithBusinessBrain, buildChatResponse } from "@/lib/ai/server-chat";
+import { chatWithBusinessBrain, buildChatResponse, SERVER_CHAT_UNREACHABLE_ERROR } from "@/lib/ai/server-chat";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
@@ -1027,7 +1027,14 @@ export default function Home() {
       conversationHistory: context?.history,
       booksCurrency: booksCurrencyRef.current,
     });
-    return buildChatResponse(result, { conversationId, correlationId });
+    // HYBRID Slice 6: an unreachable AI service means the device is
+    // offline — show the localized internet-required message instead
+    // of the English fallback.
+    const mappedResult =
+      !result.ok && result.error === SERVER_CHAT_UNREACHABLE_ERROR
+        ? { ...result, error: t("offline.internetRequired") }
+        : result;
+    return buildChatResponse(mappedResult, { conversationId, correlationId });
   }, []);
   const [isVoiceAnswerListening, setIsVoiceAnswerListening] = useState(false);
   const [voiceAnswerMessage, setVoiceAnswerMessage] = useState<string | null>(null);
@@ -4670,11 +4677,29 @@ export default function Home() {
       capturedAt: snapshot.captured_at,
     };
 
-    const response = await authorizedFetch("/api/location/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    // HYBRID Slice 6: the upload goes to the Vercel endpoint
+    // (cloudFetch) — the local server has no service key and would 500.
+    // A network failure is caught here (this runs fire-and-forget from
+    // the watch loop, and awaited at duty start/end): it shows the
+    // internet-required message instead of an unhandled rejection, and
+    // the point is simply retried on the next watch tick. Queueing
+    // failed points for later sync (src/lib/location/offline-queue.ts
+    // exists but is unwired) is a follow-up, not this slice.
+    let response: Response;
+    try {
+      response = await cloudFetch("/api/location/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      setLocationTrackingError(
+        isNetworkError(err)
+          ? t("offline.internetRequired")
+          : t('page.locationSaveFailed').replace('{error}', err instanceof Error ? err.message : t('page.unknownError')),
+      );
+      return;
+    }
     const result = await response.json();
 
     if (!response.ok || !result.ok) {
@@ -4772,17 +4797,29 @@ export default function Home() {
       const startedAt = new Date().toISOString();
       const snapshot = positionToSnapshot(position, startedAt);
 
-      const response = await authorizedFetch("/api/location/device-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "start",
-          deviceName: "Aankh web app",
-          startLatitude: snapshot.latitude,
-          startLongitude: snapshot.longitude,
-          startAccuracy: snapshot.accuracy,
-        }),
-      });
+      // HYBRID Slice 6: duty start goes to the Vercel endpoint
+      // (cloudFetch). A network failure is caught here — the outer
+      // catch would route it through the geolocation error mapper and
+      // show the wrong message.
+      let response: Response;
+      try {
+        response = await cloudFetch("/api/location/device-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "start",
+            deviceName: "Aankh web app",
+            startLatitude: snapshot.latitude,
+            startLongitude: snapshot.longitude,
+            startAccuracy: snapshot.accuracy,
+          }),
+        });
+      } catch (err) {
+        setLocationTrackingError(
+          isNetworkError(err) ? t("offline.internetRequired") : getBrowserLocationErrorMessage(err),
+        );
+        return;
+      }
       const result = await response.json();
       if (!response.ok || !result.ok || !result.dutySessionId) {
         setLocationTrackingError(result.error ?? t('page.couldNotStartDuty'));
@@ -4851,11 +4888,26 @@ export default function Home() {
     }
 
     const endedAt = new Date().toISOString();
-    const response = await authorizedFetch("/api/location/device-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "signout" }),
-    });
+    // HYBRID Slice 6: signout goes to the Vercel endpoint (cloudFetch).
+    // This call had no try/catch at all, so a network failure threw out
+    // of the duty-end flow before the local state was cleared. On a
+    // network error show the internet-required message and return early
+    // (same as the !ok path) without clearing local duty state.
+    let response: Response;
+    try {
+      response = await cloudFetch("/api/location/device-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "signout" }),
+      });
+    } catch (err) {
+      setLocationTrackingError(
+        isNetworkError(err)
+          ? t("offline.internetRequired")
+          : t('page.couldNotEndDuty'),
+      );
+      return;
+    }
     const result = await response.json();
     if (!response.ok || !result.ok) {
       setLocationTrackingError(result.error ?? t('page.couldNotEndDuty'));
@@ -15546,7 +15598,7 @@ export default function Home() {
       businessIntelligenceAnalytics.productAnalytics.length > 0;
     setAiAnalyticsLoading(true);
     try {
-      const response = await authorizedFetch("/api/ai-business-query", {
+      const response = await cloudFetchAi("/api/ai-business-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -15576,7 +15628,9 @@ export default function Home() {
       setAiAnalyticsMessage(t('page.aiAnalyticsExplained'));
     } catch (error) {
       console.error("AI analytics request error:", error);
-      setAiAnalyticsError(t('page.aiAnalyticsFailedRetry'));
+      setAiAnalyticsError(
+        isNetworkError(error) ? t("offline.internetRequired") : t('page.aiAnalyticsFailedRetry'),
+      );
     } finally {
       setAiAnalyticsLoading(false);
     }
@@ -17691,7 +17745,7 @@ export default function Home() {
       let rawAiResponse: unknown = null;
 
       try {
-        const response = await authorizedFetch("/api/ai-business-query", {
+        const response = await cloudFetchAi("/api/ai-business-query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -17869,7 +17923,7 @@ export default function Home() {
     setAiBusinessQueryLoading(true);
 
     try {
-      const response = await authorizedFetch("/api/ai-business-query", {
+      const response = await cloudFetchAi("/api/ai-business-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -17942,7 +17996,9 @@ export default function Home() {
       setAiBusinessQueryMessage(t('page.aiBusinessAnswerLogged'));
     } catch (error) {
       console.error("AI business query request error:", error);
-      setAiBusinessQueryError(t('page.aiBusinessQueryFailedRetry'));
+      setAiBusinessQueryError(
+        isNetworkError(error) ? t("offline.internetRequired") : t('page.aiBusinessQueryFailedRetry'),
+      );
     } finally {
       setAiBusinessQueryLoading(false);
     }
@@ -18446,18 +18502,43 @@ export default function Home() {
     const queryType = detectAiBusinessQueryType(question);
     const language = aiVoiceLanguage === "auto" ? detectAiBusinessLanguage(question) : aiVoiceLanguage;
     const summaryData = buildAiBusinessSummary(question, dateRange, queryType);
-    const response = await authorizedFetch("/api/ai-business-query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    // HYBRID Slice 6: this call used to have no try/catch at all, so a
+    // network failure threw out of the voice operator. On a network
+    // error answer with the internet-required message in the same failed
+    // shape the !ok path below returns.
+    let response: Response;
+    try {
+      response = await cloudFetchAi("/api/ai-business-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          language,
+          query_type: queryType,
+          date_range_start: dateRange.start,
+          date_range_end: dateRange.end,
+          business_summary: summaryData,
+        }),
+      });
+    } catch (error) {
+      const errorMessage = isNetworkError(error)
+        ? t("offline.internetRequired")
+        : t('page.aiBusinessQueryFailedRetry');
+      const failedLogId = await saveAiBusinessQueryLog({
         question,
-        language,
+        answer: null,
         query_type: queryType,
+        language,
         date_range_start: dateRange.start,
         date_range_end: dateRange.end,
-        business_summary: summaryData,
-      }),
-    });
+        summary_data: summaryData,
+        raw_ai_response: null,
+        status: "failed",
+        error_message: errorMessage,
+      });
+      await fetchAiBusinessQueryLogs(currentOrganizationId);
+      return { answer: errorMessage, logId: failedLogId, queryType, language, failed: true };
+    }
     const result = await response.json().catch(() => null);
     if (!response.ok || !result?.ok) {
       const details = typeof result?.details === "string" ? result.details : "";

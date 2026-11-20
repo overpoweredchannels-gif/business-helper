@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveActor } from "@/lib/identity/api-context";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,15 @@ function dutyErrorStatus(message: string): number {
   return 400;
 }
 
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "POST");
+}
+
 export async function POST(request: NextRequest) {
+  return applyCors(await runPost(request), corsHeadersFor(request));
+}
+
+async function runPost(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, deviceName } = body;

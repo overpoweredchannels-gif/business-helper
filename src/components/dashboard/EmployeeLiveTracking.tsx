@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Loader2, AlertCircle, LogOut, Radio, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
-import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
+import { cloudFetch, fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -60,8 +60,14 @@ export function EmployeeLiveTracking() {
 
   const uploadPoint = useCallback(
     async (sessionId: string, point: LocationPoint) => {
+      // HYBRID Slice 6: the upload goes to the Vercel endpoint
+      // (cloudFetch) — the local server has no service key and would 500.
+      // A network failure shows the internet-required message, not the
+      // generic save-failed line. (Queueing failed points for later sync
+      // — src/lib/location/offline-queue.ts exists but is unwired — is a
+      // follow-up, not this slice.)
       try {
-        const res = await authorizedFetch("/api/location/upload", {
+        const res = await cloudFetch("/api/location/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -98,8 +104,10 @@ export function EmployeeLiveTracking() {
           // it). Stored as a key so it follows language switches.
           setError({ key: 'tracking.saveFailed' });
         }
-      } catch {
-        setError({ key: 'tracking.saveFailed' });
+      } catch (err) {
+        setError(
+          isNetworkError(err) ? { key: 'offline.internetRequired' } : { key: 'tracking.saveFailed' },
+        );
       }
     },
     []
@@ -203,7 +211,7 @@ export function EmployeeLiveTracking() {
   const loadStatus = useCallback(async () => {
     if (!profileId || !organizationId) return;
     try {
-      const res = await authorizedFetch("/api/location/device-session", {
+      const res = await cloudFetch("/api/location/device-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -261,18 +269,26 @@ export function EmployeeLiveTracking() {
         capturedAt: new Date().toISOString(),
       };
 
-      const res = await authorizedFetch("/api/location/device-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "start",
-          organizationId,
-          profileId,
-          startLatitude: startPoint.latitude,
-          startLongitude: startPoint.longitude,
-          startAccuracy: startPoint.accuracy,
-        }),
-      });
+      let res: Response;
+      try {
+        res = await cloudFetch("/api/location/device-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "start",
+            organizationId,
+            profileId,
+            startLatitude: startPoint.latitude,
+            startLongitude: startPoint.longitude,
+            startAccuracy: startPoint.accuracy,
+          }),
+        });
+      } catch (err) {
+        setError(
+          isNetworkError(err) ? { key: 'offline.internetRequired' } : { key: 'tracking.startFailed' },
+        );
+        return;
+      }
       const data = (await res.json()) as { ok?: boolean; dutySessionId?: string | null; message?: string; error?: string };
       if (!data.ok || !data.dutySessionId) {
         // Server message stays raw; app fallback is a key. (Original threw here
@@ -304,7 +320,7 @@ export function EmployeeLiveTracking() {
 
     if (profileId && organizationId) {
       try {
-        await authorizedFetch("/api/location/device-session", {
+        await cloudFetch("/api/location/device-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "signout", organizationId, profileId }),

@@ -1,5 +1,8 @@
 import { normalizeOptionalDate } from "../sales/validation";
 import { normalizeSkipPhrase } from "./confirmation-content";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
+import { messages } from "@/lib/regional/messages";
 
 type SaleInput = {
   customer_id: string;
@@ -64,7 +67,7 @@ export async function executeSaleDraft(
   };
 
   try {
-    const response = await fetch("/api/ai/sales/create", {
+    const response = await cloudFetch("/api/ai/sales/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(saleInput),
@@ -90,7 +93,11 @@ export async function executeSaleDraft(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while creating sale",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while creating sale",
     };
   }
 }

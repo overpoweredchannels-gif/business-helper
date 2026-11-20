@@ -1,4 +1,6 @@
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
+import { messages } from "@/lib/regional/messages";
 type PurchaseInput = {
   supplier_id: string;
   product_id: string;
@@ -57,7 +59,7 @@ export async function executePurchaseDraft(
   };
 
   try {
-    const response = await authorizedFetch("/api/ai/purchases/create", {
+    const response = await cloudFetch("/api/ai/purchases/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(purchaseInput),
@@ -83,7 +85,11 @@ export async function executePurchaseDraft(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while creating purchase",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while creating purchase",
     };
   }
 }

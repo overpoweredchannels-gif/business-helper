@@ -28,6 +28,16 @@ const CLOUD_ORIGIN =
 
 export const CLOUD_REQUEST_TIMEOUT_MS = 10_000;
 
+/**
+ * Timeout for AI answer routes (HYBRID Slice 6). The provider router
+ * allows 20s per attempt and the business-brain route runs up to 60s
+ * (maxDuration), so the generic 10s timeout would cut legitimate
+ * answers off mid-sentence. 60s matches the chat client's own timeout
+ * (SERVER_CHAT_TIMEOUT_MS) — still bounded, so a spinner can never hang
+ * forever, and a network failure still throws immediately.
+ */
+export const AI_CLOUD_TIMEOUT_MS = 60_000;
+
 export interface CloudProvisionResult {
   ok: boolean;
   alreadyProvisioned?: boolean;
@@ -165,6 +175,43 @@ export async function fetchStaffMe(): Promise<Response> {
 }
 
 /**
+ * Generic CLOUD fetch (HYBRID Slice 6).
+ *
+ * Fetch-shaped so any renderer call site can use it as a drop-in
+ * replacement for `fetch` / `authorizedFetch` on a migrated CLOUD
+ * route: same URL + init the caller passes, but the request goes to
+ * the Vercel endpoint with the user's Bearer token instead of the
+ * local standalone server, which has no service key and would 500.
+ * On the web build `callCloudEndpoint` keeps the relative path, so
+ * this is identical to `authorizedFetch` there. Network errors and
+ * timeouts throw (callers map them to the offline message via
+ * `isNetworkError`); HTTP errors come back as a Response for the
+ * caller to read, exactly like fetch.
+ *
+ * `timeoutMs` defaults to the 10s cloud timeout; AI answer routes
+ * pass AI_CLOUD_TIMEOUT_MS (60s) instead — see that constant.
+ */
+export async function cloudFetch(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs: number = CLOUD_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const token = await getAccessToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return callCloudEndpoint(input, { ...init, headers }, timeoutMs);
+}
+
+/**
+ * AI answer routes (HYBRID Slice 6): `/api/ai-business-query` and
+ * `/api/business-brain` share the 60s AI timeout (AI_CLOUD_TIMEOUT_MS)
+ * instead of the generic 10s — see that constant for why.
+ */
+export async function cloudFetchAi(input: string, init: RequestInit = {}): Promise<Response> {
+  return cloudFetch(input, init, AI_CLOUD_TIMEOUT_MS);
+}
+
+/**
  * Purchase submit on the cloud endpoint (HYBRID Slice 4 — the B1 fix).
  *
  * `fetch`-shaped so the purchase sync engine can use it as its default
@@ -178,8 +225,5 @@ export async function fetchStaffMe(): Promise<Response> {
  * path, so this is identical to `authorizedFetch` there.
  */
 export async function purchaseCloudFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getAccessToken();
-  const headers = new Headers(init.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return callCloudEndpoint(input, { ...init, headers });
+  return cloudFetch(input, init);
 }

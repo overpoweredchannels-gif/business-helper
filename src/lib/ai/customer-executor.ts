@@ -1,3 +1,7 @@
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
+import { messages } from "@/lib/regional/messages";
+
 type CreateCustomerInput = {
   organizationId: string;
   customer_name: string;
@@ -57,7 +61,7 @@ export async function executeCreateCustomer(
   };
 
   try {
-    const response = await fetch("/api/ai/customers/create", {
+    const response = await cloudFetch("/api/ai/customers/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -82,7 +86,11 @@ export async function executeCreateCustomer(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while creating customer",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while creating customer",
     };
   }
 }
@@ -125,7 +133,7 @@ export async function executeUpdateCustomer(
   }
 
   try {
-    const response = await fetch("/api/ai/customers/update", {
+    const response = await cloudFetch("/api/ai/customers/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -150,7 +158,11 @@ export async function executeUpdateCustomer(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while updating customer",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while updating customer",
     };
   }
 }
@@ -169,7 +181,7 @@ export async function executeDeleteCustomer(
   }
 
   try {
-    const response = await fetch("/api/ai/customers/delete", {
+    const response = await cloudFetch("/api/ai/customers/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ organizationId, customer_id: customerId }),
@@ -194,7 +206,11 @@ export async function executeDeleteCustomer(
     return {
       ok: false,
       message: "",
-      error: err instanceof Error ? err.message : "Network error while deleting customer",
+      error: isNetworkError(err)
+        ? messages.en["offline.internetRequired"]
+        : err instanceof Error
+          ? err.message
+          : "Network error while deleting customer",
     };
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,18 @@ const TEXT_FIELDS = [
 
 const NUMERIC_FIELDS = ["credit_limit", "credit_days"] as const;
 
+// HYBRID Slice 6: the desktop calls this CLOUD route on the Vercel
+// endpoint (cloudFetch), so preflight + CORS for the loopback desktop
+// origin — same pattern as provision / staff/me / purchases.
+export async function OPTIONS(req: NextRequest) {
+  return desktopPreflightResponse(req, "POST");
+}
+
 export async function POST(req: NextRequest) {
+  return applyCors(await runPost(req), corsHeadersFor(req));
+}
+
+async function runPost(req: NextRequest) {
   try {
     const body = await req.json();
     const { actor, error, status } = await resolveActor(req);

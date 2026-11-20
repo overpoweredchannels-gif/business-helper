@@ -1,6 +1,8 @@
 "use client";
 
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isNetworkError } from "@/lib/offline/identity-cache";
 import {
   isValidTypedRate,
   parseStoredPkrPerUnit,
@@ -25,16 +27,21 @@ function formatSwitchRate(rate: number): string {
 type StoredRateFetch =
   | { kind: "ready"; rate: number | null }
   | { kind: "notSetup" }
+  | { kind: "offline" }
   | { kind: "error" };
 
 /** Latest active owner-entered rate (PKR per 1 unit) for a currency, or
- * null when none is saved. A 503 means the fx_quotes table is absent. */
+ * null when none is saved. A 503 means the fx_quotes table is absent.
+ * HYBRID Slice 6: the rate comes from the Vercel endpoint (cloudFetch)
+ * — the local server has no service key and would 500. A network
+ * failure is "offline", not a generic error, so the popup can show the
+ * internet-required message instead of the rate-error line. */
 async function fetchStoredRate(
   currency: Currency,
   token: string,
 ): Promise<StoredRateFetch> {
   try {
-    const response = await fetch(`/api/fx/rates?currency=${currency}`, {
+    const response = await cloudFetch(`/api/fx/rates?currency=${currency}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (response.status === 503) return { kind: "notSetup" };
@@ -45,12 +52,12 @@ async function fetchStoredRate(
     } | null;
     if (!payload?.ok) return { kind: "error" };
     return { kind: "ready", rate: parseStoredPkrPerUnit(payload.rate) };
-  } catch {
-    return { kind: "error" };
+  } catch (err) {
+    return { kind: isNetworkError(err) ? "offline" : "error" };
   }
 }
 
-type StoredRateSave = "ok" | "notSetup" | "error";
+type StoredRateSave = "ok" | "notSetup" | "offline" | "error";
 
 /** Save an owner-entered rate (PKR per 1 unit) for a currency. */
 async function saveStoredRate(
@@ -59,7 +66,7 @@ async function saveStoredRate(
   token: string,
 ): Promise<StoredRateSave> {
   try {
-    const response = await fetch("/api/fx/rates", {
+    const response = await cloudFetch("/api/fx/rates", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -69,8 +76,8 @@ async function saveStoredRate(
     });
     if (response.status === 503) return "notSetup";
     return response.ok ? "ok" : "error";
-  } catch {
-    return "error";
+  } catch (err) {
+    return isNetworkError(err) ? "offline" : "error";
   }
 }
 
@@ -101,7 +108,7 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
   // still showed the old currency until the popup was opened — the
   // 2026-10-30 QA run showed a stale PKR label while EUR was already
   // selected. The visible label therefore follows the provider value.
-  const { setCurrency, ui, currency } = useRegional();
+  const { setCurrency, ui, currency, t } = useRegional();
   const [open, setOpen] = useState(false);
   const [booksCurrency, setBooksCurrency] = useState<Currency>(() => getActiveBooksCurrency());
   const [target, setTarget] = useState<Currency | null>(null);
@@ -201,6 +208,10 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         setError(ui("header.currencySwitchRatesNotSetup"));
         return;
       }
+      if (toResult.kind === "offline" || fromResult.kind === "offline") {
+        setError(t("offline.internetRequired"));
+        return;
+      }
       if (toResult.kind === "error" || fromResult.kind === "error") {
         setError(ui("header.currencySwitchRateError"));
         return;
@@ -261,7 +272,9 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
           setError(
             saved === "notSetup"
               ? ui("header.currencySwitchRatesNotSetup")
-              : ui("header.currencySwitchRateError"),
+              : saved === "offline"
+                ? t("offline.internetRequired")
+                : ui("header.currencySwitchRateError"),
           );
           return;
         }
@@ -273,7 +286,9 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
           setError(
             saved === "notSetup"
               ? ui("header.currencySwitchRatesNotSetup")
-              : ui("header.currencySwitchRateError"),
+              : saved === "offline"
+                ? t("offline.internetRequired")
+                : ui("header.currencySwitchRateError"),
           );
           return;
         }
@@ -307,7 +322,7 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
         setError(ui("header.currencySwitchNotSent"));
         return;
       }
-      const response = await fetch("/api/books/convert", {
+      const response = await cloudFetch("/api/books/convert", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -370,11 +385,16 @@ export function CurrencySwitcher({ canSwitch, className }: { canSwitch?: boolean
       // new currency everywhere instead of a stale display cookie.
       setCurrency(target);
       window.location.reload();
-    } catch {
-      // The request never left (network failure, aborted send): say so
-      // instead of the generic line, so a generic line afterwards means
-      // only a codeless platform response or a stale build.
-      setError(ui("header.currencySwitchNotSent"));
+    } catch (err) {
+      // The request never left (network failure, aborted send): on a
+      // network failure say the internet is required (HYBRID Slice 6),
+      // so a generic line afterwards means only a codeless platform
+      // response or a stale build.
+      setError(
+        isNetworkError(err)
+          ? t("offline.internetRequired")
+          : ui("header.currencySwitchNotSent"),
+      );
     } finally {
       setConverting(false);
     }

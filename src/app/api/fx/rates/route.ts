@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requirePermission } from '@/lib/identity/authorization';
 import { createSupabaseService } from '@/lib/supabase/server';
 import { isCurrency } from '@/lib/regional/settings';
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from '@/lib/desktop/cors';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +21,14 @@ function schemaMissing(error: { code?: string } | null) {
   return error?.code === '42P01' || error?.code === 'PGRST205';
 }
 
-export async function GET(request: NextRequest) {
+// HYBRID Slice 6: the desktop calls this CLOUD route on the Vercel
+// endpoint (cloudFetch), so preflight + CORS for the loopback desktop
+// origin — same pattern as provision / staff/me / purchases.
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, 'GET, POST');
+}
+
+async function runGet(request: NextRequest) {
   const permission = await requirePermission(request, 'reports_view');
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
@@ -73,7 +81,11 @@ export async function GET(request: NextRequest) {
   });
 }
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  return applyCors(await runGet(request), corsHeadersFor(request));
+}
+
+async function runPost(request: NextRequest) {
   const permission = await requirePermission(request, 'administration');
   if (!permission.allowed || !permission.actor?.organizationId) {
     return NextResponse.json(
@@ -175,4 +187,8 @@ export async function POST(request: NextRequest) {
     { ok: true, currency, rate: String(newQuote.rate), rateDate: newQuote.rate_date },
     { status: 201 }
   );
+}
+
+export async function POST(request: NextRequest) {
+  return applyCors(await runPost(request), corsHeadersFor(request));
 }

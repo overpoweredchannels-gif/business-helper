@@ -13,13 +13,20 @@
 // It deliberately never imports the provider router.
 //
 // Auth (P0-5, 2026-11-16): /api/business-brain now requires a signed-in
-// user, so the default transport is authorizedFetch, which attaches the
-// browser session's access token as a Bearer header. A caller may still
-// inject its own fetch (tests do) — an unauthenticated request is
-// answered 401 by the route and surfaces here as an honest error.
+// user, so the default transport attaches the browser session's access
+// token as a Bearer header. A caller may still inject its own fetch
+// (tests do) — an unauthenticated request is answered 401 by the route
+// and surfaces here as an honest error.
+//
+// HYBRID Slice 6: the default transport is cloudFetch, not
+// authorizedFetch — on desktop the call goes to the Vercel endpoint
+// (the local server has no AI key and would fail every message) with
+// the same 60s timeout the chat already had. A network failure still
+// surfaces as SERVER_CHAT_UNREACHABLE_ERROR, which the page maps to
+// the localized internet-required message.
 
 import type { ChatResponse } from "@/lib/conversation/contracts";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { cloudFetchAi } from "@/lib/desktop/cloud-endpoint";
 
 export type ServerChatHistoryEntry = {
   role: "user" | "assistant";
@@ -47,6 +54,15 @@ export type ServerChatResult = {
 export const BUSINESS_BRAIN_ENDPOINT = "/api/business-brain";
 export const SERVER_CHAT_TIMEOUT_MS = 60000;
 
+/**
+ * Network-failure error text (HYBRID Slice 6). The page maps this exact
+ * string to the localized `offline.internetRequired` message, so the
+ * chat shows "Internet chahiye" instead of a generic failure when the
+ * device is offline. Keep the text stable — page.tsx matches on it.
+ */
+export const SERVER_CHAT_UNREACHABLE_ERROR =
+  "Could not reach the AI service. Please check your connection and try again.";
+
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -57,7 +73,7 @@ function asNonEmptyString(value: unknown): string | undefined {
 
 export async function chatWithBusinessBrain(
   input: ServerChatInput,
-  fetchImpl: (input: string, init?: RequestInit) => Promise<Response> = authorizedFetch
+  fetchImpl: (input: string, init?: RequestInit) => Promise<Response> = cloudFetchAi,
 ): Promise<ServerChatResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SERVER_CHAT_TIMEOUT_MS);
@@ -126,7 +142,7 @@ export async function chatWithBusinessBrain(
     return {
       ok: false,
       message: "",
-      error: "Could not reach the AI service. Please check your connection and try again.",
+      error: SERVER_CHAT_UNREACHABLE_ERROR,
     };
   } finally {
     clearTimeout(timer);

@@ -6,6 +6,7 @@ import {regionalUi,type RegionalUiKey} from '@/lib/regional/ui-messages';
 import {regionalQaEnabled} from '@/lib/regional/qa';
 import {getActiveBooksCurrency,setActiveCurrency,setActiveFxRate} from '@/lib/tradeos/formatters';
 import {parseStoredPkrPerUnit} from '@/lib/fx/stored-rate';
+import {cloudFetch} from '@/lib/desktop/cloud-endpoint';
 import {supabase} from '@/lib/supabase/client';
 
 type RegionalContext={language:Language;enabled:boolean;setLanguage:(language:Language)=>void;currency:Currency;setCurrency:(currency:Currency)=>void;fxRate:number|null;refreshFxRate:()=>void;t:(key:MessageKey)=>string;ui:(key:RegionalUiKey)=>string};
@@ -17,7 +18,11 @@ async function fetchFxRate(currency:Currency):Promise<number|null>{
     if(!token)return null;
     // Owner-entered saved rate (PKR per 1 unit) — the only conversion
     // authority. No live feed is consulted anywhere any more.
-    const response=await fetch(`/api/fx/rates?currency=${currency}`,{headers:{Authorization:`Bearer ${token}`}});
+    // HYBRID Slice 6: the rate comes from the Vercel endpoint
+    // (cloudFetch) — the local server has no service key and would 500.
+    // A failure still returns null, so the provider snaps the display
+    // currency back to books instead of mislabelling amounts.
+    const response=await cloudFetch(`/api/fx/rates?currency=${currency}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!response.ok)return null;
     const payload=await response.json() as {ok?:boolean;rate?:string|number|null};
     if(!payload.ok)return null;
