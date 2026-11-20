@@ -26,7 +26,7 @@ export interface DesktopBackupResult {
   /**
    * `store-unavailable` | `invalid-file` | `scope-mismatch` |
    * `no-identity` | `safety-backup-failed` | `replace-failed` |
-   * `failed` — the caller maps these to messages.
+   * `legacy-backup` | `failed` — the caller maps these to messages.
    */
   error?: string;
 }
@@ -34,8 +34,11 @@ export interface DesktopBackupResult {
 export interface DesktopBackupBridge {
   /** Export the live database to a user-chosen file (native save dialog). */
   exportBackup(): Promise<DesktopBackupResult>;
-  /** Restore a backup file over the live database (native open dialog); restarts the app on success. */
-  restoreBackup(): Promise<DesktopBackupResult>;
+  /**
+   * Restore a backup file over the live database (native open dialog); restarts the app on success.
+   * `allowLegacy` confirms a legacy (unstamped) backup after the warning was shown.
+   */
+  restoreBackup(allowLegacy?: boolean): Promise<DesktopBackupResult>;
   /** Desktop Backup menu: Export Backup File… */
   onMenuExportBackup(handler: () => void): () => void;
   /** Desktop Backup menu: Restore Backup File… */
@@ -63,11 +66,11 @@ export async function exportDesktopBackup(): Promise<DesktopBackupResult> {
 }
 
 /** Restore a backup file (native open dialog). Never throws. */
-export async function restoreDesktopBackup(): Promise<DesktopBackupResult> {
+export async function restoreDesktopBackup(allowLegacy?: boolean): Promise<DesktopBackupResult> {
   const bridge = desktopBackupBridge();
   if (!bridge) return { ok: false, error: "store-unavailable" };
   try {
-    return await bridge.restoreBackup();
+    return await bridge.restoreBackup(allowLegacy);
   } catch {
     return { ok: false, error: "failed" };
   }

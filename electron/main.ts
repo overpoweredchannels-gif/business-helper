@@ -622,7 +622,7 @@ function setupLocalStore(): void {
       return { ok: false, error: "failed" };
     }
   });
-  ipcMain.handle("aankh:backup:restore", async () => {
+  ipcMain.handle("aankh:backup:restore", async (_event, allowLegacy?: boolean) => {
     if (!localStore) return { ok: false, error: "store-unavailable" };
     const picked = await dialog.showOpenDialog({
       title: "Restore Aankh backup",
@@ -642,6 +642,9 @@ function setupLocalStore(): void {
       expectedScope: identity
         ? scopeForIdentity(identity.organizationId, identity.profileId)
         : null,
+      // Sunday small fix — the renderer confirms a legacy (unstamped)
+      // backup first and passes the confirmation through.
+      allowLegacy: allowLegacy === true,
       restart: () => {
         // Let the IPC reply reach the renderer first, then restart
         // so the restored database takes effect.

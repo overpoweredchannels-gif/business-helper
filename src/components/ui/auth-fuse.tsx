@@ -436,9 +436,14 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
 
         <div className="flex items-center justify-between">
           <Checkbox label={t('auth.keepSignedIn')} checked={rememberMe} onChange={setRememberMe} />
-          <button type="button" onClick={() => onNavigate("forgot", { email })} className="text-sm text-primary hover:text-primary-hover transition-colors">
-            {t('auth.forgotPassword')}
-          </button>
+          {/* Sunday small fix — password recovery does not work from
+              the desktop (Slice 1b is not on production): hide the
+              link there. The web sign-in keeps it. */}
+          {!isDesktopApp() && (
+            <button type="button" onClick={() => onNavigate("forgot", { email })} className="text-sm text-primary hover:text-primary-hover transition-colors">
+              {t('auth.forgotPassword')}
+            </button>
+          )}
         </div>
 
         {method === "staff" && (

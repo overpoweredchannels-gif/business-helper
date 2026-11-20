@@ -158,15 +158,15 @@ export interface DesktopBackupResult {
   cancelled?: boolean;
   /** True when the app is about to restart on the restored database. */
   restarting?: boolean;
-  /** `store-unavailable` | `invalid-file` | `scope-mismatch` | `no-identity` | `failed` — see src/lib/offline/backup.ts. */
+  /** `store-unavailable` | `invalid-file` | `scope-mismatch` | `no-identity` | `legacy-backup` | `failed` — see src/lib/offline/backup.ts. */
   error?: string;
 }
 
 export interface AankhBackupBridge {
   /** Export the live database to a user-chosen file (native save dialog). */
   exportBackup(): Promise<DesktopBackupResult>;
-  /** Restore a backup file over the live database (native open dialog); restarts the app on success. */
-  restoreBackup(): Promise<DesktopBackupResult>;
+  /** Restore a backup file over the live database (native open dialog); restarts the app on success. `allowLegacy` confirms a legacy (unstamped) backup after the warning was shown. */
+  restoreBackup(allowLegacy?: boolean): Promise<DesktopBackupResult>;
   /** Desktop Backup menu: Export Backup File… (the renderer owns the owner-only gate). */
   onMenuExportBackup(handler: () => void): () => void;
   /** Desktop Backup menu: Restore Backup File… (the renderer owns the owner-only gate). */
@@ -283,7 +283,9 @@ const bridge: AankhDesktopBridge = {
   },
   backup: {
     exportBackup: () => ipcRenderer.invoke(CHANNELS.exportBackup),
-    restoreBackup: () => ipcRenderer.invoke(CHANNELS.restoreBackup),
+    // Sunday small fix — allowLegacy confirms a legacy (unstamped)
+    // backup after the renderer showed the warning.
+    restoreBackup: (allowLegacy?: boolean) => ipcRenderer.invoke(CHANNELS.restoreBackup, allowLegacy),
     onMenuExportBackup: (handler) => {
       const listener = () => handler();
       ipcRenderer.on("aankh:menu:backup-export", listener);

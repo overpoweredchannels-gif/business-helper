@@ -44,14 +44,19 @@ import {
 //  4. A stamp that cannot prove its own scope (`scope` ≠
 //     `${organizationId}:${profileId}`) is refused the same way.
 //  5. Files written before Slice 8 carry no stamp (legacy): they
-//     still validate and restore — they predate scoping and the user
-//     picks them explicitly from their own PC.
+//     still validate, but a restore now needs an explicit
+//     confirmation (Sunday small fix) — without it the restore
+//     refuses with `legacy-backup` before any side effect; with it
+//     the restored database is stamped with the current scope.
 //  6. With nobody signed in there is no scope, so the daily backup
 //     is SKIPPED (a day nobody signs in creates no new org data).
 //  7. The scoped write is a real filter, not a WAL illusion: the
 //     DELETEs land in the main file (journal_mode=DELETE +
 //     checkpoint), so a fresh read-only open of the exported file
 //     sees no foreign rows.
+//  8. A stamped backup from another scope is still refused after a
+//     legacy restore (rule 3 above) — the stamp on the restored
+//     database does not weaken the scope check.
 
 const SCOPE_A = "org-a:profile-a";
 const SCOPE_B = "org-b:profile-b";
@@ -450,13 +455,18 @@ async function main(): Promise<void> {
       afterRestore.close();
     }
 
-    // Rule 5 (restore arm) — a legacy file restores for any identity.
+    // Rule 5 + 8 (Sunday small fix) — a legacy file refuses without
+    // an explicit confirmation: nothing changes, no restart, and no
+    // safety copy is taken. With the confirmation it restores, and
+    // the restored database is stamped with the current scope
+    // (foreign rows dropped by the stamp).
     const legacyUserData = join(dir, "legacy-live");
     const legacyDbPath = join(legacyUserData, "aankh.db");
     mkdirSync(legacyUserData, { recursive: true });
     const legacyLive = createLocalStore(legacyDbPath);
     legacyLive.setIdentity(IDENTITY_B);
-    const legacyRestored = await restoreFromBackup({
+    legacyLive.upsertCustomer(SCOPE_B, customerRow("cust-b-live"));
+    const legacyRefused = await restoreFromBackup({
       store: legacyLive,
       dbPath: legacyDbPath,
       userDataPath: legacyUserData,
@@ -467,8 +477,64 @@ async function main(): Promise<void> {
         restarts += 1;
       },
     });
-    assert.equal(legacyRestored.ok, true, "a legacy (unstamped) backup still restores");
-    assert.equal(restarts, 2, "the legacy restore restarts once");
+    assert.deepEqual(
+      legacyRefused,
+      { ok: false, error: "legacy-backup" },
+      "a legacy backup refuses without confirmation",
+    );
+    assert.equal(restarts, 1, "a refused legacy restore never restarts");
+    assert.deepEqual(
+      legacyLive.listCustomers(SCOPE_B).map((row) => row.id),
+      ["cust-b-live"],
+      "a refused legacy restore leaves the live database untouched",
+    );
+    assert.deepEqual(
+      existsSync(backupDirFor(legacyUserData))
+        ? readdirSync(backupDirFor(legacyUserData)).filter((name) => name.includes("before-restore"))
+        : [],
+      [],
+      "a refused legacy restore takes no safety copy",
+    );
+    const legacyRestored = await restoreFromBackup({
+      store: legacyLive,
+      dbPath: legacyDbPath,
+      userDataPath: legacyUserData,
+      sourcePath: rawPath,
+      expectedScope: scopeB,
+      now: NOW,
+      allowLegacy: true,
+      restart: () => {
+        restarts += 1;
+      },
+    });
+    assert.equal(legacyRestored.ok, true, "a legacy backup restores with confirmation");
+    assert.equal(restarts, 2, "the confirmed legacy restore restarts once");
+    const legacyAfter = createLocalStore(legacyDbPath);
+    try {
+      assert.deepEqual(
+        readBackupScope(legacyDbPath),
+        {
+          formatVersion: "1",
+          scope: SCOPE_B,
+          organizationId: "org-b",
+          profileId: "profile-b",
+          createdAt: NOW.toISOString(),
+        },
+        "the confirmed legacy restore stamps the restored database with the current scope",
+      );
+      assert.deepEqual(
+        legacyAfter.listCustomers(SCOPE_B).map((row) => row.id),
+        ["cust-b"],
+        "the confirmed legacy restore keeps the current scope's rows",
+      );
+      assert.deepEqual(
+        legacyAfter.listCustomers(SCOPE_A),
+        [],
+        "the stamp drops the other scope's rows from the restored database",
+      );
+    } finally {
+      legacyAfter.close();
+    }
 
     // Rule 6 + 1 — the daily backup is scoped too, and skipped with
     // nobody signed in.
@@ -510,7 +576,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    "Slice 8 backup scoping passed: scoped export holds only the exporter's rows + stamp, foreign restore refused with no side effects, own-scope restore works, legacy files still restore, daily backup scoped and skipped with no identity.",
+    "Slice 8 backup scoping passed: scoped export holds only the exporter's rows + stamp, foreign restore refused with no side effects, own-scope restore works, legacy files refuse without confirmation and stamp with the current scope when confirmed, daily backup scoped and skipped with no identity.",
   );
 }
 

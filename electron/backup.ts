@@ -446,6 +446,13 @@ export interface RestoreDeps {
    */
   expectedScope?: BackupScope | null;
   /**
+   * Sunday small fix — a restore from an UNSTAMPED (pre-Slice-8)
+   * backup needs explicit confirmation: without `allowLegacy` the
+   * restore refuses with `legacy-backup` before any side effect,
+   * so the renderer can show the warning and ask first.
+   */
+  allowLegacy?: boolean;
+  /**
    * Called after the swap, so the app restarts on the restored
    * database. The caller owns it (main: `app.relaunch()` +
    * `app.quit()`); the test passes a spy instead.
@@ -475,6 +482,12 @@ export async function restoreFromBackup(
   if (!validation.ok) {
     return { ok: false, error: validation.reason === "scope-mismatch" ? "scope-mismatch" : "invalid-file" };
   }
+  // Sunday small fix — an unstamped (pre-Slice-8) backup is only
+  // restored with explicit confirmation. Refusing here, before the
+  // safety copy, means a refused restore changes nothing.
+  if (readBackupScope(deps.sourcePath) === null && !deps.allowLegacy) {
+    return { ok: false, error: "legacy-backup" };
+  }
   const dir = backupDirFor(deps.userDataPath);
   fs.mkdirSync(dir, { recursive: true });
   const safetyPath = path.join(dir, safetyBackupFileName(now));
@@ -495,6 +508,16 @@ export async function restoreFromBackup(
   const tempPath = `${deps.dbPath}.restore-tmp`;
   try {
     fs.copyFileSync(deps.sourcePath, tempPath);
+    // Sunday small fix — stamp the restored copy with the current
+    // scope BEFORE it becomes the live database, so a legacy restore
+    // never leaves an unstamped database behind. Stamping the temp
+    // copy keeps the failure boundary clean: a stamp failure aborts
+    // here, before the live database is touched. When a scope is
+    // known the stamp also drops any other scope's rows (a stamped
+    // same-scope file is already clean, so this is a no-op for it).
+    if (deps.expectedScope) {
+      scopeBackupFile(tempPath, deps.expectedScope, now);
+    }
     fs.renameSync(tempPath, deps.dbPath);
   } catch {
     try {

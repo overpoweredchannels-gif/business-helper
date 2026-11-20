@@ -790,6 +790,9 @@ export default function Home() {
   const [businessSettingsError, setBusinessSettingsError] = useState<string | null>(null);
   // Slice S8 — a backup Export / Restore is in flight (desktop shell only).
   const [backupBusy, setBackupBusy] = useState(false);
+  // Sunday small fix — a legacy (unstamped) backup was picked for
+  // restore: the warning is shown and the user confirms explicitly.
+  const [backupLegacyPending, setBackupLegacyPending] = useState(false);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [currentProfile, setCurrentProfile] = useState<any | null>(null);
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
@@ -7765,24 +7768,32 @@ export default function Home() {
     }
   };
 
-  const handleRestoreBackup = async (): Promise<void> => {
+  const handleRestoreBackup = async (allowLegacy?: boolean): Promise<void> => {
     if (!isDesktopApp() || !isOwnerOrAdmin() || backupBusy) return;
     setBackupBusy(true);
     setBusinessSettingsError(null);
+    setBackupLegacyPending(false);
     try {
-      const result = await restoreDesktopBackup();
+      const result = await restoreDesktopBackup(allowLegacy);
       if (result.ok) {
         setBusinessSettingsMessage(t('backup.restored'));
       } else if (!result.cancelled) {
-        setBusinessSettingsError(
-          result.error === "scope-mismatch"
-            ? t('backup.scopeMismatch')
-            : result.error === "invalid-file"
-              ? t('backup.invalidFile')
-              : result.error === "store-unavailable"
-                ? t('backup.storeUnavailable')
-                : t('backup.restoreFailed'),
-        );
+        // Sunday small fix — a legacy (unstamped) backup is not an
+        // error: show the warning and offer the explicit confirm.
+        if (result.error === "legacy-backup") {
+          setBackupLegacyPending(true);
+          setBusinessSettingsMessage(t('backup.legacyRestore'));
+        } else {
+          setBusinessSettingsError(
+            result.error === "scope-mismatch"
+              ? t('backup.scopeMismatch')
+              : result.error === "invalid-file"
+                ? t('backup.invalidFile')
+                : result.error === "store-unavailable"
+                  ? t('backup.storeUnavailable')
+                  : t('backup.restoreFailed'),
+          );
+        }
       }
     } catch {
       setBusinessSettingsError(t('backup.restoreFailed'));
@@ -31907,6 +31918,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
                     {t('backup.restore')}
                   </button>
                 </div>
+                {backupLegacyPending && (
+                  <button
+                    type="button"
+                    onClick={() => void handleRestoreBackup(true)}
+                    disabled={backupBusy}
+                    className="mt-3 min-h-11 rounded border border-input bg-background px-4 py-2 text-foreground hover:bg-muted disabled:opacity-50"
+                  >
+                    {t('backup.restoreLegacyConfirm')}
+                  </button>
+                )}
                 {backupBusy && <p className="mt-3 text-sm text-muted-foreground">{t('backup.working')}</p>}
               </div>
             )}
