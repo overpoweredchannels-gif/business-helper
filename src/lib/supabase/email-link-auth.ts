@@ -15,8 +15,12 @@
  * - Token material (`token_hash`, `code`) is read from the URL, redeemed
  *   once, and stripped from the address bar before any async work. It is
  *   never written to a log, console output, error message or server.log.
- * - `next` is allow-listed to fixed same-origin paths. Anything else
- *   falls back to `/`. No open redirect.
+ * - Round 2: the link carries NO `next` destination at all. The callback
+ *   routes by link `type` (email → provision routing, recovery → /reset),
+ *   so there is no open redirect to audit. The `origin` parameter only
+ *   carries the signup's RedirectTo value so the callback can tell a
+ *   desktop-origin signup (RedirectTo `aankh://...`) from a web one; it
+ *   is compared as a prefix and never redirected to.
  * - The recovery-session check is a UI gate only. The password update
  *   itself is authorized by the session; a signed-in user can always
  *   change their own password. The gate only decides whether the /reset
@@ -32,28 +36,18 @@ export function isEmailLinkType(value: string | null): value is EmailOtpType {
 }
 
 /**
- * Paths an email link may redirect to after verification. Absolute URLs
- * are accepted only when they are on this app's own origin.
+ * True when an email link originated from a desktop-app signup. The
+ * email template carries the signup's RedirectTo as `origin`: the desktop
+ * app passes `aankh://auth/callback` (DESKTOP_AUTH_CALLBACK_URL) while
+ * web passes its own https callback URL, so the `aankh://` prefix is a
+ * reliable marker — it is set by the app's own signup call, never by the
+ * user, and a web signup can never produce it. Missing or anything else
+ * means web: the desktop message is never shown by default. Spoofing the
+ * parameter is harmless: it is only compared as a prefix and never
+ * redirected to, and it changes nothing without a valid token_hash.
  */
-export const SAFE_NEXT_PATHS = ["/", "/onboarding", "/reset", "/auth/callback"] as const;
-
-/**
- * Resolve a `next` value to a safe same-origin path, or the fallback.
- * Rejects cross-origin URLs, protocol-relative URLs, backslashes and any
- * path outside the allow-list. Returns only the pathname, never a query
- * string, so no extra parameters survive the redirect.
- */
-export function resolveSafeNext(raw: string | null, fallback = "/"): string {
-  if (!raw) return fallback;
-  let url: URL;
-  try {
-    url = new URL(raw, window.location.origin);
-  } catch {
-    return fallback;
-  }
-  if (url.origin !== window.location.origin) return fallback;
-  if (!(SAFE_NEXT_PATHS as readonly string[]).includes(url.pathname)) return fallback;
-  return url.pathname;
+export function isDesktopOrigin(value: string | null): boolean {
+  return typeof value === "string" && value.startsWith("aankh://");
 }
 
 /** URL parameters that carry token material or auth routing state. */
@@ -62,6 +56,7 @@ const EMAIL_LINK_URL_PARAMS = [
   "code",
   "type",
   "next",
+  "origin",
   "error",
   "error_code",
   "error_description",

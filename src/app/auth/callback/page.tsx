@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
@@ -10,11 +10,11 @@ import { provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { isDesktopApp } from "@/lib/offline/identity-cache";
 import { resolveDesktopCallbackRoute, shouldRunProvision } from "@/lib/offline/desktop-provision";
 import {
+  isDesktopOrigin,
   isEmailLinkType,
   isRecoverySession,
   markRecoverySession,
   readRecoverySession,
-  resolveSafeNext,
   stripEmailLinkParams,
 } from "@/lib/supabase/email-link-auth";
 
@@ -73,6 +73,7 @@ async function waitForSession(timeoutMs: number): Promise<Session | null> {
 export default function AuthCallbackPage() {
   const router = useRouter();
   const [error, setError] = useState<CallbackError | null>(null);
+  const [desktopVerified, setDesktopVerified] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +86,7 @@ export default function AuthCallbackPage() {
       const tokenHash = params.get("token_hash");
       const rawType = params.get("type");
       const code = params.get("code");
-      const next = params.get("next");
+      const linkOrigin = params.get("origin");
       const urlError = params.get("error");
 
       // Strip token material from the address bar before any async work,
@@ -123,6 +124,18 @@ export default function AuthCallbackPage() {
         if (rawType === "recovery") {
           markRecoverySession(session.user.id);
           router.replace("/reset");
+          return;
+        }
+        // Round 2: a desktop-origin signup was verified in the DEFAULT
+        // browser, not in the app — the browser session cannot be handed
+        // to the app, and the app provisions on its own sign-in. Show the
+        // desktop message and stop here instead of routing to onboarding
+        // or the dashboard in this browser. `origin` is the signup's
+        // RedirectTo carried by the email template; only the token_hash
+        // path can carry it (legacy PKCE links were minted with `next`,
+        // not `origin`).
+        if (rawType === "email" && isDesktopOrigin(linkOrigin)) {
+          if (!cancelled) setDesktopVerified(true);
           return;
         }
       } else if (code) {
@@ -226,14 +239,13 @@ export default function AuthCallbackPage() {
         // organization_id claim required by RLS.
         await ensureOrganizationClaimInSession();
 
+        // Round 2: no `next` from the link — the destination comes from
+        // the link type and the provision result. Fresh user → onboarding,
+        // existing user → home.
         if (provisionBody.needsOnboarding) {
           router.push("/onboarding");
         } else {
-          // A `next` destination from the email link is honoured only when
-          // it is an allow-listed same-origin path. The callback itself is
-          // not a destination: it falls back to home.
-          const destination = resolveSafeNext(next);
-          router.push(destination === "/auth/callback" ? "/" : destination);
+          router.push("/");
         }
       } catch {
         router.push("/login");
@@ -255,6 +267,27 @@ export default function AuthCallbackPage() {
           </div>
           <h1 className="text-xl font-bold text-foreground">{error.title}</h1>
           <p className="mt-2 text-sm text-body">{error.body}</p>
+          <button
+            type="button"
+            onClick={() => router.push("/login")}
+            className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-primary px-6 font-medium text-primary-foreground shadow-sm transition-all hover:shadow-md"
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (desktopVerified) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-panel p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-lg">
+          <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary-light">
+            <CheckCircle2 className="size-6 text-primary" />
+          </div>
+          <h1 className="text-xl font-bold text-foreground">Email verify ho gayi, ab Aankh app mein sign in karein.</h1>
+          <p className="mt-2 text-sm text-body">Your email is verified. Open the Aankh app on your PC and sign in with your email and password.</p>
           <button
             type="button"
             onClick={() => router.push("/login")}

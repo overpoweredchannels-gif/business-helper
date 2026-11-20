@@ -45,10 +45,11 @@ production, `http://localhost:3000/auth/callback*` on disposable) — it
 covers both.
 
 Do NOT add any other domain, any `*` on a different host, or a URL that
-points at the desktop `aankh://` scheme with a different path. The app
-allow-lists the post-login `next` paths itself (`/`, `/onboarding`,
-`/reset`, `/auth/callback`); the dashboard list above is the only thing
-Supabase will accept as a `redirect_to`.
+points at the desktop `aankh://` scheme with a different path. The
+callback no longer takes any destination from the link — it routes by
+link type (confirm → onboarding or dashboard, recovery → /reset). The
+dashboard list above is the only thing Supabase will accept as a
+`redirect_to`.
 
 ## 3. Email templates
 
@@ -61,15 +62,25 @@ Find the link in the template body (it currently uses
 `{{.ConfirmationURL}}` — the old PKCE link) and replace it with:
 
 ```
-{{.SiteURL}}/auth/callback?token_hash={{.TokenHash}}&type=email&next={{.RedirectTo}}
+{{.SiteURL}}/auth/callback?token_hash={{.TokenHash}}&type=email&origin={{.RedirectTo}}
 ```
 
 - `{{.TokenHash}}` is the hashed token the new callback redeems with
   `verifyOtp`. It works in ANY browser — the email link opens in the
   default browser, which has no PKCE verifier stored, so the old
   `{{.ConfirmationURL}}` (`?code=...`) link can never work there.
-- `{{.RedirectTo}}` is the redirect URL the app passed at signup
-  (`/auth/callback`); the callback treats it as the post-login `next`.
+- `origin={{.RedirectTo}}` carries the redirect URL the app passed at
+  signup — `aankh://auth/callback` for a desktop-app signup,
+  `https://…/auth/callback` for a web signup. The callback only checks
+  whether it starts with `aankh://`: if it does, it shows the "Email
+  verify ho gayi, ab Aankh app mein sign in karein." screen instead of
+  routing to onboarding in the browser (the browser session cannot be
+  handed to the app — the app provisions on its own sign-in). It never
+  redirects to this value.
+- `next` was REMOVED from the link: the callback decides the
+  destination from the link type (fresh user → onboarding, existing
+  user → dashboard), so a full-URL RedirectTo can no longer loop or be
+  rejected by a path allow-list.
 - Do NOT use `{{.Token}}` (the 6-digit code) — the app does not offer a
   code-entry screen.
 
@@ -121,5 +132,11 @@ Before touching production, prove the disposable setup works:
      other sessions are signed out.
    - Open `/reset` with no session → the "link expired" screen, not the
      password form.
+   - Sign up inside the desktop app, open the confirmation link in the
+     default browser → the "Email verify ho gayi, ab Aankh app mein sign
+     in karein." screen appears (not onboarding in the browser). Then
+     sign in inside the app → onboarding/dashboard there.
+   - Open an OLD-style PKCE `?code=` link → the clear "can't be used in
+     this browser" screen, never a silent bounce to the login page.
 3. Only when all of that passes on disposable, repeat steps 1–3 on the
    production project, then repeat the manual checks against the live app.

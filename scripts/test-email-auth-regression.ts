@@ -19,6 +19,11 @@
 //   (e) negative verifyOtp cases: a wrong token_hash errors, and a recovery
 //       hash verified with the wrong type errors while the same hash still
 //       verifies with the right type.
+//   (f) round-2 static checks: the callback takes NO `next` destination
+//       from the link (it routes by type: fresh user → onboarding,
+//       existing user → /), it carries the desktop verified message, it
+//       detects desktop origin from the link's `origin` parameter, and the
+//       dashboard checklist template carries `origin` instead of `next`.
 //
 // What it does NOT cover (manual browser checklist below): Google sign-in,
 // the real emailed links in a browser, the /reset expired screen, and the
@@ -43,6 +48,14 @@
 //      expired screen with a resend path (never the password form).
 //   7. Desktop deep link: Google sign-in inside the desktop app still
 //      completes through the aankh:// callback (untouched by Slice 1b).
+//   8. Desktop-origin signup: sign up inside the desktop app, open the
+//      confirmation link in the DEFAULT browser, and confirm the "Email
+//      verify ho gayi, ab Aankh app mein sign in karein." screen appears
+//      (not onboarding in the browser). Then sign in inside the app and
+//      confirm onboarding/dashboard there.
+//   9. Legacy PKCE link: open an OLD-style ?code= link and confirm the
+//      clear "can't be used in this browser" screen appears (never a
+//      silent bounce to /login) — same as item 5.
 //
 // Run it via the vault-backed wrapper (the disposable .env.local holds only
 // a dummy service key, so the direct command below fails the guard):
@@ -347,6 +360,39 @@ async function main(): Promise<void> {
   });
   assert.ok(badHashError, "38. verifyOtp with a wrong token_hash must fail");
   console.log("(e) negative verifyOtp cases OK");
+
+  // ── (f) Round-2 static checks: no `next` routing, desktop-origin message ──
+  const libSrc = readFileSync(join(ROOT, "src/lib/supabase/email-link-auth.ts"), "utf-8");
+  assert.ok(
+    !callbackSrc.includes('params.get("next")'),
+    "39. the callback must not read a `next` destination from the link",
+  );
+  assert.ok(
+    callbackSrc.includes("Email verify ho gayi, ab Aankh app mein sign in karein."),
+    "40. the callback must carry the desktop verified message",
+  );
+  assert.ok(
+    callbackSrc.includes("isDesktopOrigin"),
+    "41. the callback must detect desktop origin from the link",
+  );
+  assert.ok(
+    libSrc.includes('startsWith("aankh://")'),
+    "42. the desktop-origin check must match the aankh:// deep-link prefix",
+  );
+  assert.ok(
+    libSrc.includes('"origin"'),
+    "43. the origin marker must be stripped from the URL after use",
+  );
+  const checklistSrc = readFileSync(join(ROOT, "SUPABASE_DASHBOARD_CHECKLIST_SLICE1B.md"), "utf-8");
+  assert.ok(
+    !checklistSrc.includes("next={{.RedirectTo}}"),
+    "44. the email template must not carry a `next` parameter",
+  );
+  assert.ok(
+    checklistSrc.includes("origin={{.RedirectTo}}"),
+    "45. the email template must carry the `origin` marker",
+  );
+  console.log("(f) round-2 static checks OK");
 }
 
 main()
