@@ -213,6 +213,21 @@ async function main(): Promise<void> {
     "route init path uses no browser-only APIs",
   );
 
+  console.log("(loader) staff-400 fix: profiles select requests no timestamps");
+  const loaderSource = readFileSync("src/lib/brain/supabase-loader.ts", "utf8");
+  const profilesSelect = loaderSource.match(/from\("profiles"\)\.select\("([^"]*)"\)/);
+  check(profilesSelect !== null, "profiles select exists in the loader");
+  check(
+    profilesSelect !== null &&
+      !profilesSelect[1].includes("created_at") &&
+      !profilesSelect[1].includes("updated_at"),
+    "profiles select requests neither created_at nor updated_at (PostgREST 400)",
+  );
+  check(
+    !loaderSource.includes("p.created_at") && !loaderSource.includes("p.updated_at"),
+    "staff mapping no longer reads the dropped columns",
+  );
+
   console.log(`\nAll ${passed} gateway brain-init checks passed.`);
 }
 

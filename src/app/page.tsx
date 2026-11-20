@@ -8275,6 +8275,13 @@ export default function Home() {
     setWalkInFailed(false);
     if (isDesktopApp()) {
       const record = walkInCustomerRecord(currentOrganizationId);
+      // Sunday small fix: a Walk-in row the owner deactivated is never
+      // auto-selected — the sale needs a real customer pick instead.
+      const serverWalkIn = customers.find(customer => String(customer.id) === record.id);
+      if (serverWalkIn && serverWalkIn.is_active === false) {
+        setSalesError("Customer chunein");
+        return;
+      }
       walkInCustomerId.current = record.id;
       setCustomers(current => current.some(customer => String(customer.id) === record.id) ? current : [...current, record]);
       setSelectedCustomerIdForSale(current => current ?? record.id);

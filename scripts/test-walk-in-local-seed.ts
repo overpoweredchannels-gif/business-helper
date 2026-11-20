@@ -345,6 +345,14 @@ async function main(): Promise<void> {
     const effectSlice = pageSrc.slice(effectStart, effectStart + 2000);
     assert.ok(effectSlice.indexOf("isDesktopApp()") < effectSlice.indexOf('"/api/sales/walk-in"'), "desktop seed branch precedes the web route call");
     assert.ok(!pageSrc.includes('fetch("/api/sales/walk-in"'), "no raw fetch of the walk-in route");
+    // Sunday small fix: a Walk-in row the owner deactivated is never
+    // auto-selected — the effect shows "Customer chunein" instead.
+    assert.ok(effectSlice.includes("is_active === false"), "effect checks the Walk-in row's is_active");
+    assert.ok(effectSlice.includes('"Customer chunein"'), "effect shows 'Customer chunein' for a deactivated Walk-in");
+    assert.ok(
+      effectSlice.indexOf("is_active === false") < effectSlice.indexOf("setSelectedCustomerIdForSale"),
+      "deactivated check precedes the auto-select",
+    );
 
     // 8. Manifest: the slice-5 pending marker is gone; the desktop never calls the route.
     const manifest = JSON.parse(
