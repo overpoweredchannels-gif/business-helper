@@ -317,6 +317,11 @@ export interface MemoryMeta {
   currentDate: string;
   currentTime: string;
   timezone: string;
+  // Org books currency (organizations.books_currency, fallback
+  // regional_preferences.accountingCurrency, else PKR) — loaded by
+  // loadRawBusinessData; the conversation runtime shows confirmation
+  // prices in it (Area J confirmation fix, 2026-11-20).
+  currency: string;
   schemaVersion: number;
   lastFullRefresh: string;
   sectionVersions: Record<string, number>;
@@ -404,6 +409,9 @@ export interface MemoryWriterRawData {
   organizationName: string;
   ownerName: string;
   timezone: string;
+  // Org books currency — see MemoryMeta.currency. Loaded from the
+  // organizations row (books_currency, else regional_preferences).
+  currency: string;
   products: Array<{
     id: number | string;
     name: string;

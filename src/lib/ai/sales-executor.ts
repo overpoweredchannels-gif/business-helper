@@ -1,3 +1,6 @@
+import { normalizeOptionalDate } from "../sales/validation";
+import { normalizeSkipPhrase } from "./confirmation-content";
+
 type SaleInput = {
   customer_id: string;
   product_id: string;
@@ -41,6 +44,13 @@ export async function executeSaleDraft(
     return { ok: false, message: "", error: errors.join("; ") };
   }
 
+  // Boundary guard (Area J confirmation fix, 2026-11-20): a skip phrase
+  // must never reach the sale API as a raw string, whatever caller built
+  // this payload (conversation runtime normalizes at collection; the
+  // assistant workflow path does not). Skip/invalid dates fall back to
+  // the API's own default (today server-side); skip notes become absent.
+  const invoiceDate = normalizeOptionalDate(normalizeSkipPhrase(collectedData.invoice_date));
+  const notesValue = normalizeSkipPhrase(collectedData.notes);
   const saleInput: SaleInput & { organizationId: string } = {
     organizationId,
     customer_id: customerId,
@@ -48,9 +58,9 @@ export async function executeSaleDraft(
     quantity,
     selling_price: sellingPrice,
     payment_type: paymentType as "cash" | "credit",
-    invoice_date: collectedData.invoice_date as string | undefined,
+    invoice_date: invoiceDate ?? undefined,
     credit_days: collectedData.credit_days ? Number(collectedData.credit_days) : undefined,
-    notes: collectedData.notes as string | undefined,
+    notes: typeof notesValue === "string" ? notesValue : undefined,
   };
 
   try {

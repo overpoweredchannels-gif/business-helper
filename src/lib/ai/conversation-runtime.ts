@@ -38,6 +38,12 @@ import type { PreferenceStore } from "../brain/learning/preference-store";
 import { checkActionPermission, verifyIdentity } from "../identity/permissions";
 import type { PermissionContext } from "../identity/permissions";
 import { logAuditEvent } from "../identity/audit";
+import {
+  isSkipPhrase,
+  isTodayWord,
+  normalizeSkipPhrase,
+  todayInTimezone,
+} from "./confirmation-content";
 
 const CLASSIFICATION_PROMPT = `You are a Aankh AI assistant that classifies user intent and extracts business entities.
 Analyze the user's message and return a JSON object.
@@ -149,6 +155,22 @@ export class ConversationRuntime {
 
   setStore(store: MemoryStore): void {
     this.store = store;
+  }
+
+  /**
+   * Org context for the confirmation fix (Area J, 2026-11-20). The store
+   * carries the org's own timezone + books currency (loaded from the
+   * organizations row by loadRawBusinessData); without a store the
+   * legacy defaults apply. "today" is resolved in this timezone and the
+   * confirmation shows prices in this currency — never UTC, never PKR
+   * hardcoded.
+   */
+  private orgTimeZone(): string {
+    return this.store?.meta?.timezone || "Asia/Karachi";
+  }
+
+  private orgCurrency(): string {
+    return this.store?.meta?.currency || "PKR";
   }
 
   setPrefs(prefs: PreferenceStore): void {
@@ -345,18 +367,24 @@ export class ConversationRuntime {
     const productName = entities.product_name as string | undefined;
     if (customerName && classification.intent === "create_sale") {
       const customer = this.resolveCustomer(customerName);
-      if (customer) context.collectedData.customer_id = customer.id;
-      else context.collectedData["_customer_name_hint"] = customerName;
+      if (customer) {
+        context.collectedData.customer_id = customer.id;
+        context.collectedData._customer_name = customer.name;
+      } else context.collectedData["_customer_name_hint"] = customerName;
     }
     if (supplierName && classification.intent === "create_purchase") {
       const supplier = this.resolveSupplier(supplierName);
-      if (supplier) context.collectedData.supplier_id = supplier.id;
-      else context.collectedData["_supplier_name_hint"] = supplierName;
+      if (supplier) {
+        context.collectedData.supplier_id = supplier.id;
+        context.collectedData._supplier_name = supplier.name;
+      } else context.collectedData["_supplier_name_hint"] = supplierName;
     }
     if (productName) {
       const product = this.resolveProduct(productName);
-      if (product) context.collectedData.product_id = product.id;
-      else context.collectedData["_product_name_hint"] = productName;
+      if (product) {
+        context.collectedData.product_id = product.id;
+        context.collectedData._product_name = product.name;
+      } else context.collectedData["_product_name_hint"] = productName;
     }
     const employeeName = entities.employee_name as string | undefined;
     if (employeeName && ["assign_staff", "reassign_staff", "remove_staff", "staff_query"].includes(classification.intent)) {
@@ -377,7 +405,9 @@ export class ConversationRuntime {
     if (entities.purchase_price) context.collectedData.purchase_price = entities.purchase_price;
     if (entities.payment_type) context.collectedData.payment_type = entities.payment_type;
     if (entities.credit_days && entities.payment_type === "credit") context.collectedData["credit_days"] = entities.credit_days;
-    if (entities.notes) context.collectedData.notes = entities.notes;
+    // A skip phrase from the classifier ("none", "nahi", ...) is NULL,
+    // never a raw string in the record (Area J confirmation fix).
+    if (entities.notes) context.collectedData.notes = normalizeSkipPhrase(entities.notes);
 
     if (shouldAnswerBusinessQueryDirectly(classification.intent)) {
       // A business question is answered directly: it is not a record to
@@ -598,12 +628,18 @@ export class ConversationRuntime {
 
     if (currentField && schema.fieldDefinitions[currentField]) {
       const extracted = await this.extractFieldValue(message, currentField, context);
-      if (extracted.found && extracted.value !== undefined && extracted.value !== null) {
-        context.collectedData[currentField] = extracted.value;
-        context = addConversationMessage(context, "assistant", "text", `Got it: ${schema.fieldDefinitions[currentField]?.label} = ${extracted.value}`, currentField, extracted.value);
+      if (extracted.found) {
+        // `found` with a NULL value is a real answer (an explicit skip),
+        // not a miss — store the NULL, never the raw phrase. The old code
+        // fell through to the raw-message branch here, which is how
+        // "no batch" / "no expiry" reached the record.
+        context.collectedData[currentField] = normalizeSkipPhrase(extracted.value);
+        const shown = context.collectedData[currentField] ?? "—";
+        context = addConversationMessage(context, "assistant", "text", `Got it: ${schema.fieldDefinitions[currentField]?.label} = ${shown}`, currentField, context.collectedData[currentField]);
       } else {
-        context.collectedData[currentField] = message;
-        context = addConversationMessage(context, "assistant", "text", `Got it: ${schema.fieldDefinitions[currentField]?.label} = ${message}`, currentField, message);
+        context.collectedData[currentField] = normalizeSkipPhrase(message);
+        const shown = context.collectedData[currentField] ?? "—";
+        context = addConversationMessage(context, "assistant", "text", `Got it: ${schema.fieldDefinitions[currentField]?.label} = ${shown}`, currentField, context.collectedData[currentField]);
       }
     }
 
@@ -617,6 +653,7 @@ export class ConversationRuntime {
           const customer = this.resolveCustomer(name);
           if (customer) {
             context.collectedData.customer_id = customer.id;
+            context.collectedData._customer_name = customer.name;
             delete context.collectedData["_customer_name_hint"];
             needFieldUpdate = false;
             continue;
@@ -627,6 +664,7 @@ export class ConversationRuntime {
           const supplier = this.resolveSupplier(name);
           if (supplier) {
             context.collectedData.supplier_id = supplier.id;
+            context.collectedData._supplier_name = supplier.name;
             delete context.collectedData["_supplier_name_hint"];
             needFieldUpdate = false;
             continue;
@@ -637,6 +675,7 @@ export class ConversationRuntime {
           const product = this.resolveProduct(name);
           if (product) {
             context.collectedData.product_id = product.id;
+            context.collectedData._product_name = product.name;
             delete context.collectedData["_product_name_hint"];
             needFieldUpdate = false;
             continue;
@@ -677,9 +716,13 @@ export class ConversationRuntime {
       }
     }
     if (missing.length > 0) return missing;
+    // Optional fields: an explicit skip stores NULL, which counts as
+    // answered-with-nothing (Area J confirmation fix, 2026-11-20) — only
+    // a field never answered (undefined / "") is still missing. This
+    // mirrors getNextRequiredField in conversation-engine.ts.
     for (const field of schema.optionalFields) {
       const value = context.collectedData[field];
-      if (value === undefined || value === null || value === "") {
+      if (value === undefined || value === "") {
         missing.push(field);
       }
     }
@@ -828,6 +871,16 @@ export class ConversationRuntime {
     const def = schema.fieldDefinitions[fieldKey];
     if (!def) return { found: false, value: message };
 
+    // Deterministic answers first (Area J confirmation fix, 2026-11-20):
+    // skip phrases and "today" are resolved server-side, never by the
+    // LLM — the LLM previously answered "today" with a stale invented
+    // date (live run #4: 2024-05-22) and stored "no batch" / "no expiry"
+    // raw. A skip stores NULL, so the record never holds the phrase.
+    if (isSkipPhrase(message)) return { found: true, value: null };
+    if (def.inputType === "date" && isTodayWord(message)) {
+      return { found: true, value: todayInTimezone(this.orgTimeZone()) };
+    }
+
     if (def.validation) {
       const result = def.validation(message);
       if (result.valid) {
@@ -935,7 +988,9 @@ export class ConversationRuntime {
     sessionId: string
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     context.awaitingConfirmation = true;
-    context.confirmationSummary = formatConfirmationSummary(context);
+    context.confirmationSummary = formatConfirmationSummary(context, {
+      currency: this.orgCurrency(),
+    });
     context = updateConversationState(context, "waiting_for_confirmation");
 
     const stockCheck = this.checkStockAvailability(context);

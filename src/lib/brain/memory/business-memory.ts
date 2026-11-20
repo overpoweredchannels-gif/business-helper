@@ -346,6 +346,7 @@ export class MemoryStore {
       meta: {
         organizationId: "", organizationName: "", ownerName: "",
         currentDate: "", currentTime: "", timezone: "Asia/Karachi",
+        currency: "PKR",
         schemaVersion: 1, lastFullRefresh: "", sectionVersions: {},
       },
       tasks: { pending: 0, overdue: 0, completed: 0, byPriority: {}, byType: {} },

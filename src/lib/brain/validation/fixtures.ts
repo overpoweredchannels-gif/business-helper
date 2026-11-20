@@ -159,6 +159,7 @@ export function createMockRawData(
     organizationName: "Test Business",
     ownerName: "Test Owner",
     timezone: "Asia/Karachi",
+    currency: "PKR",
     products,
     customers,
     suppliers,

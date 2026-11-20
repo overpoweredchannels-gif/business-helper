@@ -1,6 +1,8 @@
 import { initializeBusinessBrain } from "./bootstrap";
 import type { MemoryWriterRawData } from "./contracts/memory";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { parseTimeZone } from "../regional/settings";
+import { resolveBooksCurrency } from "../books/currency";
 
 export async function loadRawBusinessData(
   supabase: SupabaseClient,
@@ -63,11 +65,48 @@ export async function loadRawBusinessData(
     }
   }
 
+  // Org timezone + books currency (Area J confirmation fix, 2026-11-20).
+  // Source of truth: organizations.books_currency with
+  // regional_preferences.accountingCurrency fallback, and
+  // regional_preferences.timeZone. Best-effort: any failure leaves the
+  // legacy defaults in place and the load continues.
+  let orgTimeZone = "Asia/Karachi";
+  let orgCurrency = "PKR";
+  try {
+    const orgRes = await supabase
+      .from("organizations")
+      .select("books_currency, regional_preferences")
+      .eq("id", organizationId)
+      .maybeSingle();
+    const orgRow = (orgRes?.data ?? null) as {
+      books_currency?: unknown;
+      regional_preferences?: unknown;
+    } | null;
+    if (!orgRes?.error && orgRow) {
+      orgCurrency = resolveBooksCurrency(orgRow.books_currency, orgRow.regional_preferences);
+      const prefs = orgRow.regional_preferences;
+      const zone =
+        prefs && typeof prefs === "object" && !Array.isArray(prefs)
+          ? (prefs as Record<string, unknown>).timeZone
+          : null;
+      orgTimeZone = parseTimeZone(zone) ?? "Asia/Karachi";
+    }
+  } catch {
+    // Defaults stand.
+  }
+
   const data: MemoryWriterRawData = {
     organizationId,
     organizationName: "", // Will be filled by bootstrap if needed
     ownerName: "", // Will be filled by bootstrap if needed
-    timezone: "Asia/Karachi",
+    // Org timezone + books currency are the source of truth for the
+    // conversation runtime (Area J confirmation fix, 2026-11-20):
+    // "today" resolves in this timezone and confirmation prices show in
+    // this currency. Read best-effort from the organizations row — a
+    // missing row/column must never fail the load; the legacy defaults
+    // (Asia/Karachi / PKR) apply, exactly as before this change.
+    timezone: orgTimeZone,
+    currency: orgCurrency,
     products: (productsRes.data ?? []) as MemoryWriterRawData["products"],
     customers: (customersRes.data ?? []) as MemoryWriterRawData["customers"],
     suppliers: (suppliersRes.data ?? []) as MemoryWriterRawData["suppliers"],

@@ -1295,10 +1295,19 @@ export function getActionSchema(actionType: ActionType): ActionSchema {
 export function getNextRequiredField(context: ConversationContext): string | null {
   if (!context.actionType) return null;
   const schema = getActionSchema(context.actionType);
-  const allFields = [...schema.requiredFields, ...schema.optionalFields];
 
-  for (const field of allFields) {
+  for (const field of schema.requiredFields) {
     if (context.collectedData[field] === undefined || context.collectedData[field] === null || context.collectedData[field] === "") {
+      return field;
+    }
+  }
+
+  // Optional fields: an explicit skip stores NULL, which counts as
+  // answered-with-nothing (Area J confirmation fix, 2026-11-20) — only
+  // a field never answered (undefined / "") still blocks. Required
+  // fields above still treat NULL as missing.
+  for (const field of schema.optionalFields) {
+    if (context.collectedData[field] === undefined || context.collectedData[field] === "") {
       return field;
     }
   }
@@ -1316,20 +1325,54 @@ export function hasAllRequiredFields(context: ConversationContext): boolean {
 }
 
 // Helper to format confirmation summary
-export function formatConfirmationSummary(context: ConversationContext): string {
+//
+// Area J confirmation fix (2026-11-20) — three defects from live run #4:
+//   1. The template uses {customer_name} / {product_name} / {supplier_name}
+//      (display names), but the old loop only substituted schema field
+//      keys (customer_id / product_id), so the placeholders leaked
+//      literally. Display names now come from the `_customer_name` /
+//      `_product_name` / `_supplier_name` slots the runtime populates
+//      when it resolves an id (falling back to the `_..._hint` the user
+//      typed when the name never resolved).
+//   2. Selling Price renders with the org currency when the caller
+//      supplies it ("Selling Price: 250 EUR").
+//   3. Fail-safe: any placeholder still unreplaced (a skipped optional,
+//      an unknown token) renders as "—" — a literal "{...}" must never
+//      reach the user.
+export function formatConfirmationSummary(
+  context: ConversationContext,
+  options?: { currency?: string | null },
+): string {
   if (!context.actionType) return "";
   const schema = getActionSchema(context.actionType);
   const allFields = [...schema.requiredFields, ...schema.optionalFields];
+  const currency = options?.currency?.trim() || "";
 
   let summary = schema.confirmationTemplate;
+
+  const displayNames: Record<string, unknown> = {
+    customer_name:
+      context.collectedData._customer_name ?? context.collectedData._customer_name_hint,
+    supplier_name:
+      context.collectedData._supplier_name ?? context.collectedData._supplier_name_hint,
+    product_name:
+      context.collectedData._product_name ?? context.collectedData._product_name_hint,
+  };
+  for (const [token, value] of Object.entries(displayNames)) {
+    if (value !== undefined && value !== null && value !== "") {
+      summary = summary.replace(new RegExp(`\\{${token}\\}`, "g"), String(value));
+    }
+  }
+
   for (const field of allFields) {
     const value = context.collectedData[field];
     if (value !== undefined && value !== null && value !== "") {
-      const label = schema.fieldDefinitions[field]?.label ?? field;
-      summary = summary.replace(new RegExp(`\\{${field}\\}`, "g"), String(value));
+      let rendered = String(value);
+      if (field === "selling_price" && currency) rendered = `${rendered} ${currency}`;
+      summary = summary.replace(new RegExp(`\\{${field}\\}`, "g"), rendered);
     }
   }
-  return summary;
+  return summary.replace(/\{[a-z_]+\}/g, "—");
 }
 
 // Export runtime reference for execution

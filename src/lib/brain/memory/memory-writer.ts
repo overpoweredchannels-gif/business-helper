@@ -31,7 +31,7 @@ export class MemoryWriter {
     this.writeExpenses(data.expenses);
     this.writeTasks(data.tasks);
     this.writeAlerts(data.alerts);
-    this.writeMeta(data.organizationId, data.organizationName, data.ownerName, data.timezone);
+    this.writeMeta(data.organizationId, data.organizationName, data.ownerName, data.timezone, data.currency);
     this.writePayments(data.customerPayments, data.supplierPayments);
 
     this.computeInventory();
@@ -604,7 +604,7 @@ export class MemoryWriter {
     }
   }
 
-  writeMeta(orgId: string, orgName: string, ownerName: string, tz: string): void {
+  writeMeta(orgId: string, orgName: string, ownerName: string, tz: string, currency?: string): void {
     const meta = this.store.sections.meta;
     meta.organizationId = orgId;
     meta.organizationName = orgName;
@@ -612,6 +612,7 @@ export class MemoryWriter {
     meta.currentDate = new Date().toISOString().split("T")[0];
     meta.currentTime = new Date().toTimeString().slice(0, 8);
     meta.timezone = tz || "Asia/Karachi";
+    meta.currency = currency || "PKR";
     meta.lastFullRefresh = new Date().toISOString();
   }
 

@@ -50,6 +50,7 @@ const fixture: MemoryWriterRawData = {
   organizationName: "Test Org",
   ownerName: "Owner",
   timezone: "Asia/Karachi",
+  currency: "PKR",
   products: [{ id: "prod-1", name: "COCA COLA 1L" }],
   customers: [{ id: "cust-1", customer_name: "QA Shop A" }],
   suppliers: [{ id: "sup-1", supplier_name: "Test Pepsi Agency" }],
