@@ -193,14 +193,41 @@ async function runProvision(request: NextRequest) {
   const rawOrgName = typeof userMetadata.organization_name === "string" ? userMetadata.organization_name.trim() : "";
   const orgName = rawOrgName || (userEmail ? `${userEmail.split("@")[0]}'s Business` : "New Organization");
 
-  // ── 5. Profile lookup ──
-  let existingProfile, profileCheckError;
-  try {
+  // ── 4b. Provision helpers: caller-profile lookup (shared by the
+  // first check in step 5 and the race recovery in step 7) ──
+  // Two provision POSTs for one fresh user can both pass the step-5
+  // lookup, both insert an org, and then the loser's profile insert
+  // fails on the profiles PK / auth_user_id unique index (23505),
+  // leaving an orphaned org (proven by the idempotency test's
+  // concurrent case, CI run 44791189953). The PostgREST calls in this
+  // route run in separate auto-commit transactions, so no lock can be
+  // held across them from here — the fix is recovery, not prevention:
+  // on a failed profile insert the call deletes the org it just
+  // created (only when no profile references it), re-reads the
+  // caller's profile, and — when the winner's profile is there —
+  // returns 200 with the winner's org instead of a 500. Final state
+  // is exactly one org and zero orphans.
+  type CallerProfileRow = {
+    id: string;
+    organization_id: string | null;
+    auth_user_id: string | null;
+    role: string | null;
+    role_name: string | null;
+  };
+
+  const lookupCallerProfile = async () => {
     const result = await supabaseService
       .from("profiles")
       .select("id, organization_id, auth_user_id, role, role_name")
       .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
       .maybeSingle();
+    return result;
+  };
+
+  // ── 5. Profile lookup ──
+  let existingProfile, profileCheckError;
+  try {
+    const result = await lookupCallerProfile();
     existingProfile = result.data;
     profileCheckError = result.error;
     console.log(`${logTag} CHECKPOINT 5: profile lookup OK. existingProfile? ${Boolean(existingProfile)}, auth_user_id=${existingProfile?.auth_user_id ?? "N/A"}`);
@@ -222,7 +249,16 @@ async function runProvision(request: NextRequest) {
     );
   }
 
-  if (existingProfile) {
+  // Reconciles an already-provisioned user (the step-5 existing path
+  // and the step-7 race recovery share this): backfills auth_user_id,
+  // renames the org when the owner asked, ensures owner permissions
+  // exist, ensures the org claim, and returns alreadyProvisioned:true
+  // with the winner's organization_id.
+  const reconcileExistingProfile = async (existingProfile: CallerProfileRow) => {
+    if (!existingProfile.organization_id) {
+      console.log(`${logTag} FAIL: existing profile has no organization_id`);
+      return makeErrorResponse("Workspace profile is missing its organization.", 500, "profile_missing_org");
+    }
     console.log(`${logTag} CHECKPOINT 5a: existing profile found. Re-provisioning path.`);
 
     const updates: Record<string, unknown> = {};
@@ -308,7 +344,75 @@ async function runProvision(request: NextRequest) {
     console.log(`${logTag} CHECKPOINT 5z: returning alreadyProvisioned=true`);
     await ensureOrgClaim(supabaseService, user, existingProfile.organization_id);
     return NextResponse.json({ ok: true, alreadyProvisioned: true, organization_id: existingProfile.organization_id });
+  };
+
+  if (existingProfile) {
+    return reconcileExistingProfile(existingProfile);
   }
+
+  // Deletes an organization row this call just created, but ONLY when
+  // no profile references it (guarded read first). Used to remove the
+  // loser's orphaned org after a failed profile insert. Best-effort:
+  // returns true when the row is gone, false when the delete was
+  // skipped or failed — the caller logs the outcome; a skipped/failed
+  // delete never blocks the winner's 200 response.
+  const deleteOrphanOrganization = async (organizationId: string): Promise<boolean> => {
+    try {
+      const { data: referencing } = await supabaseService
+        .from("profiles")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .limit(1)
+        .maybeSingle();
+      if (referencing) {
+        console.warn(`${logTag} ORPHAN CLEANUP SKIPPED: org ${organizationId} is referenced by a profile — not deleting`);
+        return false;
+      }
+      const { error: deleteError } = await supabaseService
+        .from("organizations")
+        .delete()
+        .eq("id", organizationId);
+      if (deleteError) {
+        console.error(`${logTag} ORPHAN CLEANUP FAILED: could not delete org ${organizationId}: ${deleteError.message}`);
+        return false;
+      }
+      console.log(`${logTag} ORPHAN CLEANUP: deleted unreferenced org ${organizationId}`);
+      return true;
+    } catch (cleanupErr) {
+      console.error(`${logTag} ORPHAN CLEANUP THREW for org ${organizationId}:`, cleanupErr);
+      return false;
+    }
+  };
+
+  // Recovery after a profile insert failed (step 7): the usual cause is
+  // the 23505 unique-violation from a concurrent provision for the same
+  // user. Deletes this call's orphaned org, then re-reads the caller's
+  // profile (one retry after 250ms — the winner's row is committed by
+  // the time its insert returns, but the retry covers any timing skew).
+  // Returns the winner's alreadyProvisioned response when the profile
+  // is found, or null when there is nothing to recover (the caller then
+  // returns its original 500, with the org already cleaned up).
+  const recoverAfterProfileInsertFailure = async (
+    organizationId: string
+  ): Promise<NextResponse | null> => {
+    await deleteOrphanOrganization(organizationId);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      const { data: winnerProfile, error: winnerError } = await lookupCallerProfile();
+      if (winnerError) {
+        console.warn(`${logTag} RACE RECOVERY: profile re-lookup failed: ${winnerError.message}`);
+        return null;
+      }
+      if (winnerProfile) {
+        console.log(`${logTag} RACE RECOVERY: winner profile found (org ${winnerProfile.organization_id}) — returning alreadyProvisioned`);
+        return reconcileExistingProfile(winnerProfile);
+      }
+    }
+    console.log(`${logTag} RACE RECOVERY: no winner profile found after retry — keeping original failure`);
+    return null;
+  };
 
   // ── 6. Organization creation ──
   const defaultOrg = {
@@ -374,6 +478,13 @@ async function runProvision(request: NextRequest) {
     console.log(`${logTag} CHECKPOINT 7b: profile insert OK. profileError=${profileError?.message ?? "null"}`);
   } catch (profileErr) {
     console.log(`${logTag} CRASH: profile insert THREW:`, profileErr);
+    // The insert may have succeeded server-side while the response was
+    // lost — re-read before failing, and clean up the org we created
+    // when no profile exists for it.
+    const recovered = await recoverAfterProfileInsertFailure(organizationId);
+    if (recovered) {
+      return recovered;
+    }
     return NextResponse.json(
       { ok: false, error: `Profile insert threw: ${profileErr instanceof Error ? profileErr.message : String(profileErr)}` },
       { status: 500 }
@@ -381,8 +492,18 @@ async function runProvision(request: NextRequest) {
   }
 
   if (profileError) {
-    console.log(`${logTag} FAIL: profileError=${profileError.message}`);
+    console.log(`${logTag} FAIL: profileError=${profileError.message} code=${profileError.code ?? "?"}`);
     console.error("Provisioning owner profile creation failed:", profileError.message);
+    // RACE RECOVERY (concurrent first-time provision): the loser's
+    // profile insert fails on the unique index after it already
+    // created its org. Delete that orphaned org and, when the winner's
+    // profile is visible, return 200 with the winner's org instead of
+    // a 500. When no winner exists this returns null and the original
+    // 500 below stands (the org is already cleaned up).
+    const recovered = await recoverAfterProfileInsertFailure(organizationId);
+    if (recovered) {
+      return recovered;
+    }
     return makeErrorResponse(
       "Failed to create owner profile.",
       500,
