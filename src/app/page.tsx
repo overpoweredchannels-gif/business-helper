@@ -17528,9 +17528,19 @@ export default function Home() {
             item.title === candidate.title
         )
     );
+    // Dedupe against a FRESH server read, not only rendered state: a
+    // second run (another tab, or a retry after a lost response) must
+    // never re-insert an alert that is already active. No unique
+    // constraint exists on ai_alerts to target with onConflict (PK is
+    // id only — docs/database/DATABASE_INVENTORY.md Table 28), and no
+    // migration is in scope, so the check lives here. The union with
+    // state covers a failed read (fetchAiAlerts returns [] on error),
+    // so this is never weaker than the old state-only dedupe.
+    const serverAlerts = await fetchAiAlerts(currentOrganizationId);
+    const knownAlerts = [...serverAlerts, ...aiAlerts];
     const newCandidates = uniqueCandidates.filter(
       (candidate) =>
-        !aiAlerts.some(
+        !knownAlerts.some(
           (alert) =>
             alert.status === "active" &&
             alert.alert_type === candidate.alert_type &&
@@ -17547,28 +17557,95 @@ export default function Home() {
     }
 
     const now = new Date().toISOString();
-    const { error } = await supabase.from("ai_alerts").insert(
-      newCandidates.map((candidate) => ({
-        organization_id: currentOrganizationId,
-        created_by_profile_id: currentProfile?.id ?? null,
-        alert_type: candidate.alert_type,
-        title: candidate.title,
-        summary: candidate.summary,
-        severity: candidate.severity,
-        source_type: candidate.source_type,
-        source_entity_type: candidate.source_entity_type,
-        source_entity_id: candidate.source_entity_id,
-        recommended_action: candidate.recommended_action,
-        status: "active",
-        updated_at: now,
-        resolved_at: null,
-      }))
-    );
+    const insertRows = newCandidates.map((candidate) => ({
+      organization_id: currentOrganizationId,
+      created_by_profile_id: currentProfile?.id ?? null,
+      alert_type: candidate.alert_type,
+      title: candidate.title,
+      summary: candidate.summary,
+      severity: candidate.severity,
+      source_type: candidate.source_type,
+      source_entity_type: candidate.source_entity_type,
+      source_entity_id: candidate.source_entity_id,
+      recommended_action: candidate.recommended_action,
+      status: "active",
+      updated_at: now,
+      resolved_at: null,
+    }));
+    const { error } = await supabase.from("ai_alerts").insert(insertRows);
 
     if (error) {
       console.error("Supabase AI alerts insert error:", JSON.stringify(error, null, 2));
-      if (!silent) setAiBriefingError(t('page.alertsGenerateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
-      return { createdCount: 0, activeCount: activeAiAlerts.length, createdAlerts: [] as Array<Record<string, unknown>> };
+      // One bad row must not kill the whole batch (2026-11-20: a
+      // date-string source_entity_id rejected the entire insert, so no
+      // alert appeared at all). Retry row by row; rows the failed
+      // batch already stored (lost response) are skipped via a fresh
+      // server read, so this can never create duplicates.
+      const storedAlerts = await fetchAiAlerts(currentOrganizationId);
+      const insertedCandidates: typeof newCandidates = [];
+      const failedRows: Array<{ title: string; source_entity_type: string; error: string }> = [];
+      for (let i = 0; i < newCandidates.length; i++) {
+        const candidate = newCandidates[i];
+        const alreadyStored = storedAlerts.some(
+          (alert) =>
+            alert.status === "active" &&
+            alert.alert_type === candidate.alert_type &&
+            alert.source_entity_type === candidate.source_entity_type &&
+            alert.source_entity_id === candidate.source_entity_id &&
+            alert.title === candidate.title
+        );
+        if (alreadyStored) {
+          insertedCandidates.push(candidate);
+          continue;
+        }
+        const { error: rowError } = await supabase.from("ai_alerts").insert(insertRows[i]);
+        if (rowError) {
+          failedRows.push({
+            title: candidate.title,
+            source_entity_type: candidate.source_entity_type,
+            error: rowError.message ?? "unknown error",
+          });
+        } else {
+          insertedCandidates.push(candidate);
+        }
+      }
+      if (failedRows.length > 0) {
+        // Audit, never console-only: a failed generation must be
+        // visible in the Audit Log like the success entry below is.
+        try {
+          await createAuditLog({
+            action: "created",
+            entity_type: "ai_alert",
+            entity_id: null,
+            entity_label: "AI business alerts",
+            description: `AI alert generation failed: ${insertedCandidates.length} of ${insertRows.length} alerts inserted; ${failedRows.length} failed. Batch error: ${error.message ?? "unknown"}`,
+            new_values: {
+              attempted: insertRows.length,
+              inserted: insertedCandidates.length,
+              failed: failedRows,
+              batch_error: error.message ?? null,
+            },
+          });
+        } catch (auditError) {
+          console.error("AI alert generation-failure audit log failed (non-fatal):", auditError);
+        }
+        if (insertedCandidates.length > 0) {
+          await createAuditLog({
+            action: "created",
+            entity_type: "ai_alert",
+            entity_id: null,
+            entity_label: "AI business alerts",
+            description: (insertedCandidates.length === 1 ? t('page.generatedAlertsOne') : t('page.generatedAlertsMany')).replace('{count}', String(insertedCandidates.length)),
+            new_values: { count: insertedCandidates.length, alerts: insertedCandidates.map((item) => item.title) },
+          });
+          await fetchAiAlerts(currentOrganizationId);
+          if (!silent) setAiBriefingMessage(t('page.alertsGenerated').replace('{count}', String(insertedCandidates.length)));
+        }
+        if (!silent) setAiBriefingError(t('page.alertsGenerateFailedErr').replace('{error}', JSON.stringify(error, null, 2)));
+        return { createdCount: insertedCandidates.length, activeCount: activeAiAlerts.length + insertedCandidates.length, createdAlerts: insertedCandidates };
+      }
+      // Every row landed on retry (e.g. the batch response was lost):
+      // fall through to the normal success path below.
     }
 
     await createAuditLog({

@@ -138,9 +138,10 @@ export const AI_ALERT_SYNC_SAVE_KIND_LABEL: Record<AiAlertSyncSaveKind, string> 
  * - purchase / supplier_payment / purchase_return with a supplier id:
  *   that supplier's `supplier_ledger` (payable) alerts.
  * - expense with a day: that day's `expenses` alert (the generator's
- *   `expense_day` candidate keys the alert by day, not by expense id —
- *   the stored id is the deterministic UUID derived from the day, so
- *   this matches against that derived id, never the raw date string).
+ *   `expense_day` candidate keys the alert by day — the stored id is
+ *   the deterministic UUID derived from the day, but the raw date
+ *   string is matched too, defensively: a row stored under the old
+ *   identity must still invalidate when its day's figures change).
  * - a save with no party id (e.g. a walk-in cash sale, which has no
  *   customer record) changes no party's overdue/payable figures, so
  *   nothing is invalidated; an expense save with no day invalidates
@@ -152,32 +153,38 @@ export function staleAiAlertIdsForSave(
   save: AiAlertSyncSave,
   alerts: ReadonlyArray<AiAlertLike>,
 ): string[] {
+  // Expense rows are keyed by the deterministic UUID derived from the
+  // day (see ai-alert-entity-ids.ts) — but the raw date string is
+  // matched too, defensively: a row stored under the old identity
+  // (written before the UUID fix, or by a path that never went through
+  // the generator) must still invalidate when its day's figures
+  // change. A raw-date row could not be stored through the client
+  // generator (the UUID column rejects it), so this costs nothing on
+  // the normal path and only ever helps on a legacy row.
+  const expenseEntityIds =
+    save.kind === "expense" &&
+    typeof save.expenseDay === "string" &&
+    save.expenseDay.trim() !== ""
+      ? [dayKeyedAlertEntityId("expense_day", save.expenseDay), save.expenseDay.trim()]
+      : [];
   const target =
     save.kind === "expense"
-      ? {
-          sourceType: "expenses",
-          // The stored expense alert is keyed by the deterministic UUID
-          // derived from the day (see ai-alert-entity-ids.ts), never the
-          // raw date string — the UUID column rejects that, and matching
-          // the raw day here would leave expense invalidation dead.
-          entityId:
-            typeof save.expenseDay === "string" && save.expenseDay.trim() !== ""
-              ? dayKeyedAlertEntityId("expense_day", save.expenseDay)
-              : null,
-        }
+      ? { sourceType: "expenses", entityIds: expenseEntityIds }
       : save.kind === "sale" ||
           save.kind === "customer_payment" ||
           save.kind === "sales_return"
-        ? { sourceType: "customer_credit", entityId: save.customerId ?? null }
-        : { sourceType: "supplier_ledger", entityId: save.supplierId ?? null };
-  const entityId = typeof target.entityId === "string" ? target.entityId.trim() : "";
-  if (entityId === "") return [];
+        ? { sourceType: "customer_credit", entityIds: save.customerId ? [save.customerId] : [] }
+        : { sourceType: "supplier_ledger", entityIds: save.supplierId ? [save.supplierId] : [] };
+  const entityIds = target.entityIds
+    .map((id) => (typeof id === "string" ? id.trim() : ""))
+    .filter((id) => id !== "");
+  if (entityIds.length === 0) return [];
 
   const ids: string[] = [];
   for (const alert of alerts) {
     if (!SHOWN_AI_ALERT_STATUSES.includes(alert.status)) continue;
     if (alert.source_type !== target.sourceType) continue;
-    if (alert.source_entity_id !== entityId) continue;
+    if (alert.source_entity_id === null || !entityIds.includes(alert.source_entity_id)) continue;
     if (!ids.includes(alert.id)) ids.push(alert.id);
   }
   return ids;

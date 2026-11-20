@@ -313,6 +313,64 @@ function main(): void {
     "the same batch with the raw date string in place of the expense id would fail validation — this check would have caught the incident",
   );
 
+  console.log("(i) generation failure is audited, the batch is resilient, dedupe is server-fresh, every kind is UUID-valid");
+  // Extension (2026-11-20, UMAIR): the 18:25/18:34 failures were
+  // completely silent — console-only error, audit entry only after a
+  // successful insert — so nobody could see that generation had ever
+  // failed. A failed generation must now leave an Audit Log entry,
+  // one bad row must not kill the whole batch, and regeneration must
+  // never duplicate an alert that is already active.
+  check(
+    pageSource.includes("AI alert generation failed:"),
+    "a failed generation writes an Audit Log entry starting 'AI alert generation failed', mirroring the success entry (same action/entity_type/label)",
+  );
+  check(
+    pageSource.includes("One bad row must not kill the whole batch"),
+    "on a batch-insert error the generator retries row by row instead of dropping every candidate",
+  );
+  check(
+    pageSource.includes("const storedAlerts = await fetchAiAlerts(currentOrganizationId);"),
+    "the per-row retry skips rows the failed batch already stored (lost response) via a fresh server read — no duplicates from the retry",
+  );
+  check(
+    pageSource.includes("constraint exists on ai_alerts to target with onConflict"),
+    "the code documents why there is no onConflict upsert: ai_alerts has no unique constraint (PK id only, DATABASE_INVENTORY Table 28), so no migration is in scope",
+  );
+  check(
+    !pageSource.includes('.from("ai_alerts").upsert'),
+    "no upsert call on ai_alerts — there is no unique constraint to target with onConflict",
+  );
+  check(
+    pageSource.includes("const knownAlerts = [...serverAlerts, ...aiAlerts];"),
+    "regeneration dedupes against a fresh server read unioned with state, not rendered state alone",
+  );
+  check(
+    pageSource.includes("batch_error: error.message"),
+    "the failure audit entry carries the batch error in new_values, with attempted/inserted/failed counts",
+  );
+  // The full regression: a batch shaped like the generator's payload
+  // with one candidate of EVERY kind must have every source_entity_id
+  // a valid UUID — inventory, task, market, customer, supplier,
+  // expense-day and staff-duty. Any non-UUID id in any kind would
+  // reject the whole batch exactly as the date string did.
+  const allKindIds: Record<string, string> = {
+    inventory: "11111111-1111-4111-8111-111111111111",
+    task: "22222222-2222-4222-8222-222222222222",
+    market: "33333333-3333-4333-8333-333333333333",
+    customer: "44444444-4444-4444-8444-444444444444",
+    supplier: "55555555-5555-4555-8555-555555555555",
+    expense_day: dayKeyedAlertEntityId("expense_day", "2026-11-20"),
+    staff_duty: dayKeyedAlertEntityId("staff_duty", "2026-11-20"),
+  };
+  check(
+    Object.values(allKindIds).every((id) => isValidUuid(id)),
+    "every source_entity_id in a seven-kind batch (inventory, task, market, customer, supplier, expense-day, staff-duty) is a valid UUID",
+  );
+  check(
+    Object.entries(allKindIds).every(([kind, id]) => isValidUuid(id) && kind.length > 0),
+    "each kind's id is valid on its own — no kind hides behind the others in the batch check",
+  );
+
   console.log(`\nAll ${passed} checks passed.`);
 }
 
