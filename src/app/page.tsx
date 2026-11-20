@@ -7775,11 +7775,13 @@ export default function Home() {
         setBusinessSettingsMessage(t('backup.restored'));
       } else if (!result.cancelled) {
         setBusinessSettingsError(
-          result.error === "invalid-file"
-            ? t('backup.invalidFile')
-            : result.error === "store-unavailable"
-              ? t('backup.storeUnavailable')
-              : t('backup.restoreFailed'),
+          result.error === "scope-mismatch"
+            ? t('backup.scopeMismatch')
+            : result.error === "invalid-file"
+              ? t('backup.invalidFile')
+              : result.error === "store-unavailable"
+                ? t('backup.storeUnavailable')
+                : t('backup.restoreFailed'),
         );
       }
     } catch {

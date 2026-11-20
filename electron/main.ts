@@ -10,6 +10,8 @@ import {
   backupFileName,
   restoreFromBackup,
   runDailyBackup,
+  scopeForIdentity,
+  writeScopedBackup,
 } from "./backup";
 import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdentity } from "./store";
 
@@ -591,8 +593,17 @@ function setupLocalStore(): void {
   // the signed-in role) and shows the result message. A failed
   // backup never throws out of the handler — the renderer gets a
   // plain { ok: false } and reports it.
+  //
+  // Slice 8 (HYBRID, audit M20) — every backup is SCOPED to the
+  // signed-in identity (see electron/backup.ts): the export holds
+  // only that identity's rows, stamped in the file, and a restore
+  // refuses a file stamped for another identity. The main process
+  // reads the identity from the SQLite identity_cache (the durable
+  // record), not from the renderer.
   ipcMain.handle("aankh:backup:export", async () => {
     if (!localStore) return { ok: false, error: "store-unavailable" };
+    const identity = (localStore as LocalStore).getIdentity();
+    if (!identity) return { ok: false, error: "no-identity" };
     const picked = await dialog.showSaveDialog({
       title: "Export Aankh backup",
       defaultPath: backupFileName(new Date()),
@@ -600,7 +611,11 @@ function setupLocalStore(): void {
     });
     if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
     try {
-      await (localStore as LocalStore).backup(picked.filePath);
+      await writeScopedBackup(
+        localStore as LocalStore,
+        picked.filePath,
+        scopeForIdentity(identity.organizationId, identity.profileId),
+      );
       return { ok: true, path: picked.filePath };
     } catch (error) {
       console.error("Aankh backup export failed:", error);
@@ -618,11 +633,15 @@ function setupLocalStore(): void {
     const userDataPath = app.getPath("userData");
     const dbPath = path.join(userDataPath, "aankh.db");
     const store = localStore as LocalStore;
+    const identity = store.getIdentity();
     const result = await restoreFromBackup({
       store,
       dbPath,
       userDataPath,
       sourcePath: picked.filePaths[0],
+      expectedScope: identity
+        ? scopeForIdentity(identity.organizationId, identity.profileId)
+        : null,
       restart: () => {
         // Let the IPC reply reach the renderer first, then restart
         // so the restored database takes effect.
@@ -834,7 +853,15 @@ const BACKUP_RECHECK_INTERVAL_MS = 60 * 60 * 1000;
 async function runDailyBackupIfDue(): Promise<void> {
   if (!localStore) return;
   try {
-    const result = await runDailyBackup(localStore, app.getPath("userData"));
+    // Slice 8 — the daily copy is scoped to the signed-in identity;
+    // with nobody signed in there is no scope, so the run is
+    // skipped (a day nobody signs in creates no new org data).
+    const identity = (localStore as LocalStore).getIdentity();
+    const scope = identity
+      ? scopeForIdentity(identity.organizationId, identity.profileId)
+      : null;
+    const result = await runDailyBackup(localStore, app.getPath("userData"), new Date(), scope);
+    if (result.skipped) console.log("Aankh daily backup skipped: no signed-in identity");
     if (result.created) console.log(`Aankh daily backup saved: ${result.path}`);
     if (result.pruned.length > 0) {
       console.log(`Aankh backup retention removed ${result.pruned.length} old file(s)`);

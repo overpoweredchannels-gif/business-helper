@@ -24,8 +24,9 @@ export interface DesktopBackupResult {
   /** True when the app is about to restart on the restored database. */
   restarting?: boolean;
   /**
-   * `store-unavailable` | `invalid-file` | `safety-backup-failed` |
-   * `replace-failed` | `failed` — the caller maps these to messages.
+   * `store-unavailable` | `invalid-file` | `scope-mismatch` |
+   * `no-identity` | `safety-backup-failed` | `replace-failed` |
+   * `failed` — the caller maps these to messages.
    */
   error?: string;
 }

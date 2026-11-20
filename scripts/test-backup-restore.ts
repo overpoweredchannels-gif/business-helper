@@ -10,10 +10,13 @@ import {
   listBackupFiles,
   parseBackupFileName,
   pruneOldBackups,
+  readBackupScope,
   restoreFromBackup,
   runDailyBackup,
   safetyBackupFileName,
+  scopeForIdentity,
   validateBackupFile,
+  writeScopedBackup,
 } from "../electron/backup";
 import { createLocalStore, type LocalCustomerRow, type StoredIdentity } from "../electron/store";
 
@@ -24,6 +27,14 @@ import { createLocalStore, type LocalCustomerRow, type StoredIdentity } from "..
 // safety-copies the live database, then swaps it in and restarts.
 // The store's `backup()` is SQLite's own online backup API, so the
 // snapshot is consistent — WAL content included, no torn file.
+//
+// Slice 8 (HYBRID, audit M20) — every backup this module writes is
+// SCOPED to the signed-in identity (see scripts/test-backup-scoping.ts
+// for the full scoping rules): only that identity's rows survive,
+// stamped in the file's `meta` table. The raw `store.backup()` copy
+// is unscoped and unstamped (legacy) — the main process never writes
+// one anymore, it always goes through `writeScopedBackup` /
+// `runDailyBackup` with a scope.
 
 const IDENTITY: StoredIdentity = {
   profileId: "profile-1",
@@ -92,17 +103,26 @@ async function main(): Promise<void> {
     mkdirSync(userData, { recursive: true });
 
     // 2. Daily backup: one dated copy per day, a second run the same
-    //    day is a no-op, and the copy holds the live rows.
+    //    day is a no-op, and the copy holds the live rows. Slice 8:
+    //    the copy is scoped to the signed-in identity and stamped.
     const store = createLocalStore(dbPath);
     store.setIdentity(IDENTITY);
     store.upsertCustomer("org-1:profile-1", customerRow("cust-1", "Backup Customer"));
     const now = new Date(2026, 10, 17, 9, 0, 0);
-    const first = await runDailyBackup(store, userData, now);
+    const scope = scopeForIdentity("org-1", "profile-1");
+    const first = await runDailyBackup(store, userData, now, scope);
     assert.equal(first.created, true, "the first run of the day creates the copy");
     assert.equal(first.path, join(backupDirFor(userData), "aankh-2026-11-17.db"), "the copy lands in the backup folder");
     assert.equal(existsSync(first.path), true, "the daily copy exists on disk");
-    const second = await runDailyBackup(store, userData, now);
+    const second = await runDailyBackup(store, userData, now, scope);
     assert.equal(second.created, false, "a second run the same day does not create another copy");
+    assert.deepEqual(readBackupScope(first.path), {
+      formatVersion: "1",
+      scope: "org-1:profile-1",
+      organizationId: "org-1",
+      profileId: "profile-1",
+      createdAt: now.toISOString(),
+    }, "the daily copy is stamped with the signed-in identity's scope");
     assert.deepEqual(
       readdirSync(backupDirFor(userData)),
       ["aankh-2026-11-17.db"],
@@ -145,12 +165,25 @@ async function main(): Promise<void> {
 
     // 4. Export → validate: the exported snapshot validates, and the
     //    validator refuses everything that is not an Aankh backup.
+    //    Slice 8: the export goes through `writeScopedBackup` (the
+    //    same call the main process uses for the native save dialog)
+    //    and is stamped; a raw `store.backup()` copy is the legacy
+    //    unscoped file and still validates.
     const exportPath = join(dir, "usb", "aankh-export.db");
-    // (The export writes through the same store.backup() call the
-    // main process uses for the native save dialog.)
     mkdirSync(join(dir, "usb"), { recursive: true });
-    await store.backup(exportPath);
+    await writeScopedBackup(store, exportPath, scope, now);
     assert.deepEqual(validateBackupFile(exportPath), { ok: true }, "an exported snapshot validates");
+    assert.deepEqual(readBackupScope(exportPath), {
+      formatVersion: "1",
+      scope: "org-1:profile-1",
+      organizationId: "org-1",
+      profileId: "profile-1",
+      createdAt: now.toISOString(),
+    }, "the exported snapshot is stamped with the exporter's scope");
+    const rawPath = join(dir, "usb", "aankh-raw.db");
+    await store.backup(rawPath);
+    assert.deepEqual(validateBackupFile(rawPath), { ok: true }, "a raw legacy copy still validates");
+    assert.equal(readBackupScope(rawPath), null, "a raw legacy copy carries no stamp");
     const textFile = join(dir, "not-a-backup.txt");
     writeFileSync(textFile, "hello, this is not a database");
     assert.deepEqual(
@@ -211,6 +244,7 @@ async function main(): Promise<void> {
       dbPath,
       userDataPath: userData,
       sourcePath,
+      expectedScope: scope,
       now,
       restart: () => {
         restarts += 1;

@@ -158,7 +158,7 @@ export interface DesktopBackupResult {
   cancelled?: boolean;
   /** True when the app is about to restart on the restored database. */
   restarting?: boolean;
-  /** `store-unavailable` | `invalid-file` | `failed` — see src/lib/offline/backup.ts. */
+  /** `store-unavailable` | `invalid-file` | `scope-mismatch` | `no-identity` | `failed` — see src/lib/offline/backup.ts. */
   error?: string;
 }
 
