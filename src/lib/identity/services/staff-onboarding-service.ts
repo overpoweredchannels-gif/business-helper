@@ -486,22 +486,30 @@ export class StaffOnboardingService {
     if (profile.is_active === false) {
       // Determine whether the account is pending activation (is_active false until
       // the employee opens their invite link) versus actually deactivated (active no
-      // longer). Look up the linked employee row.
+      // longer). Look up the linked employee row — for the SERVER LOG only.
+      // The client always gets the generic error (Slice 2 oracle discipline):
+      // the response never reveals whether the account is pending or deactivated.
       const { data: emp } = await supabase
         .from("employees")
         .select("invite_status")
         .eq("profile_id", profile.id)
         .maybeSingle();
       const pendingActivation = emp?.invite_status === "pending" || emp?.invite_status === "none";
-      return {
-        ok: false,
-        error: pendingActivation
-          ? "This account hasn't been activated yet. Open your WhatsApp invite link to create your password."
-          : "This account has been deactivated by your manager.",
-      };
+      console.warn("[staffLogin] sign-in refused for an inactive profile", {
+        loginId: normalized,
+        profileId: profile.id,
+        pendingActivation,
+      });
+      return { ok: false, error: STAFF_LOGIN_GENERIC_ERROR };
     }
     if (!profile.email) {
-      return { ok: false, error: "This account is not ready yet. Open your invite link first." };
+      // Same oracle discipline: an account without an email is not ready
+      // to sign in, but the client only ever sees the generic error.
+      console.warn("[staffLogin] sign-in refused for a profile without an email", {
+        loginId: normalized,
+        profileId: profile.id,
+      });
+      return { ok: false, error: STAFF_LOGIN_GENERIC_ERROR };
     }
 
     const { data: session, error: signInError } = await supabase.auth.signInWithPassword({

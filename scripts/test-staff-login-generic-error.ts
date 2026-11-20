@@ -24,9 +24,15 @@ import {
 // 8. Unknown IDs lock out too (per-ID throttling, key = entered ID).
 // 9. The old oracle strings appear nowhere in the staff login path
 //    (service, route, sign-in form) nor anywhere under src/ or electron/.
+// 10. A pending-activation account returns the generic error.
+// 11. A deactivated account returns the generic error.
+// 12. An account without an email returns the generic error.
 
 const GENERIC = "Profile ID ya password ghalat hai";
 const KNOWN_ID = "MU04";
+const PENDING_ID = "MU97";
+const DEACTIVATED_ID = "MU98";
+const NOEMAIL_ID = "MU96";
 const KNOWN_EMAIL = "mu04@staff.tradeos.internal";
 const CORRECT_PASSWORD = "correct-password";
 const SIGN_IN_DELAY_MS = 40;
@@ -36,6 +42,27 @@ assert.equal(STAFF_LOGIN_GENERIC_ERROR, GENERIC, "0. generic constant is the req
 const KNOWN_PROFILE = {
   id: "profile-mu04",
   email: KNOWN_EMAIL,
+  is_active: true,
+  organization_id: "org-1",
+};
+
+const PENDING_PROFILE = {
+  id: "profile-mu97",
+  email: "mu97@staff.tradeos.internal",
+  is_active: false,
+  organization_id: "org-1",
+};
+
+const DEACTIVATED_PROFILE = {
+  id: "profile-mu98",
+  email: "mu98@staff.tradeos.internal",
+  is_active: false,
+  organization_id: "org-1",
+};
+
+const NOEMAIL_PROFILE = {
+  id: "profile-mu96",
+  email: null,
   is_active: true,
   organization_id: "org-1",
 };
@@ -91,8 +118,14 @@ function buildFakeSupabase() {
     }
     private async execute(): Promise<{ data: unknown; error: null }> {
       if (this.table === "profiles") {
+        const byId: Record<string, unknown> = {
+          [KNOWN_ID]: { ...KNOWN_PROFILE },
+          [PENDING_ID]: { ...PENDING_PROFILE },
+          [DEACTIVATED_ID]: { ...DEACTIVATED_PROFILE },
+          [NOEMAIL_ID]: { ...NOEMAIL_PROFILE },
+        };
         return {
-          data: this.filters.login_id === KNOWN_ID ? { ...KNOWN_PROFILE } : null,
+          data: byId[String(this.filters.login_id)] ?? null,
           error: null,
         };
       }
@@ -104,7 +137,15 @@ function buildFakeSupabase() {
         }
         return { data: attempts.get(key) ?? null, error: null };
       }
-      // employees (invite_status lookup, only hit for inactive profiles)
+      if (this.table === "employees") {
+        // invite_status lookup, only hit for inactive profiles.
+        const statusByProfile: Record<string, string> = {
+          "profile-mu97": "pending",
+          "profile-mu98": "accepted",
+        };
+        const status = statusByProfile[String(this.filters.profile_id)] ?? null;
+        return { data: status === null ? null : { invite_status: status }, error: null };
+      }
       return { data: null, error: null };
     }
   }
@@ -250,6 +291,28 @@ async function main() {
   assert.equal(sixthUnknown.locked, true, "8. 6th unknown-ID attempt is locked");
   assert.match(sixthUnknown.error ?? "", /Too many failed sign-in attempts/, "8. unknown-ID lock message surfaces");
 
+  // ─── 10 + 11 + 12. Inactive / deactivated / no-email: generic error ─
+  // Sunday small fix: the client never learns whether the account is
+  // pending activation, deactivated, or not ready — every state returns
+  // the same generic string, and the real reason stays in the server
+  // log only (rule 9 asserts the distinct strings are gone from the
+  // login-path source).
+  const pendingCase = newService();
+  const pending = await pendingCase.service.staffLogin(PENDING_ID, "whatever-password");
+  assert.equal(pending.ok, false, "10. pending-activation account fails");
+  assert.equal(pending.error, GENERIC, "10. pending-activation returns the generic error");
+  assert.equal(pendingCase.fake.signInCalls.length, 0, "10. pending-activation never reaches the password check");
+  const deactivatedCase = newService();
+  const deactivated = await deactivatedCase.service.staffLogin(DEACTIVATED_ID, "whatever-password");
+  assert.equal(deactivated.ok, false, "11. deactivated account fails");
+  assert.equal(deactivated.error, GENERIC, "11. deactivated returns the generic error");
+  assert.equal(deactivatedCase.fake.signInCalls.length, 0, "11. deactivated never reaches the password check");
+  const noEmailCase = newService();
+  const noEmail = await noEmailCase.service.staffLogin(NOEMAIL_ID, "whatever-password");
+  assert.equal(noEmail.ok, false, "12. no-email account fails");
+  assert.equal(noEmail.error, GENERIC, "12. no-email returns the generic error");
+  assert.equal(noEmailCase.fake.signInCalls.length, 0, "12. no-email never reaches the password check");
+
   // ─── 9. Old oracle strings are gone ─────────────────────────────────
   const root = join(__dirname, "..");
   const serviceSrc = readFileSync(join(root, "src/lib/identity/services/staff-onboarding-service.ts"), "utf8");
@@ -262,6 +325,9 @@ async function main() {
   ] as const) {
     assert.ok(!src.includes("No account found for this Profile ID"), `9. oracle string still in ${name}`);
     assert.ok(!src.includes("Incorrect Profile ID or password"), `9. wrong-password oracle string still in ${name}`);
+    assert.ok(!src.includes("hasn't been activated yet"), `9. pending-activation oracle string still in ${name}`);
+    assert.ok(!src.includes("has been deactivated by your manager"), `9. deactivated oracle string still in ${name}`);
+    assert.ok(!src.includes("This account is not ready yet"), `9. not-ready oracle string still in ${name}`);
   }
   const grep = execSync(
     "grep -rn 'No account found for this Profile ID' src electron 2>/dev/null || true",
@@ -269,7 +335,7 @@ async function main() {
   ).trim();
   assert.equal(grep, "", `9. oracle string still present repo-wide:\n${grep}`);
 
-  console.log("staff-login generic error: PASS (9 rules)");
+  console.log("staff-login generic error: PASS (12 rules)");
 }
 
 main().catch((err) => {
