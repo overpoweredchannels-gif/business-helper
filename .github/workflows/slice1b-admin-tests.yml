@@ -1,0 +1,270 @@
+# Slice 1b admin tests — Aankh email-link auth (HYBRID Slice 1b).
+#
+# Runs the admin-key tests that CANNOT run on the Linux dev box: the
+# Supabase Auth Admin API needs the real service key in BOTH the `apikey`
+# and `Authorization: Bearer` headers of one request, and the dev box's
+# vault-surrogate transport cannot deliver that. GitHub's runner has
+# direct internet, so the real key (from a secret) works there.
+#
+# Trigger: workflow_dispatch ONLY — never on push/PR, never on a fork PR.
+# Every job also carries a repo guard (`github.repository == ...`), so a
+# fork that dispatches this workflow by hand still runs nothing.
+#
+# Secret needed (owner adds it once, repo Settings -> Secrets and
+# variables -> Actions): DISPOSABLE_SUPABASE_SERVICE_KEY — the DISPOSABLE
+# project's service_role key (rtfowunsyrdygyvubnvs). NEVER the production
+# key: every script below refuses to run against any other Supabase URL,
+# and all three scripts create real test users and delete them again.
+# The key is passed ONLY through env, never echoed, and a guard step
+# fails the job if any test script logs a secret value.
+#
+# Public values (disposable project, safe to embed): NEXT_PUBLIC_*
+# below. The legacy SUPABASE_SERVICE_ROLE_KEY var is also set from the
+# secret wherever a booted server needs it (the provision route reads it
+# server-side); the two APIKEY/BEARER variants are what the test scripts
+# read for their admin clients.
+name: Slice 1b admin tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://rtfowunsyrdygyvubnvs.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0Zm93dW5zeXJkeWd5dnVibnZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3OTI2ODksImV4cCI6MjEwNjM2ODY4OX0.ZziM-bfifjxso7kU7RGpPv0UkhzXwh471ez7BIOwX9Y
+
+jobs:
+  # (1) The 45 email-auth regression assertions. Talks to Supabase
+  # directly (admin generateLink + verifyOtp); no local server needed.
+  admin-assertions:
+    if: github.repository == 'overpoweredchannels-gif/business-helper'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Secret-leak guard (test scripts must never log the key)
+        run: |
+          cat > /tmp/secret-leak-guard.mjs <<'GUARD_EOF'
+          import fs from "node:fs";
+          const files = process.argv.slice(2);
+          const problems = [];
+          for (const file of files) {
+            const lines = fs.readFileSync(file, "utf8").split("\n");
+            lines.forEach((line, idx) => {
+              if (!/console\.(log|error|warn|info|debug)\b/.test(line)) return;
+              const noStrings = line.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""');
+              if (/\b(SERVICE_KEY_APIKEY|SERVICE_KEY_BEARER|SUPABASE_SERVICE_ROLE_KEY|ANON_KEY)\b/.test(noStrings)) {
+                problems.push(`${file}:${idx + 1}: secret variable referenced in console output`);
+              }
+              for (const m of line.matchAll(/\$\{([^}]*)\}/g)) {
+                const expr = m[1]
+                  .replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""')
+                  .replace(/stripTokenParams/g, "");
+                if (/(token|hash|password|secret|key)/i.test(expr) && !/amr(Password|Recovery)/.test(expr)) {
+                  problems.push(`${file}:${idx + 1}: sensitive interpolation in console output: ${expr.trim()}`);
+                }
+              }
+            });
+          }
+          if (problems.length > 0) {
+            console.error(problems.join("\n"));
+            process.exit(1);
+          }
+          console.log(`secret-leak guard: OK (${files.length} files checked)`);
+          GUARD_EOF
+          node /tmp/secret-leak-guard.mjs scripts/test-email-auth-regression.ts scripts/playwright-slice1b-flows.mjs
+
+      - name: Run the 45 email-auth regression assertions
+        run: npx tsx scripts/test-email-auth-regression.ts
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_APIKEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_BEARER: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+  # (2) The provision idempotency test. It lives on its own branch
+  # (hybrid-provision-idempotency-test), so this job checks that branch
+  # out into a sub-directory and runs ITS script there — copying the
+  # script into this checkout would silently test this branch's
+  # provision route with the idempotency script, which is not the same
+  # proof. The script boots .next/standalone/server.js on :3199
+  # (building it with AANKH_DESKTOP_BUILD=1 first if missing) and hits
+  # the real provision route: same-token retry, fresh-token retry and a
+  # concurrent double-provision must all leave exactly ONE org.
+  idempotency:
+    if: github.repository == 'overpoweredchannels-gif/business-helper'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the idempotency-test branch
+        uses: actions/checkout@v4
+        with:
+          ref: hybrid-provision-idempotency-test
+          path: idempotency
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: idempotency/package-lock.json
+
+      - name: Install dependencies
+        working-directory: idempotency
+        run: npm ci
+
+      - name: Secret-leak guard (test script must never log the key)
+        run: |
+          cat > /tmp/secret-leak-guard.mjs <<'GUARD_EOF'
+          import fs from "node:fs";
+          const files = process.argv.slice(2);
+          const problems = [];
+          for (const file of files) {
+            const lines = fs.readFileSync(file, "utf8").split("\n");
+            lines.forEach((line, idx) => {
+              if (!/console\.(log|error|warn|info|debug)\b/.test(line)) return;
+              const noStrings = line.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""');
+              if (/\b(SERVICE_KEY_APIKEY|SERVICE_KEY_BEARER|SUPABASE_SERVICE_ROLE_KEY|ANON_KEY)\b/.test(noStrings)) {
+                problems.push(`${file}:${idx + 1}: secret variable referenced in console output`);
+              }
+              for (const m of line.matchAll(/\$\{([^}]*)\}/g)) {
+                const expr = m[1]
+                  .replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""')
+                  .replace(/stripTokenParams/g, "");
+                if (/(token|hash|password|secret|key)/i.test(expr) && !/amr(Password|Recovery)/.test(expr)) {
+                  problems.push(`${file}:${idx + 1}: sensitive interpolation in console output: ${expr.trim()}`);
+                }
+              }
+            });
+          }
+          if (problems.length > 0) {
+            console.error(problems.join("\n"));
+            process.exit(1);
+          }
+          console.log(`secret-leak guard: OK (${files.length} files checked)`);
+          GUARD_EOF
+          node /tmp/secret-leak-guard.mjs idempotency/scripts/test-provision-idempotency.ts
+
+      - name: Run the provision idempotency test
+        working-directory: idempotency
+        run: npx tsx scripts/test-provision-idempotency.ts
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_APIKEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_BEARER: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+  # (3) Playwright browser flows against the dev server: two browser
+  # contexts (signup in one, link opened in the other), links built with
+  # auth.admin.generateLink, no real email. Google redirect start,
+  # signup -> onboarding, desktop-origin message, email sign-in,
+  # recovery -> /reset -> new password, /reset with no session, legacy
+  # ?code= error screen, staff Profile-ID clean error.
+  playwright-flows:
+    if: github.repository == 'overpoweredchannels-gif/business-helper'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Secret-leak guard (flows script must never log the key)
+        run: |
+          cat > /tmp/secret-leak-guard.mjs <<'GUARD_EOF'
+          import fs from "node:fs";
+          const files = process.argv.slice(2);
+          const problems = [];
+          for (const file of files) {
+            const lines = fs.readFileSync(file, "utf8").split("\n");
+            lines.forEach((line, idx) => {
+              if (!/console\.(log|error|warn|info|debug)\b/.test(line)) return;
+              const noStrings = line.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""');
+              if (/\b(SERVICE_KEY_APIKEY|SERVICE_KEY_BEARER|SUPABASE_SERVICE_ROLE_KEY|ANON_KEY)\b/.test(noStrings)) {
+                problems.push(`${file}:${idx + 1}: secret variable referenced in console output`);
+              }
+              for (const m of line.matchAll(/\$\{([^}]*)\}/g)) {
+                const expr = m[1]
+                  .replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""')
+                  .replace(/stripTokenParams/g, "");
+                if (/(token|hash|password|secret|key)/i.test(expr) && !/amr(Password|Recovery)/.test(expr)) {
+                  problems.push(`${file}:${idx + 1}: sensitive interpolation in console output: ${expr.trim()}`);
+                }
+              }
+            });
+          }
+          if (problems.length > 0) {
+            console.error(problems.join("\n"));
+            process.exit(1);
+          }
+          console.log(`secret-leak guard: OK (${files.length} files checked)`);
+          GUARD_EOF
+          node /tmp/secret-leak-guard.mjs scripts/playwright-slice1b-flows.mjs
+
+      - name: Start the dev server (disposable env)
+        run: |
+          nohup npm run dev > dev-server.log 2>&1 &
+          echo $! > dev-server.pid
+          for i in $(seq 1 36); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/login; then
+              echo "dev server up on :3000"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "dev server did not answer /login within 180s"
+          tail -n 100 dev-server.log
+          exit 1
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+      - name: Run the Playwright browser flows
+        run: node scripts/playwright-slice1b-flows.mjs
+        env:
+          SUPABASE_SERVICE_ROLE_KEY_APIKEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_BEARER: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+      - name: Stop the dev server
+        if: always()
+        run: |
+          kill "$(cat dev-server.pid)" 2>/dev/null || true
+
+      - name: Upload flow screenshots + results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slice1b-playwright-flows
+          path: slice1b-playwright/
+          if-no-files-found: warn
+
+      - name: Upload dev server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slice1b-dev-server-log
+          path: dev-server.log
+          if-no-files-found: warn
