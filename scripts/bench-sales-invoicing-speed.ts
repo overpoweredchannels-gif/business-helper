@@ -297,7 +297,9 @@ async function runOnline(): Promise<void> {
   }
   const stamp = Date.now().toString(36);
   const email = `bench-${stamp}@bench.local`;
-  const password = `${randomUUID()}-${randomUUID()}`;
+  // One UUID (36 chars) — two UUIDs joined are 73 chars and bcrypt
+  // rejects passwords over 72 chars (CI run 44795179725).
+  const password = randomUUID();
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const created = { userId: "", orgId: "", productIds: [] as string[], customerIds: [] as string[], saleIds: [] as string[] };
 
