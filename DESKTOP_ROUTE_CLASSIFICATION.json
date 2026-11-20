@@ -8,8 +8,8 @@
     "USER-JWT": 68
   },
   "ratchet": {
-    "pending_direct_cloud_fetches": 44,
-    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47 — it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower this baseline to the new count; never raise it."
+    "pending_direct_cloud_fetches": 32,
+    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47, then 44 \u2014 it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower the baseline to the new count; never raise it. Slice 2 (2026-11-20): 44 -> 32 (staff login 1 + staff/me 11 direct fetches moved to the cloud-endpoint helper)."
   },
   "routes": {
     "/api/ai-business-query": {
@@ -412,20 +412,21 @@
     "/api/identity/staff/login": {
       "methods": "POST",
       "classification": "CLOUD",
-      "called_from_desktop": "yes",
+      "called_from_desktop": "yes (1 file via cloud-endpoint helper)",
       "access_today": "StaffOnboardingService.staffLogin (service, staff-onboarding-service.ts:416-422)",
       "purpose": "Staff Profile-ID login (password check + server-side brute-force lockout)",
-      "desktop_today": "500s; caller then throws a raw JSON-parse error on the non-JSON 500 body",
-      "notes": "B1-B4 item 2. Server-side lockout is part of this flow; Vercel only."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 2): staffLoginViaCloud(); loopback-only CORS",
+      "notes": "B1-B4 item 2. Server-side lockout is part of this flow; Vercel only. Slice 2: desktop calls go through the cloud-endpoint helper (no direct fetch left). NOT marked migrated: true \u2014 a login endpoint has no Bearer token to verify, so gate check (8) cannot apply to it; the credential (Profile ID + password) is checked server-side, and unknown-ID / wrong-password both return the generic 'Profile ID ya password ghalat hai' with the same response time (dummy sign-in)."
     },
     "/api/identity/staff/me": {
       "methods": "GET",
       "classification": "CLOUD",
-      "called_from_desktop": "yes (11 files \u2014 most-called route)",
+      "called_from_desktop": "yes (11 files via cloud-endpoint helper)",
       "access_today": "createSupabaseService (direct: profiles, employees, organizations, staff_permissions) + resolveActor",
       "purpose": "Current staff member + permissions (called on almost every load)",
-      "desktop_today": "500s",
-      "notes": "B1-B4 item 2. Permission-merge path; Vercel only."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 2): fetchStaffMe() with Bearer; server verifies the token itself (resolveActor)",
+      "notes": "B1-B4 item 2. Permission-merge path; Vercel only. Slice 2: migrated \u2014 Bearer verified by resolveActor, org/user from the token; loopback-only CORS; desktop calls go through the cloud-endpoint helper, never direct.",
+      "migrated": true
     },
     "/api/identity/staff/overview": {
       "methods": "GET",

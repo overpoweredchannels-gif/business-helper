@@ -94,10 +94,11 @@ const goodTag = runGate(["--tag", `v${pkg.version}`]);
 assert.equal(goodTag.status, 0, "12. Gate passes when the tag matches package.json version");
 
 // 6. Pending-fetch ratchet (UMAIR item 4): the count of direct renderer
-//    fetches of unmigrated CLOUD routes (44 on the real manifest) must never
-//    exceed the manifest baseline. Force it via a scratch manifest's baseline
-//    — never by editing real routes.
-//    (a) Baseline 0 < real count 44 -> FAIL, naming count and baseline.
+//    fetches of unmigrated CLOUD routes (32 on the real manifest after
+//    Slice 2 moved staff login + staff/me to the cloud-endpoint helper)
+//    must never exceed the manifest baseline. Force it via a scratch
+//    manifest's baseline — never by editing real routes.
+//    (a) Baseline 0 < real count 32 -> FAIL, naming count and baseline.
 const lowBaseline = withTempManifest((data) => {
   const d = data as { ratchet: { pending_direct_cloud_fetches: number } };
   d.ratchet.pending_direct_cloud_fetches = 0;
@@ -106,8 +107,8 @@ const lowRun = runGate(["--manifest", lowBaseline]);
 assert.equal(lowRun.status, 1, "13. Gate fails when pending fetches exceed the ratchet baseline");
 assert.match(
   lowRun.stdout,
-  /pending direct CLOUD fetches: 44 exceeds the ratchet baseline 0/,
-  "14. Ratchet failure names the count (44) and the baseline (0)",
+  /pending direct CLOUD fetches: 32 exceeds the ratchet baseline 0/,
+  "14. Ratchet failure names the count (32) and the baseline (0)",
 );
 rmSync(join(lowBaseline, ".."), { recursive: true, force: true });
 //    (b) Baseline above the real count -> PASS, and the ratchet line shows it.
@@ -117,10 +118,10 @@ const highBaseline = withTempManifest((data) => {
 });
 const highRun = runGate(["--manifest", highBaseline]);
 assert.equal(highRun.status, 0, "15. Gate passes when pending fetches are at/below the ratchet baseline");
-assert.match(highRun.stdout, /pending direct CLOUD fetches: 44 \(ratchet baseline 999/, "16. Ratchet line shows count 44 against baseline 999");
+assert.match(highRun.stdout, /pending direct CLOUD fetches: 32 \(ratchet baseline 999/, "16. Ratchet line shows count 32 against baseline 999");
 rmSync(join(highBaseline, ".."), { recursive: true, force: true });
-//    (c) The real-manifest run prints the ratchet line at baseline 44.
-assert.match(green.stdout, /pending direct CLOUD fetches: 44 \(ratchet baseline 44/, "17. Real-manifest run shows the ratchet line (44 vs baseline 44)");
+//    (c) The real-manifest run prints the ratchet line at baseline 32.
+assert.match(green.stdout, /pending direct CLOUD fetches: 32 \(ratchet baseline 32/, "17. Real-manifest run shows the ratchet line (32 vs baseline 32)");
 //    (d) A manifest with no ratchet field at all -> FAIL (the baseline is mandatory).
 const noRatchet = withTempManifest((data) => {
   const d = data as { ratchet?: unknown };

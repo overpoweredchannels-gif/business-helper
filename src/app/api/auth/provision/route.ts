@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseService, createSupabaseUserClient } from "@/lib/supabase/server";
 import { buildLegacyPermissionRow } from "@/lib/identity/legacy";
 import { normalizeRole } from "@/lib/identity/permissions";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 import type { UserIdentity } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -82,39 +83,11 @@ const ensureOrgClaim = async (
   }
 };
 
-// CORS for the desktop app (hardening rule 1: desktop origin only, never a
-// wildcard). The desktop serves its pages from the local standalone server
-// on a RANDOM loopback port, so no fixed origin can be allowlisted. The only
-// origins that can ever be the desktop are loopback origins, which by
-// definition come from the user's own machine — reflecting one is safe, and
-// a website origin can never be loopback. Same-origin web calls carry no
-// Origin header and need no CORS headers.
-const DESKTOP_ORIGIN_RE = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
-
-const corsHeadersFor = (request: NextRequest): Record<string, string> => {
-  const origin = request.headers.get("origin");
-  if (!origin || !DESKTOP_ORIGIN_RE.test(origin)) return {};
-  return { "Access-Control-Allow-Origin": origin, Vary: "Origin" };
-};
-
-const applyCors = (response: NextResponse, headers: Record<string, string>): NextResponse => {
-  for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
-  return response;
-};
-
 // Preflight for desktop cross-origin calls (a POST with Authorization +
 // Content-Type triggers one). The browser must be able to read every
 // response — including 401s — so POST applies the same headers via applyCors.
 export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      ...corsHeadersFor(request),
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Authorization, Content-Type",
-      "Access-Control-Max-Age": "86400",
-    },
-  });
+  return desktopPreflightResponse(request, "POST");
 }
 
 export async function POST(request: NextRequest) {

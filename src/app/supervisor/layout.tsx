@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SupervisorLayout from "@/components/salesman/SupervisorLayout";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { Loader2 } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
@@ -27,7 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await authorizedFetch("/api/identity/staff/me");
+        const res = await fetchStaffMe();
         const data: MeResponse = await res.json();
         const role = data?.me?.profile?.role;
         if (data.ok && data.me && role === "supervisor") {

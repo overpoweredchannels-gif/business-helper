@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import OwnerFsmLayout from "@/components/salesman/OwnerFsmLayout";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { resolveBooksCurrency } from "@/lib/books/currency";
 import { setActiveBooksCurrency, setActiveTimeZone } from "@/lib/tradeos/formatters";
 import { parseTimeZone } from "@/lib/regional/settings";
@@ -19,7 +19,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await authorizedFetch("/api/identity/staff/me");
+        const res = await fetchStaffMe();
         const data = await res.json();
         const role = data?.me?.profile?.role;
         if (role === "owner" || role === "admin") {

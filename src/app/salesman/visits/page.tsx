@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { MapPin, Loader2, CheckCircle2, Clock as ClockIcon, XCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRegional } from "@/components/regional/RegionalProvider";
@@ -29,7 +30,7 @@ export default function VisitsPage() {
 
   const loadMe = useCallback(async () => {
     try {
-      const res = await authorizedFetch("/api/identity/staff/me");
+      const res = await fetchStaffMe();
       const data = await res.json();
       if (data.ok && data.me?.employee) {
         setEmployeeId(data.me.employee.id);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Loader2, AlertCircle, LogOut, Radio, Crosshair } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { getMapProvider } from "@/lib/maps/map-provider";
 import { getPlaceName } from "@/lib/maps/client-maps";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -181,7 +182,7 @@ export function EmployeeLiveTracking() {
 
   const loadIdentity = useCallback(async () => {
     try {
-      const res = await authorizedFetch("/api/identity/staff/me");
+      const res = await fetchStaffMe();
       const data: MeResponse = await res.json();
       if (data.ok && data.me) {
         setProfileId(data.me.profile?.id ?? null);

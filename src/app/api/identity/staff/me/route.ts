@@ -2,10 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveActor } from "@/lib/identity/api-context";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { selectWithColumnFallback } from "@/lib/supabase/select-with-column-fallback";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
+// Desktop cross-origin preflight (HYBRID Slice 2): the desktop renderer
+// calls this CLOUD route on Vercel from a random loopback origin — a GET
+// carrying an Authorization header triggers a preflight. Same
+// loopback-only CORS as provision — never a wildcard.
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "GET");
+}
+
+export async function GET(request: NextRequest) {
+  return applyCors(await runMe(request), corsHeadersFor(request));
+}
+
+async function runMe(request: NextRequest) {
   const context = await resolveActor(request);
   if (!context.actor?.profileId || !context.actor.organizationId) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

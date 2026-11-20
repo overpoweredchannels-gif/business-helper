@@ -64,6 +64,22 @@ export interface StaffLoginResult {
 
 const HIDDEN_EMAIL_DOMAIN = "staff.tradeos.internal";
 
+/**
+ * Generic credential error (HYBRID Slice 2 oracle fix): identical for an
+ * unknown Profile ID and a wrong password, so the response never reveals
+ * whether the ID exists. The old split messages (one for an unknown ID,
+ * another for a wrong password) leaked exactly that.
+ */
+export const STAFF_LOGIN_GENERIC_ERROR = "Profile ID ya password ghalat hai";
+
+/**
+ * Dummy hidden email for the password-check path when the Profile ID is
+ * unknown. No such account exists, so signInWithPassword always fails —
+ * but it costs the same GoTrue round-trip as a real password check, so the
+ * unknown-ID response takes the same time as a wrong-password response.
+ */
+const UNKNOWN_PROFILE_DUMMY_EMAIL = `no-such-profile@${HIDDEN_EMAIL_DOMAIN}`;
+
 export class StaffOnboardingService {
   private readonly employeeRepository: EmployeeRepository;
 
@@ -419,7 +435,9 @@ export class StaffOnboardingService {
       return { ok: false, error: "Profile ID and password are required." };
     }
 
-    const supabase = createSupabaseService();
+    // The injected client factory (default: createSupabaseService) — the
+    // slice test injects a mock client here; runtime behaviour is unchanged.
+    const supabase = this.createClient();
     const lockoutStore = new SupabaseLoginAttemptStore(supabase);
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -451,7 +469,19 @@ export class StaffOnboardingService {
       // enumeration guessing is throttled per ID. The message stays the
       // same generic one — it never reveals whether the lock engaged.
       await recordFailedLogin(lockoutStore, lockoutKey, null);
-      return { ok: false, error: "No account found for this Profile ID." };
+      // Oracle fix (Slice 2): run the same password-check path as a real
+      // account — a dummy sign-in that always fails — so the unknown-ID
+      // response takes the same time as a wrong-password response. The
+      // result is discarded; the dummy check must never break the flow.
+      try {
+        await supabase.auth.signInWithPassword({
+          email: UNKNOWN_PROFILE_DUMMY_EMAIL,
+          password,
+        });
+      } catch {
+        // ignore — the dummy check is timing-only
+      }
+      return { ok: false, error: STAFF_LOGIN_GENERIC_ERROR };
     }
     if (profile.is_active === false) {
       // Determine whether the account is pending activation (is_active false until
@@ -481,18 +511,15 @@ export class StaffOnboardingService {
     if (signInError || !session.session) {
       // Wrong password: record the failure. The attempt that trips the
       // lock still returns the generic error; the lock message appears on
-      // the NEXT attempt (via the check above).
+      // the NEXT attempt (via the check above). Every sign-in failure —
+      // wrong password or any other GoTrue error — returns the same generic
+      // message, so the response never reveals whether the ID exists.
       await recordFailedLogin(
         lockoutStore,
         lockoutKey,
         profile.organization_id ?? null,
       );
-      return {
-        ok: false,
-        error: signInError?.message === "Invalid login credentials"
-          ? "Incorrect Profile ID or password."
-          : signInError?.message ?? "Sign in failed.",
-      };
+      return { ok: false, error: STAFF_LOGIN_GENERIC_ERROR };
     }
 
     // Successful sign-in clears the failed-attempt count for this email.

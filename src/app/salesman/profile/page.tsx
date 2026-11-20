@@ -2,7 +2,7 @@
 
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { useEffect, useState } from "react";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { formatDate } from "@/lib/tradeos/formatters";
 import { EmployeeLiveTracking } from "@/components/dashboard";
 import { User, Briefcase, Phone, Calendar, Hash, Building2, Loader2, AlertCircle } from "lucide-react";
@@ -18,7 +18,7 @@ export default function ProfilePage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await authorizedFetch("/api/identity/staff/me");
+        const res = await fetchStaffMe();
         const data = await res.json();
         if (data.ok && data.me) setMe(data.me);
         else setError(data.error || { key: 'salesman.profile.loadError' });

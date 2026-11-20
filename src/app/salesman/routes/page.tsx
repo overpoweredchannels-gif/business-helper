@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { Route as RouteIcon, Loader2, MapPin, ChevronRight, AlertCircle } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
@@ -26,7 +27,7 @@ export default function MyRoutesPage() {
     setLoading(true);
     setError(null);
     try {
-      const meRes = await authorizedFetch("/api/identity/staff/me");
+      const meRes = await fetchStaffMe();
       const meData = await meRes.json();
       if (!meData.ok || !meData.me?.employee) {
         setError(t('salesman.routes.noProfile'));

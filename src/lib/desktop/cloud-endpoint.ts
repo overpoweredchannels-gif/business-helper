@@ -21,6 +21,7 @@
  * failure, not a sign-out.
  */
 import { isDesktopApp } from "@/lib/offline/identity-cache";
+import { getAccessToken } from "@/lib/tradeos/authorized-fetch";
 
 const CLOUD_ORIGIN =
   process.env.NEXT_PUBLIC_CLOUD_ORIGIN ?? "https://business-helper-ten.vercel.app";
@@ -32,6 +33,15 @@ export interface CloudProvisionResult {
   alreadyProvisioned?: boolean;
   organization_id?: string;
   needsOnboarding?: boolean;
+}
+
+export interface CloudStaffLoginResult {
+  ok: boolean;
+  accessToken?: string;
+  refreshToken?: string;
+  error?: string;
+  locked?: boolean;
+  retryAfterSeconds?: number;
 }
 
 function cloudUrl(path: string): string {
@@ -96,4 +106,60 @@ export async function provisionViaCloud(input: {
   }
 
   return (await res.json()) as CloudProvisionResult;
+}
+
+/**
+ * Staff Profile-ID login on the cloud endpoint (HYBRID Slice 2).
+ *
+ * The login itself carries no Bearer token — the Profile ID + password ARE
+ * the credential — so this posts them to the Vercel endpoint, which checks
+ * them server-side (with the brute-force lockout) and returns Supabase
+ * session tokens for setSession. The server answers the same generic
+ * error for an unknown ID and a wrong password; a locked identifier
+ * answers 429 with locked: true, and that body is returned as-is so the
+ * caller can surface the wait time. Network/timeout errors throw, like
+ * provisionViaCloud.
+ */
+export async function staffLoginViaCloud(input: {
+  loginId: string;
+  password: string;
+}): Promise<CloudStaffLoginResult> {
+  const res = await callCloudEndpoint("/api/identity/staff/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ loginId: input.loginId, password: input.password }),
+  });
+
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return {
+    ok: res.ok && body.ok === true,
+    accessToken: typeof body.accessToken === "string" ? body.accessToken : undefined,
+    refreshToken: typeof body.refreshToken === "string" ? body.refreshToken : undefined,
+    error:
+      typeof body.error === "string" && body.error
+        ? body.error
+        : res.ok
+          ? undefined
+          : `Staff sign-in failed (HTTP ${res.status})`,
+    locked: body.locked === true,
+    retryAfterSeconds: typeof body.retryAfterSeconds === "number" ? body.retryAfterSeconds : undefined,
+  };
+}
+
+/**
+ * Current staff member + permissions on the cloud endpoint (HYBRID Slice 2).
+ *
+ * Drop-in replacement for `authorizedFetch("/api/identity/staff/me")`:
+ * same Response shape, same Bearer handling (session token with the
+ * restore/refresh tolerance), but on desktop the request goes to the
+ * Vercel endpoint instead of the local server, which has no service key
+ * and would 500. The server verifies the Bearer itself (resolveActor)
+ * and returns the profile/employee/organization/permissions row; org and
+ * user come from the token, never from the request.
+ */
+export async function fetchStaffMe(): Promise<Response> {
+  const token = await getAccessToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return callCloudEndpoint("/api/identity/staff/me", { headers });
 }

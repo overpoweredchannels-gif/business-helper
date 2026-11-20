@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { formatDate } from "@/lib/tradeos/formatters";
 import { Target, Loader2, AlertCircle } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
@@ -36,7 +37,7 @@ export default function MyTargetsPage() {
     setError(null);
     try {
       const [meRes, tRes] = await Promise.all([
-        authorizedFetch("/api/identity/staff/me"),
+        fetchStaffMe(),
         authorizedFetch("/api/targets"),
       ]);
       const meData = await meRes.json();

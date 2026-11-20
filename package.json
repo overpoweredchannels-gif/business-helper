@@ -40,7 +40,7 @@
     "test:custom-role-assignment": "tsx scripts/test-custom-role-assignment.ts",
     "test:brute-force-lockout": "tsx scripts/test-brute-force-lockout.ts",
     "test:purchase": "tsx scripts/test-purchase-service.ts",
-    "test:identity": "tsx scripts/test-identity-authorization.ts && tsx scripts/test-staff-invite-import.ts && tsx scripts/test-custom-roles-edit-delete.ts && tsx scripts/test-custom-role-assignment.ts && tsx scripts/test-brute-force-lockout.ts",
+    "test:identity": "tsx scripts/test-identity-authorization.ts && tsx scripts/test-staff-invite-import.ts && tsx scripts/test-custom-roles-edit-delete.ts && tsx scripts/test-custom-role-assignment.ts && tsx scripts/test-brute-force-lockout.ts && tsx scripts/test-staff-login-generic-error.ts",
     "test:credentials": "tsx scripts/test-credential-security.ts",
     "test:tenant": "tsx scripts/test-tenant-context.ts",
     "test:invoice-number": "tsx scripts/test-invoice-number-service.ts",

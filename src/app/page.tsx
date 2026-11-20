@@ -114,7 +114,7 @@ import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
 import { Bell, X } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
-import { provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
+import { fetchStaffMe, provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
 import { RecordHistoryPanel } from "@/components/sales/RecordHistoryPanel";
 import { useDashboardOrder } from "@/lib/preferences/use-dashboard-order";
@@ -1880,7 +1880,7 @@ export default function Home() {
       // the section gate can use.
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const response = await authorizedFetch("/api/identity/staff/me");
+          const response = await fetchStaffMe();
           const data = await response.json();
           if (response.ok && data?.me?.permissions) {
             setSelfStaffPermission(data.me.permissions);

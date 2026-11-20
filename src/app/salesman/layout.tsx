@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SalesmanLayout from "@/components/salesman/SalesmanLayout";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { resolveBooksCurrency } from "@/lib/books/currency";
 import { setActiveBooksCurrency, setActiveTimeZone } from "@/lib/tradeos/formatters";
 import { parseTimeZone } from "@/lib/regional/settings";
@@ -36,7 +36,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     (async () => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const res = await authorizedFetch("/api/identity/staff/me");
+          const res = await fetchStaffMe();
           const data: MeResponse = await res.json();
           if (data.ok && data.me) {
             // Resolve the org's books currency before children render

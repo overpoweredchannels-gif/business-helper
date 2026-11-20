@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCatalogScopeGuard } from "@/lib/catalog/use-catalog-scope-guard";
 import { VisitProductLookup, VISIT_PRODUCT_SEARCH_PAGE_SIZE, type VisitProduct, type VisitProductPage } from "@/components/salesman/VisitProductLookup";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { fetchStaffMe } from "@/lib/desktop/cloud-endpoint";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { useRegional } from "@/components/regional/RegionalProvider";
@@ -136,7 +137,7 @@ export default function VisitDetailPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await authorizedFetch("/api/identity/staff/me");
+        const res = await fetchStaffMe();
         const data = await res.json();
         if (data.ok && data.me?.employee) setEmployeeId(data.me.employee.id);
         loadVisit(data.me?.employee?.id);

@@ -14,7 +14,15 @@ import { supabase } from "@/lib/supabase/client";
  * request goes out. A request that still has no token goes out
  * unauthenticated and the API answers 401, exactly as before.
  */
-export async function authorizedFetch(input: string, init: RequestInit = {}): Promise<Response> {
+/**
+ * Read the current session's access token, tolerating the momentary
+ * absence right after sign-in or a navigation (the browser client is
+ * still restoring it from storage): re-read once after a short pause and,
+ * if the token is still missing, attempt one refresh. Returns null when
+ * no session exists — the caller then sends the request unauthenticated
+ * and the API answers 401, exactly as before.
+ */
+export async function getAccessToken(): Promise<string | null> {
   let token = (await supabase.auth.getSession()).data.session?.access_token ?? null;
   if (!token) {
     // Give the browser client a moment to restore the session from storage
@@ -37,6 +45,11 @@ export async function authorizedFetch(input: string, init: RequestInit = {}): Pr
       token = (await supabase.auth.getSession()).data.session?.access_token ?? null;
     }
   }
+  return token;
+}
+
+export async function authorizedFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = await getAccessToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return fetch(input, { ...init, headers });

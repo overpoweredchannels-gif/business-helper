@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { StaffOnboardingService } from "@/lib/identity/services/staff-onboarding-service";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
 
+// Desktop cross-origin preflight (HYBRID Slice 2): the desktop renderer
+// calls this CLOUD route on Vercel from a random loopback origin. Same
+// loopback-only CORS as provision — never a wildcard.
+export async function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "POST");
+}
+
 export async function POST(request: NextRequest) {
+  return applyCors(await runLogin(request), corsHeadersFor(request));
+}
+
+async function runLogin(request: NextRequest) {
   let body: { loginId?: string; password?: string };
   try {
     body = await request.json();

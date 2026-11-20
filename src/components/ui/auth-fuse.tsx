@@ -12,6 +12,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { supabase } from "@/lib/supabase/client";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { staffLoginViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { isDesktopApp } from "@/lib/offline/identity-cache";
 import {
   DESKTOP_AUTH_CALLBACK_URL,
@@ -309,13 +310,12 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
     try {
       if (method === "staff") {
         if (!loginId.trim() || !password) throw new Error(t('auth.enterProfileIdPassword'));
-        const res = await fetch("/api/identity/staff/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ loginId: loginId.trim(), password }),
-        });
-        const data = await res.json();
+        // Slice 2 (HYBRID): the staff login CLOUD route runs on Vercel —
+        // the desktop's local server has no service key and would 500.
+        // On the web this is the same relative call as before.
+        const data = await staffLoginViaCloud({ loginId: loginId.trim(), password });
         if (!data.ok) throw new Error(data.error || t('auth.signInFailed'));
+        if (!data.accessToken || !data.refreshToken) throw new Error(t('auth.signInFailed'));
         const { error: setSessionError } = await supabase.auth.setSession({
           access_token: data.accessToken,
           refresh_token: data.refreshToken,
