@@ -163,3 +163,23 @@ export async function fetchStaffMe(): Promise<Response> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return callCloudEndpoint("/api/identity/staff/me", { headers });
 }
+
+/**
+ * Purchase submit on the cloud endpoint (HYBRID Slice 4 — the B1 fix).
+ *
+ * `fetch`-shaped so the purchase sync engine can use it as its default
+ * fetch on desktop: same URL + init the caller passes, but the request
+ * goes to the Vercel endpoint with the user's Bearer token instead of
+ * the local standalone server, which has no service key and would 500
+ * on `POST /api/purchases`. The server verifies the Bearer itself
+ * (`resolveActor` via `requirePermission`) and the `create_purchase_atomic`
+ * RPC stays service-role-only server-side — the desktop never calls the
+ * RPC directly. On the web build `callCloudEndpoint` keeps the relative
+ * path, so this is identical to `authorizedFetch` there.
+ */
+export async function purchaseCloudFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = await getAccessToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return callCloudEndpoint(input, { ...init, headers });
+}

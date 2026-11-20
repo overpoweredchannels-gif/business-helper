@@ -20,6 +20,12 @@
  *   user's token (design §2 rule: `create_purchase_atomic` is
  *   service-role-only, so the client never calls the RPC directly
  *   and the service-role key never ships in the desktop app).
+ *   Slice 4 — on desktop the submit goes through
+ *   `purchaseCloudFetch` (the Vercel endpoint with the Bearer
+ *   token); the old default `authorizedFetch` posts to the local
+ *   standalone server, which has no service key and 500s every
+ *   purchase — the B1 defect this slice fixes. The web build keeps
+ *   the relative `authorizedFetch` exactly as before.
  * - Same key + different payload → the server raises "already used
  *   for a different purchase" → parked as `fingerprint-mismatch`
  *   (never auto-retried; a corrected purchase is a NEW purchase
@@ -35,6 +41,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { purchaseCloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { isDesktopApp } from "@/lib/offline/identity-cache";
 import {
   getLocalPurchasesBackend,
   isPendingLocalPurchase,
@@ -256,7 +264,11 @@ export async function syncOnePurchase(
   row: LocalPurchaseRow,
   options: PurchaseSyncOptions = {},
 ): Promise<PurchaseSyncOutcome> {
-  const fetchImpl = options.fetchImpl ?? authorizedFetch;
+  // Slice 4 — the default submit on desktop is the cloud endpoint
+  // (purchaseCloudFetch: Vercel + Bearer token). The old default
+  // posted to the local server, which 500s without a service key,
+  // so every queued purchase stayed queued forever (B1).
+  const fetchImpl = options.fetchImpl ?? (isDesktopApp() ? purchaseCloudFetch : authorizedFetch);
   const server = options.server ?? createPurchaseServer(supabase);
   const backend = getLocalPurchasesBackend();
 

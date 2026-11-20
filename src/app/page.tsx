@@ -73,7 +73,7 @@ import { useScannerCapture } from "@/components/invoices/scanner-capture";
 import { addBarcodeLine, addScannedLine } from "@/lib/invoices/barcode";
 import { createScanSubmitter, hasExactBarcodeMatch, isBarcodeShaped, type ScanSubmitter } from "@/lib/invoices/scan-submit";
 import { applyRecentLinePrice } from "@/lib/invoices/recent-price";
-import { createPurchase } from "@/lib/purchases/client";
+import { createPurchase, shouldParkPurchaseSaveError } from "@/lib/purchases/client";
 import {
   correctOutstandingBalance,
   createPaymentAttemptKey,
@@ -11126,11 +11126,16 @@ export default function Home() {
       // it needs the confirmed transaction id, which only exists
       // after sync; the synced purchase still lands in the history
       // list for review.)
-      const savePurchaseLocally = async (): Promise<boolean> => {
+      const savePurchaseLocally = async (requestKey?: string): Promise<boolean> => {
         if (!isDesktopApp() || !currentOrganizationId || !currentProfile?.id) return false;
         const scope = `${currentOrganizationId}:${currentProfile.id}`;
         try {
-          const row = newLocalPurchaseRow(purchaseInput as unknown as Record<string, unknown>);
+          // Slice 4 — reuse the request key the failed online attempt
+          // already allocated when one is given, so the sync drain's
+          // status check can find a lost-response commit and a retry
+          // replays the original purchase instead of posting a second
+          // one. A fresh offline save allocates a new key, as before.
+          const row = newLocalPurchaseRow(purchaseInput as unknown as Record<string, unknown>, requestKey);
           await getLocalPurchasesBackend().upsert(scope, row);
         } catch {
           return false;
@@ -11158,12 +11163,15 @@ export default function Home() {
       try {
         result = await createPurchase(purchaseInput);
       } catch (caught) {
-        // The POST never reached the server — park it locally on
-        // desktop instead of failing the save. A server refusal
-        // (createPurchase throws the server message) is a real error
-        // and is never parked.
-        if (isDesktopApp() && isNetworkError(caught)) {
-          const savedOffline = await savePurchaseLocally();
+        // Slice 4 — park it locally on desktop instead of failing
+        // the save: a network failure (as before) OR a server 5xx.
+        // A 500 never confirmed the purchase, so the local row can
+        // still sync it exactly once with the same request key. A
+        // server refusal (a 4xx: validation, fingerprint mismatch,
+        // forbidden) is a real error and is never parked.
+        if (shouldParkPurchaseSaveError(caught)) {
+          const requestKey = (caught as { requestKey?: string } | null)?.requestKey;
+          const savedOffline = await savePurchaseLocally(requestKey);
           setInvoiceLoading(false);
           if (!savedOffline) {
             setInvoiceError(t('page.failedCreatePurchaseInvoice'));

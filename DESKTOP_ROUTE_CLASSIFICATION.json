@@ -8,8 +8,8 @@
     "USER-JWT": 68
   },
   "ratchet": {
-    "pending_direct_cloud_fetches": 32,
-    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47, then 44 \u2014 it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower the baseline to the new count; never raise it. Slice 2 (2026-11-20): 44 -> 32 (staff login 1 + staff/me 11 direct fetches moved to the cloud-endpoint helper)."
+    "pending_direct_cloud_fetches": 31,
+    "note": "Ratchet (UMAIR item 4, 2026-11-19): the gate FAILS when the count of direct renderer fetches of unmigrated CLOUD routes exceeds this baseline (it was 39, then 47, then 44 \u2014 it must never grow again). The count may only go down. The same commit that migrates routes (sets migrated: true) MUST lower the baseline to the new count; never raise it. Slice 2 (2026-11-20): 44 -> 32 (staff login 1 + staff/me 11 direct fetches moved to the cloud-endpoint helper). Slice 4 (2026-11-20): 32 -> 31 (createPurchase in src/lib/purchases/client.ts moved to the cloud-endpoint helper; the purchase-sync submit was never counted \u2014 fetchImpl( does not match the gate scanner)."
   },
   "routes": {
     "/api/ai-business-query": {
@@ -470,8 +470,9 @@
       "called_from_desktop": "yes",
       "access_today": "createSupabaseService -> PurchaseService.withSupabase(service); create_purchase_atomic is service_role-only",
       "purpose": "Purchase list / create purchase (atomic RPC)",
-      "desktop_today": "500s (GET and POST); online save loses the purchase \u2014 page.tsx parks locally only on network errors",
-      "notes": "B1-B4 item 4. Local-first: save to SQLite first, then sync to the Vercel endpoint with idempotency_key = local row id. Supplier balance only via ledger triggers, never ad-hoc +/-."
+      "desktop_today": "cloud endpoint via src/lib/desktop/cloud-endpoint.ts (Slice 4): purchaseCloudFetch() with Bearer; server verifies the token itself (resolveActor via requirePermission); loopback-only CORS; desktop calls go through the cloud-endpoint helper, never direct.",
+      "notes": "B1-B4 item 4. Local-first: save to SQLite first, then sync to the Vercel endpoint with idempotency_key = local row id. Supplier balance only via ledger triggers, never ad-hoc +/-. Slice 4: migrated \u2014 Bearer verified by resolveActor, org/user from the token; loopback-only CORS; online save parks locally on a server 500 too (same request key); pre-existing queued rows re-drive via the silent sync engine (launch / online / timer / purchase-saved trigger).",
+      "migrated": true
     },
     "/api/purchases/[id]": {
       "methods": "DELETE, GET",

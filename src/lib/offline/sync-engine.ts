@@ -37,6 +37,13 @@
  * debounced run fires on any queue change (sales, returns,
  * payments, expenses), not just the sales queue.
  *
+ * Slice 4 (HYBRID) — a saved purchase nudges the engine the same
+ * way: the debounced run also fires on the local-purchases changed
+ * event, and the non-empty check counts pending purchases. A
+ * pre-existing queued purchase therefore re-drives on the next
+ * launch run, online event, timer run, or save — it can never sit
+ * queued forever just because no other queue changed.
+ *
  * Owner Retry of a parked sale also lives here: `retrySyncIssue`
  * re-queues the parked attempt with its ORIGINAL idempotency key at
  * the front of the queue and drains. The drain status-checks it
@@ -95,6 +102,10 @@ import {
   LOCAL_RETURNS_CHANGED_EVENT,
   getLocalReturnsBackend,
 } from "@/lib/offline/local-returns";
+import {
+  LOCAL_PURCHASES_CHANGED_EVENT,
+  getLocalPurchasesBackend,
+} from "@/lib/offline/local-purchases";
 import {
   LOCAL_PAYMENTS_CHANGED_EVENT,
   getLocalPaymentsBackend,
@@ -219,21 +230,26 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
       // already cleared the queues fires these same events on its
       // own removals, and must not loop. Slice S7 — any of the
       // queues (sales, returns, payments, expenses) can trigger it.
+      // Slice 4 — pending purchases count too: a purchase-only queue
+      // must nudge the engine, not wait for an unrelated queue.
       void Promise.all([
         readPendingSalesQueue(scope),
         getLocalReturnsBackend().list(scope),
         getLocalPaymentsBackend().list(scope),
         getLocalExpensesBackend().list(scope),
+        getLocalPurchasesBackend().list(scope),
       ])
-        .then(([salesQueue, returns, payments, expenses]) => {
+        .then(([salesQueue, returns, payments, expenses, purchases]) => {
           const pendingReturns = returns.filter((row) => row.syncStatus === "pending");
           const pendingPayments = payments.filter((row) => row.syncStatus === "pending");
           const pendingExpenses = expenses.filter((row) => row.syncStatus === "pending");
+          const pendingPurchases = purchases.filter((row) => row.syncStatus === "pending");
           if (
             salesQueue.length > 0 ||
             pendingReturns.length > 0 ||
             pendingPayments.length > 0 ||
-            pendingExpenses.length > 0
+            pendingExpenses.length > 0 ||
+            pendingPurchases.length > 0
           ) {
             void run();
           }
@@ -262,6 +278,9 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
     window.addEventListener(LOCAL_RETURNS_CHANGED_EVENT, onQueueChanged);
     window.addEventListener(LOCAL_PAYMENTS_CHANGED_EVENT, onQueueChanged);
     window.addEventListener(LOCAL_EXPENSES_CHANGED_EVENT, onQueueChanged);
+    // Slice 4 — a saved purchase nudges the engine the same way, so
+    // a purchase-only queue re-drives without waiting for the timer.
+    window.addEventListener(LOCAL_PURCHASES_CHANGED_EVENT, onQueueChanged);
   }
   if (typeof setInterval !== "undefined") {
     interval = setInterval(() => void run(), intervalMs);
@@ -278,6 +297,7 @@ export function startSilentSyncEngine(options: SilentSyncEngineOptions): SilentS
         window.removeEventListener(LOCAL_RETURNS_CHANGED_EVENT, onQueueChanged);
         window.removeEventListener(LOCAL_PAYMENTS_CHANGED_EVENT, onQueueChanged);
         window.removeEventListener(LOCAL_EXPENSES_CHANGED_EVENT, onQueueChanged);
+        window.removeEventListener(LOCAL_PURCHASES_CHANGED_EVENT, onQueueChanged);
       }
     },
     requestSync(): void {

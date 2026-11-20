@@ -201,11 +201,17 @@ export function isPendingLocalPurchase(row: LocalPurchaseRow): boolean {
  * id (and the server idempotency key); the provisional number is
  * allocated by the store on insert (null here — the stored row
  * returned by `upsert` carries it).
+ *
+ * Slice 4 — `id` may be supplied: when an online save fails after the
+ * client already allocated a request key, the parked row reuses THAT
+ * key, so the sync drain's status check can find a lost-response
+ * commit and a retry replays the original purchase instead of posting
+ * a second one. Defaults to a fresh UUID, as before.
  */
-export function newLocalPurchaseRow(input: Record<string, unknown>): LocalPurchaseRow {
+export function newLocalPurchaseRow(input: Record<string, unknown>, id: string = crypto.randomUUID()): LocalPurchaseRow {
   const now = new Date().toISOString();
   return {
-    id: crypto.randomUUID(),
+    id,
     input,
     provisionalNumber: null,
     synced: 0,
