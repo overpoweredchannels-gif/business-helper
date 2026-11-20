@@ -658,12 +658,11 @@
     "/api/sales/walk-in": {
       "methods": "POST",
       "classification": "LOCAL",
-      "called_from_desktop": "yes",
+      "called_from_desktop": "no",
       "access_today": "createSupabaseService (direct, in try/catch -> JSON 500)",
-      "pending": "slice-5-seed",
       "purpose": "Prepare / select the Walk-in customer for POS quick sale",
-      "desktop_today": "500s ('Could not prepare the Walk-in customer'); quick sale cannot start without a manual customer pick",
-      "notes": "User rule: LOCAL seed record \u2014 desktop must stop calling this route and upsert the deterministic Walk-in row locally instead. Route stays service-backed on web. Gate: entry carries `\"pending\": \"slice-5-seed\"` \u2014 the gate reports it as pending, not failed, until Slice 5 replaces it with the local seed."
+      "desktop_today": "Desktop never calls this route (Slice 5): the Walk-in row is a local seed with the same deterministic id; the customer-sync drain creates the server row on first sync, or reconciles with no write when it already exists.",
+      "notes": "Slice 5 (HYBRID) landed: desktop upserts the deterministic Walk-in row locally (src/lib/offline/walk-in-customer.ts) and never fetches this route. The route file keeps the service client for WEB same-origin calls only — the gate exempts LOCAL routes the desktop never calls (check 2) instead of failing on the web-only service use."
     },
     "/api/inventory/adjust": {
       "methods": "POST",

@@ -39,7 +39,8 @@ import { calculateSaleAmounts, calculateSaleLineDiscountAmount, hasAllowedPrecis
 import { QUEUE_CHANGED_EVENT, clearQueueNotices, createAtomicSale, drainPendingSalesQueue, readPendingAtomicSale, readPendingSalesQueue, readQueueNotices, reconcilePendingAtomicSale, type PendingSale } from "@/lib/sales/atomic-sale-client";
 import { loadOfflineCustomers, loadOfflineProducts, saveOfflineCustomers, saveOfflineProducts } from "@/lib/offline/offline-store";
 import { loadHistoryMirror, saveHistoryMirror } from "@/lib/offline/history-mirror";
-import { editLocalCustomerRow, getLocalCustomersBackend, mergeLocalCustomers, newLocalCustomerCreateRow, notifyLocalCustomersChanged, type LocalCustomerRow } from "@/lib/offline/local-customers";
+import { editLocalCustomerRow, getLocalCustomersBackend, newLocalCustomerCreateRow, notifyLocalCustomersChanged, type LocalCustomerRow } from "@/lib/offline/local-customers";
+import { ensureWalkInCustomerSeed, mergeLocalCustomersWithWalkInSeed, walkInCustomerRecord } from "@/lib/offline/walk-in-customer";
 import { LOCAL_PURCHASES_CHANGED_EVENT, getLocalPurchasesBackend, newLocalPurchaseRow, notifyLocalPurchasesChanged, type LocalPurchaseRow } from "@/lib/offline/local-purchases";
 import { LOCAL_SUPPLIERS_CHANGED_EVENT, editLocalSupplierRow, getLocalSuppliersBackend, mergeLocalSuppliers, newLocalSupplierCreateRow, notifyLocalSuppliersChanged, type LocalSupplierRow } from "@/lib/offline/local-suppliers";
 import { getLocalReturnsBackend, isPendingReturnHistoryId, mergePendingPurchaseReturnItems, mergePendingPurchaseReturns, mergePendingSalesReturnItems, mergePendingSalesReturns, newLocalReturnRow, notifyLocalReturnsChanged, pendingReturnRequestKey, type LocalReturnRow } from "@/lib/offline/local-returns";
@@ -6516,11 +6517,14 @@ export default function Home() {
         // lives in the local store until it syncs; the list shows it
         // now (the local row wins per id, creates appended), so the
         // cashier can sell to it before it reaches the cloud.
+        // Slice 5 (HYBRID) — the Walk-in seed is merged as a FALLBACK,
+        // never an override: when the server list already holds the
+        // Walk-in row, that row wins (see walk-in-customer.ts).
         const mergeLocal = async (rows: Customer[]): Promise<Customer[]> => {
           if (!scope || !isDesktopApp()) return rows;
           try {
             const localRows = await getLocalCustomersBackend().list(scope);
-            return mergeLocalCustomers(rows, localRows);
+            return mergeLocalCustomersWithWalkInSeed(rows, localRows, orgId);
           } catch {
             return rows;
           }
@@ -8244,12 +8248,31 @@ export default function Home() {
     }
     setMiniTabs(next);
   }, [salesLines, selectedCustomerIdForSale, salesInvoiceDate, salesPaymentType, salesDiscountAmount, salesDiscountType, salesTaxRate, posCashReceived, saleScanUnit, salesNotes, activeMiniTabId, miniTabsScope]);
+  // Slice 5 (HYBRID) — Walk-in preparation. On desktop the Walk-in
+  // customer is a LOCAL seed: the deterministic row (same id the server
+  // route would create) is upserted into the local-customer store and
+  // selected with zero network calls, so a quick sale starts offline.
+  // The web build keeps the server route (it has the service key there).
   useEffect(() => {
     if (!quickSaleMode || !currentOrganizationId || !currentProfile?.id) return;
     walkInCustomerId.current = null;
+    setWalkInFailed(false);
+    if (isDesktopApp()) {
+      const record = walkInCustomerRecord(currentOrganizationId);
+      walkInCustomerId.current = record.id;
+      setCustomers(current => current.some(customer => String(customer.id) === record.id) ? current : [...current, record]);
+      setSelectedCustomerIdForSale(current => current ?? record.id);
+      const scope = offlineCacheScope(currentOrganizationId);
+      if (scope) {
+        void ensureWalkInCustomerSeed(scope, currentOrganizationId).catch(() => {
+          // The in-memory record above already lets the sale start; the
+          // store write is retried by the next fetchCustomers merge.
+        });
+      }
+      return;
+    }
     let cancelled = false;
     setWalkInBusy(true);
-    setWalkInFailed(false);
     authorizedFetch("/api/sales/walk-in", { method: "POST" }).then(async response => {
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || t('page.couldNotPrepareWalkin'));

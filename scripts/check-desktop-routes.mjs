@@ -23,8 +23,11 @@
  *      `migrated: true` is set on their manifest entry (until then they are
  *      reported as "pending conversion"). CLOUD routes are exempt — they run
  *      on Vercel, where the key exists. A manifest entry with a `pending`
- *      reason (e.g. /api/sales/walk-in, pending Slice 5 seed) is reported as
- *      pending, not failed.
+ *      reason is reported as pending, not failed. A LOCAL route the desktop
+ *      never calls (`called_from_desktop` starts with "no") is exempt too:
+ *      its service-client use is web-only dead code on desktop (Slice 5:
+ *      /api/sales/walk-in keeps the service client for web same-origin
+ *      calls while the desktop uses a local seed instead).
  *  (3) Service-key name in packaging — SUPABASE_SERVICE_ROLE_KEY must not
  *      appear in electron/ or .github/workflows/desktop.yml, and must not
  *      appear as an assignment (KEY=...) in any tracked file. Reads
@@ -369,6 +372,18 @@ function checkServiceUse(manifest, onDisk) {
       entry.classification === "LOCAL" || (entry.classification === "USER-JWT" && entry.migrated === true);
     if (entry.classification === "USER-JWT" && entry.migrated !== true) {
       pendingConversion += 1;
+      continue;
+    }
+    if (
+      entry.classification === "LOCAL" &&
+      typeof entry.called_from_desktop === "string" &&
+      entry.called_from_desktop.startsWith("no")
+    ) {
+      // Slice 5: the desktop never invokes this route, so the service
+      // client in its file is web-only dead code on desktop (the route
+      // stays service-backed for web same-origin calls). Enforced only
+      // while the desktop can reach the route.
+      info(`${route} (LOCAL, desktop never calls it) keeps the service client for web same-origin calls — not enforced on desktop`);
       continue;
     }
     if (!enforced) continue; // CLOUD: allowed to use the service key on Vercel
