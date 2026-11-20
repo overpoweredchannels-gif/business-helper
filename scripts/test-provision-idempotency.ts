@@ -11,7 +11,10 @@
 //       losing call orphaned one), the test FAILS LOUDLY and reports it as a
 //       found race — it never hides or swallows that result.
 //
-// Run command (manual only — see the wiring note at the bottom):
+// Run it via the vault-backed wrapper (the disposable .env.local holds only
+// a dummy service key, so the direct command below fails the guard):
+//   python3 ~/workspace/custom-connectors/custom.supabase-service-role/bin/run-idempotency-test.py
+// Direct run (manual only — needs a REAL service key in the environment):
 //   set -a; . ~/workspace/tradeos-localization/.env.local; set +a
 //   npx tsx scripts/test-provision-idempotency.ts
 //
@@ -54,13 +57,18 @@ assert.ok(SERVICE_KEY, "SUPABASE_SERVICE_ROLE_KEY must be set (export the dispos
 // 2026-11-20 the disposable .env.local carries the sentinel
 // "qa-fail-closed-dummy-key" instead of a real service key — Supabase
 // rejects it with 401 Invalid API key, so both the admin API calls below
-// and the route's service-role calls cannot work. Supply the real disposable
-// service key before running; do not run this against production.
-const looksLikeJwt = (value: string): boolean =>
-  /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+// and the route's service-role calls cannot work. A real key arrives either
+// as a JWT (from the env file) or as an `hsurr:` surrogate supplied by the
+// Secure Vault connector (custom.supabase-service-role), which the egress
+// swaps for the real key on requests to the disposable project. Anything
+// else still fails here — supply the real disposable service key before
+// running; do not run this against production.
+const looksLikeServiceKey = (value: string): boolean =>
+  /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value) ||
+  value.startsWith("hsurr:");
 assert.ok(
-  looksLikeJwt(SERVICE_KEY),
-  "SUPABASE_SERVICE_ROLE_KEY does not look like a JWT (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
+  looksLikeServiceKey(SERVICE_KEY),
+  "SUPABASE_SERVICE_ROLE_KEY must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
 );
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
