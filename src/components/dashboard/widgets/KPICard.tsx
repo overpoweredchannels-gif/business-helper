@@ -80,7 +80,7 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
           {readStatus === "failed" && lastSuccessfulAt && (
             <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>
           )}
-          {readStatus === "failed" && onRetry && (
+          {(readStatus === "failed" || readStatus === "not-loaded") && onRetry && (
             <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retryReads')}</button>
           )}
           {readComplete && trend && (

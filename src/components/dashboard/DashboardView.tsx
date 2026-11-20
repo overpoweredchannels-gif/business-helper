@@ -290,7 +290,7 @@ export function DashboardView({
                   ) : (
                     <div key={task.key} className="flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left">
                       {content}
-                      {task.status === "failed" && onRetryFailedReads && <button type="button" onClick={onRetryFailedReads} className="min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retry')}</button>}
+                      {(task.status === "failed" || task.status === "not-loaded") && onRetryFailedReads && <button type="button" onClick={onRetryFailedReads} className="min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retry')}</button>}
                     </div>
                   );
                 })}

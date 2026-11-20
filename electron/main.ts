@@ -31,8 +31,8 @@ const PACKAGED_HEALTH_TIMEOUT_MS = 90_000;
 const DEV_HEALTH_TIMEOUT_MS = 5_000;
 const HEALTH_POLL_INTERVAL_MS = 250;
 const SERVER_RESTART_DELAY_MS = 1_000;
-// After the error page is shown, re-check this often and open the app
-// automatically when the server finally answers (no dead end).
+// After the error page is shown, re-check this often in case the server
+// is still starting (slow cold start) and open the app when it answers.
 const ERROR_PAGE_RECOVERY_POLL_MS = 1_000;
 
 function escapeHtml(value: string): string {
@@ -63,12 +63,27 @@ function logServerOutput(chunk: string): void {
   }
 }
 
-function errorHtml(reason: string | null): string {
+// Slice 3 (HYBRID) — honest launch-failure page. The old text promised
+// the app would open on its own once the server was ready, which is false
+// re-checks the last URL, and a crashed server never answers on it again,
+// so the page stranded the user (B8). The page now says what is true —
+// the app keeps checking in the background — and the Retry button
+// re-probes the server right now and opens the app if it answers. The
+// probe runs in the page itself (a no-cors fetch of the loopback URL: any
+// HTTP answer means the server is up), so it works even though the page
+// is a data: URL with no preload bridge. The full B8 single-owner
+// lifecycle race fix (restart the server when it is actually dead) is a
+// separate slice if still needed after this one lands.
+function errorHtml(reason: string | null, appUrl: string | null): string {
   const detail =
     reason && reason.trim().length > 0
       ? `<p>The local app server reported:<br><pre style="background:#f3f3f3;padding:12px;overflow:auto;white-space:pre-wrap">${escapeHtml(reason)}</pre></p><p>The full log is in the Aankh data folder (server.log).</p>`
       : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start. Please close the app and open it again. If the problem continues, reinstall Aankh.</p><p>The app will open automatically once the local server is ready.</p>${detail}</body></html>`;
+  const retry =
+    appUrl !== null
+      ? `<p><button type="button" id="aankh-retry" style="min-height:44px;padding:10px 20px;font-size:15px;font-weight:600;color:#fff;background:#a44a2b;border:0;border-radius:8px;cursor:pointer">Retry</button></p><p id="aankh-retry-status" role="status"></p><script>var appUrl=${JSON.stringify(appUrl)};var btn=document.getElementById('aankh-retry');var status=document.getElementById('aankh-retry-status');btn.addEventListener('click',function(){btn.disabled=true;btn.textContent='Checking…';status.textContent='';fetch(appUrl,{mode:'no-cors',cache:'no-store'}).then(function(){window.location.href=appUrl;}).catch(function(){btn.disabled=false;btn.textContent='Retry';status.textContent='Still not responding — the server did not answer. Try again in a moment.';});});</script>`
+      : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start.</p><p>The app keeps checking in the background and will open if the server answers. If this page stays up, press Retry to check now, or close the app and open it again. If the problem continues, reinstall Aankh.</p>${detail}${retry}</body></html>`;
 }
 
 let serverProcess: ChildProcess | null = null;
@@ -712,11 +727,11 @@ function startStandaloneServer(port: number): ChildProcess {
 async function showErrorPage(): Promise<void> {
   if (mainWindow && !mainWindow.isDestroyed()) {
     await mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null))}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null, pendingAppUrl))}`,
     );
     // The server may still be starting (slow cold start) — keep
-    // polling and open the app when it answers instead of leaving a
-    // dead end.
+    // polling and open the app when it answers. The page's own Retry
+    // button covers the case where the server never answers.
     scheduleErrorPageRecoveryPoll();
   }
 }
@@ -789,7 +804,7 @@ function createWindow(url: string | null): void {
     void mainWindow.loadURL(url);
   } else {
     void mainWindow.loadURL(
-      `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null))}`,
+      `data:text/html;charset=utf-8,${encodeURIComponent(errorHtml(lastServerError || null, pendingAppUrl))}`,
     );
     scheduleErrorPageRecoveryPoll();
   }

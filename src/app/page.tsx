@@ -123,7 +123,7 @@ import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
 import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
-import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
+import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, shouldRetryAuthForNotLoadedReads, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfitMarginStatus } from "@/lib/dashboard/health";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
@@ -751,10 +751,10 @@ export default function Home() {
     useState<NewPurchaseExpenseReminder | null>(null);
   const [purchaseExpenseStatusMessage, setPurchaseExpenseStatusMessage] = useState<string | null>(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
+  // Slice 3: the signup form that set this is deleted (dead code) — the
+  // value stays "" and only serves as the last fallback in the org-name
+  // chains below. Kept so those chains keep their exact behaviour.
+  const [organizationName] = useState("");
   const [currentOrganization, setCurrentOrganization] = useState<any | null>(null);
   const [businessSettingsName, setBusinessSettingsName] = useState("");
   const [businessSettingsPhone, setBusinessSettingsPhone] = useState("");
@@ -2178,7 +2178,10 @@ export default function Home() {
     void fetchCustomers(cached.organizationId);
   };
 
-  const loadProfile = async (userId: string | null) => {
+  // Returns true when the profile resolved — live, or from the cached
+  // identity on desktop — and false when it failed to load. Callers that
+  // show a success message (sign-in) must only do so on true.
+  const loadProfile = async (userId: string | null): Promise<boolean> => {
     const profileRequestId = ++profileLoadRequestRef.current;
     dashboardAccountIdRef.current = null;
     dashboardReadTrackerRef.current!.invalidate();
@@ -2187,7 +2190,7 @@ export default function Home() {
       console.error("Invalid userId passed to loadProfile:", userId);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
-      return;
+      return false;
     }
 
     console.log("Loading profile for userId:", userId);
@@ -2198,41 +2201,52 @@ export default function Home() {
       .eq("id", userId)
       .maybeSingle();
 
-    if (profileRequestId !== profileLoadRequestRef.current) return;
+    if (profileRequestId !== profileLoadRequestRef.current) return false;
 
     if (profileError) {
       console.error("Profile load error details:", JSON.stringify(profileError, null, 2));
-      // Slice S1 (desktop only): a network failure loading the profile is
-      // an offline cold start, not a missing profile — restore the cached
-      // identity for this user instead of signing out. Slice S2: the async
-      // read checks SQLite first, so a wiped browser profile still restores.
-      if (isDesktopApp() && isNetworkError(profileError)) {
+      // Slice 3 (HYBRID, desktop only): a profile-load failure of ANY kind
+      // falls back to the cached identity for this user when one exists —
+      // restoreCachedIdentity activates the dashboard tracker from the
+      // cache, so the cards show real state instead of staying
+      // "Not loaded" forever with a dead Retry. Slice S1 only fell back
+      // on network errors; a 500 / timeout / PostgREST error left the
+      // tracker invalidated (B5). Slice S2: the async read checks SQLite
+      // first, so a wiped browser profile still restores. The cached
+      // identity is re-validated live on the next online transition.
+      if (isDesktopApp()) {
         const cached = identityCacheForUser(await readIdentityCacheAsync(), userId);
         if (cached) {
           restoreCachedIdentity(cached);
-          return;
+          return true;
         }
       }
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
       setAuthError(t('page.profileLoadFailed'));
-      return;
+      return false;
     }
 
     if (!profile) {
+      // No cache fallback here: the query succeeded and the row genuinely
+      // does not exist (e.g. RLS hides it when the org claim is missing) —
+      // restoring a stale cached identity would render the zero dashboard
+      // the claim block exists to prevent. This is an error screen.
       console.error("No profile found for user:", userId);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
       setAuthError(t('page.noProfileFound'));
-      return;
+      return false;
     }
 
     if (!profile.organization_id) {
+      // Same: an incomplete profile row is a real account state, not a
+      // load failure — no cache fallback.
       console.error("Profile has no organization_id for user:", userId);
       setCurrentProfile(null);
       setCurrentOrganizationId(null);
       setAuthError(t('page.profileIncompleteOrg'));
-      return;
+      return false;
     }
 
     let resolvedProfile = profile;
@@ -2243,7 +2257,7 @@ export default function Home() {
         body: JSON.stringify({ link_auth_user: true }),
       });
 
-      if (profileRequestId !== profileLoadRequestRef.current) return;
+      if (profileRequestId !== profileLoadRequestRef.current) return false;
 
       if (!authLinkResponse.ok) {
         console.error("Profile auth_user_id link error:", authLinkResponse.status);
@@ -2318,6 +2332,7 @@ export default function Home() {
     fetchPurchaseItems(resolvedProfile.organization_id);
     fetchSalesItems(resolvedProfile.organization_id, resolvedProfile);
     fetchInventoryTransactions(resolvedProfile.organization_id);
+    return true;
   };
 
   useEffect(() => {
@@ -2343,6 +2358,23 @@ export default function Home() {
     if (authRequestId !== authCheckRequestRef.current) return;
     if (sessionError) {
       console.error(`${logTag} sessionError:`, sessionError);
+      // Slice 3 (HYBRID, desktop only): a getSession failure is not proof
+      // of sign-out — a transient storage/network hiccup throws here too.
+      // When a cached identity exists, restore it so the app opens on the
+      // last workspace instead of dropping to the login screen. The cached
+      // profile id IS the auth user id, so the restored user keeps the
+      // dashboard's identity; the online-transition effect re-validates
+      // live (and signs out if the session is genuinely dead) as soon as
+      // the network returns. No cached identity → sign out as before.
+      if (isDesktopApp()) {
+        const cached = await readIdentityCacheAsync();
+        if (cached) {
+          setCurrentUser({ id: cached.profileId, email: cached.email ?? "" });
+          lastResolvedAuthUserIdRef.current = cached.profileId;
+          restoreCachedIdentity(cached);
+          return;
+        }
+      }
       lastResolvedAuthUserIdRef.current = null;
       setCurrentUser(null);
       setCurrentProfile(null);
@@ -2456,51 +2488,6 @@ export default function Home() {
     }
   };
 
-  const handleSignUp = async () => {
-    setAuthError(null);
-    setAuthMessage(null);
-    setAuthLoading(true);
-
-    if (!fullName.trim() || !organizationName.trim() || !email.trim() || !password.trim()) {
-      setAuthError(t('page.fillSignupFields'));
-      setAuthLoading(false);
-      return;
-    }
-
-    try {
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-            organization_name: organizationName.trim(),
-          },
-        },
-      });
-
-      if (signUpError) {
-        throw signUpError;
-      }
-
-      const user = signUpData.user;
-      if (!user) {
-        throw new Error(t('page.signupNoUser'));
-      }
-
-      setAuthMessage(t('page.accountCreatedVerify'));
-      setEmail("");
-      setPassword("");
-      setFullName("");
-setCustomerOrganizationName("");
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : t('page.failedCreateAccount'));
-      console.error("Signup error:", err);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   // Provision the workspace for the authenticated user via the cloud
   // endpoint (helper). Idempotent: returns alreadyProvisioned=true when the
   // workspace already exists. Throws on failure so the caller's existing
@@ -2531,54 +2518,6 @@ setCustomerOrganizationName("");
 
     console.log(`${logTag} ===== CLIENT PROVISION COMPLETE =====`);
     return { alreadyProvisioned: provisionBody.alreadyProvisioned, claimOk };
-  };
-
-  const handleLogin = async () => {
-    authCheckRequestRef.current += 1;
-    setAuthError(null);
-    setAuthMessage(null);
-    setAuthLoading(true);
-
-    if (!email.trim() || !password.trim()) {
-      setAuthError(t('page.enterEmailPassword'));
-      setAuthLoading(false);
-      return;
-    }
-
-    try {
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (loginError) {
-        throw loginError;
-      }
-
-      const user = loginData.user;
-      invalidateDashboardSession();
-      setCurrentUser(user ?? null);
-      if (user?.id) {
-        // Desktop provision skip (2026-11-19): same as checkAuthUser —
-        // the provision POST 500s on the local server (no service-role
-        // key), so skip it on desktop and load the profile directly.
-        // Web is unchanged: provision still runs.
-        if (shouldRunProvision({ isDesktop: isDesktopApp(), isOnline: typeof navigator === "undefined" || navigator.onLine })) {
-          await provisionWorkspace();
-        }
-        await loadProfile(user.id);
-      } else {
-        setCurrentProfile(null);
-        setCurrentOrganizationId(null);
-      }
-      setAuthMessage(t('page.loggedIn'));
-      setPassword("");
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : t('page.failedLogin'));
-      console.error("Login error:", err);
-    } finally {
-      setAuthLoading(false);
-    }
   };
 
   const handleLogout = async () => {
@@ -20678,6 +20617,18 @@ setCustomerOrganizationName("");
   const healthReadStatus = dashboardMetricReadStates["business-health"];
   const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
   const retryFailedDashboardReads = () => {
+    // Slice 3 (HYBRID): when any source is "not-loaded" and no profile is
+    // loaded, the read tracker was never activated (the profile load
+    // failed) — the tracker's scope check would ignore every re-run read,
+    // so Retry does nothing today (B5). Re-run checkAuthUser instead: it
+    // re-resolves the profile, re-activates the tracker and re-starts the
+    // reads. When a profile IS loaded the tracker is active and a
+    // "not-loaded" source is only transient, so the failed-only retry
+    // below applies.
+    if (shouldRetryAuthForNotLoadedReads(dashboardSourceStates, currentProfile !== null)) {
+      void checkAuthUser();
+      return;
+    }
     for (const source of dashboardReadSources) {
       if (dashboardSourceStates[source].status !== "failed") continue;
       switch (source) {

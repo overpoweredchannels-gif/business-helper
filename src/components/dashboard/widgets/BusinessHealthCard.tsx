@@ -56,7 +56,7 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
         <h3 className="mb-2 text-sm font-semibold text-foreground">{t('dashboard.businessHealth')}</h3>
         <p className="text-sm text-muted-foreground">{message}</p>
         {readStatus === "failed" && lastSuccessfulAt && <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(dateLocale)}</p>}
-        {readStatus === "failed" && onRetry && <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retryReads')}</button>}
+        {(readStatus === "failed" || readStatus === "not-loaded") && onRetry && <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retryReads')}</button>}
       </div>
     );
   }

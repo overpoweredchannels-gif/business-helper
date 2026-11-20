@@ -73,6 +73,26 @@ export function emptyDashboardSourceStates(): DashboardSourceStates {
   return Object.fromEntries(dashboardReadSources.map((source) => [source, { status: "not-loaded" }])) as DashboardSourceStates;
 }
 
+/**
+ * Slice 3 (HYBRID) — does a dashboard Retry need to re-run the auth /
+ * profile resolution instead of re-running the individual reads?
+ *
+ * When a source is "not-loaded" AND no profile is loaded, the read tracker
+ * was never activated (the profile load failed) — `begin()` ignores every
+ * read, so re-running the fetches would do nothing. The Retry must re-run
+ * `checkAuthUser`, which re-activates the tracker and re-starts the reads.
+ * When a profile IS loaded the tracker is active, so a "not-loaded" source
+ * is only transient (its fetch has not begun yet) and the normal
+ * failed-only retry applies.
+ */
+export function shouldRetryAuthForNotLoadedReads(
+  states: DashboardSourceStates,
+  profileLoaded: boolean,
+): boolean {
+  if (profileLoaded) return false;
+  return dashboardReadSources.some((source) => states[source].status === "not-loaded");
+}
+
 export function deriveDashboardMetricStates(sources: DashboardSourceStates): DashboardMetricStates {
   return Object.fromEntries(
     Object.entries(dashboardMetricDependencies).map(([metric, dependencies]) => {
