@@ -697,6 +697,11 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       // a HEAD response carries no body, so a failed count came
       // back as {"message":""} with no status/code — undiagnosable.
       // limit(0) runs the same exact-count work and returns a body.
+      // Per-shape failures in (3)/(4) are recorded, not thrown, so a
+      // timeout on one side cannot hide the other side's result
+      // (run #9: claim-less salesCount hit Postgres 57014 while the
+      // claim side was never measured). The gate reads this at the end.
+      const failures: string[] = [];
       console.log("\n=== CLAIM-LESS: server-side sales search (50,000 rows, RLS path) ===");
       const expectedSales = BIG_SALES_COUNT + created.saleIds.length;
       const bigSearchOut: Record<string, unknown> = {};
@@ -714,35 +719,50 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
         },
       ];
       for (const shape of bigShapes) {
-        const measureBig = async (c: SupabaseClient, label: string): Promise<{ s: Stats; rows: number; times: number[] }> => {
+        const measureBig = async (c: SupabaseClient, label: string): Promise<{ ok: true; s: Stats; rows: number; times: number[] } | { ok: false; error: string }> => {
           await shape.run(c); // warmup (not timed)
           const times: number[] = [];
           let rows = 0;
           for (let i = 0; i < SEARCH_RUNS; i++) {
             const { result, ms } = await timeAsync(async () => await shape.run(c));
             times.push(ms);
-            if (result.error) throw new Error(`server sales search ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}`);
+            if (result.error) return { ok: false, error: `server sales search ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}` };
             // Count queries return the count, list queries return rows.
             rows = typeof result.count === "number" ? result.count : Array.isArray(result.data) ? result.data.length : 0;
           }
-          return { s: stats(times), rows, times };
+          return { ok: true, s: stats(times), rows, times };
         };
+        // Both sides are always measured: a timeout on the claim-less
+        // side must not hide whether the claim side times out too.
         const less = await measureBig(userClient, "claim-less");
         const withClaim = await measureBig(claimClient, "claim");
+        if (!less.ok) {
+          failures.push(less.error);
+          console.log(`  ${shape.name}: claim-less FAILED: ${less.error}`);
+        }
+        if (!withClaim.ok) {
+          failures.push(withClaim.error);
+          console.log(`  ${shape.name}: claim FAILED: ${withClaim.error}`);
+        }
+        if (!less.ok || !withClaim.ok) continue;
         bigLessAll.push(...less.times);
         bigClaimAll.push(...withClaim.times);
         console.log(`  ${shape.name}: claim-less median ${less.s.median.toFixed(2)}ms (rows=${less.rows}) vs claim median ${withClaim.s.median.toFixed(2)}ms (rows=${withClaim.rows})`);
         bigSearchOut[shape.name] = { claimlessMs: less.s, claimMs: withClaim.s, rows: { claimless: less.rows, claim: withClaim.rows } };
         if (shape.name === "salesCount") {
-          if (less.rows !== expectedSales) throw new Error(`claim-less salesCount must return ${expectedSales} (got ${less.rows}) — Step 4 fallback missing, reads return nothing`);
-          if (withClaim.rows !== expectedSales) throw new Error(`claim salesCount must return ${expectedSales} (got ${withClaim.rows})`);
+          if (less.rows !== expectedSales) { failures.push(`claim-less salesCount must return ${expectedSales} (got ${less.rows}) — Step 4 fallback missing, reads return nothing`); continue; }
+          if (withClaim.rows !== expectedSales) { failures.push(`claim salesCount must return ${expectedSales} (got ${withClaim.rows})`); continue; }
         }
-        if (shape.name === "salesList50" && less.rows !== 50) throw new Error(`claim-less salesList50 must return 50 rows (got ${less.rows})`);
+        if (shape.name === "salesList50" && less.rows !== 50) { failures.push(`claim-less salesList50 must return 50 rows (got ${less.rows})`); continue; }
       }
-      const bigLessMedian = stats(bigLessAll).median;
-      const bigClaimMedian = stats(bigClaimAll).median;
-      const bigPct = ((bigLessMedian / bigClaimMedian) - 1) * 100;
-      console.log(`  server sales search combined median: claim-less ${bigLessMedian.toFixed(2)}ms vs claim ${bigClaimMedian.toFixed(2)}ms (${bigPct >= 0 ? "+" : ""}${bigPct.toFixed(1)}%)`);
+      const bigLessMedian = bigLessAll.length > 0 ? stats(bigLessAll).median : 0;
+      const bigClaimMedian = bigClaimAll.length > 0 ? stats(bigClaimAll).median : 0;
+      const bigPct = bigClaimMedian > 0 ? ((bigLessMedian / bigClaimMedian) - 1) * 100 : 0;
+      if (bigLessAll.length > 0 && bigClaimAll.length > 0) {
+        console.log(`  server sales search combined median: claim-less ${bigLessMedian.toFixed(2)}ms vs claim ${bigClaimMedian.toFixed(2)}ms (${bigPct >= 0 ? "+" : ""}${bigPct.toFixed(1)}%)`);
+      } else {
+        console.log(`  server sales search combined median: not measured (a shape failed — see failures above)`);
+      }
 
       // (4) Dashboard aggregate shapes at 50,000 rows (message 40):
       // the queries the dashboard actually runs, not just the
@@ -772,35 +792,50 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
         },
       ];
       for (const shape of aggShapes) {
-        const measureAgg = async (c: SupabaseClient, label: string): Promise<{ s: Stats; rows: number; times: number[] }> => {
+        const measureAgg = async (c: SupabaseClient, label: string): Promise<{ ok: true; s: Stats; rows: number; times: number[] } | { ok: false; error: string }> => {
           await shape.run(c); // warmup (not timed)
           const times: number[] = [];
           let rows = 0;
           for (let i = 0; i < SEARCH_RUNS; i++) {
             const { result, ms } = await timeAsync(async () => await shape.run(c));
             times.push(ms);
-            if (result.error) throw new Error(`dashboard aggregate ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}`);
+            if (result.error) return { ok: false, error: `dashboard aggregate ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}` };
             rows = typeof result.count === "number" ? result.count : Array.isArray(result.data) ? result.data.length : 0;
           }
-          return { s: stats(times), rows, times };
+          return { ok: true, s: stats(times), rows, times };
         };
+        // Both sides are always measured (see section (3)).
         const less = await measureAgg(userClient, "claim-less");
         const withClaim = await measureAgg(claimClient, "claim");
+        if (!less.ok) {
+          failures.push(less.error);
+          console.log(`  ${shape.name}: claim-less FAILED: ${less.error}`);
+        }
+        if (!withClaim.ok) {
+          failures.push(withClaim.error);
+          console.log(`  ${shape.name}: claim FAILED: ${withClaim.error}`);
+        }
+        if (!less.ok || !withClaim.ok) continue;
         aggLessAll.push(...less.times);
         aggClaimAll.push(...withClaim.times);
         console.log(`  ${shape.name}: claim-less median ${less.s.median.toFixed(2)}ms (rows=${less.rows}) vs claim median ${withClaim.s.median.toFixed(2)}ms (rows=${withClaim.rows})`);
         aggOut[shape.name] = { claimlessMs: less.s, claimMs: withClaim.s, rows: { claimless: less.rows, claim: withClaim.rows } };
         if (shape.name === "salesListJoin") {
-          if (less.rows !== 50) throw new Error(`claim-less salesListJoin must return 50 rows (got ${less.rows})`);
-          if (withClaim.rows !== 50) throw new Error(`claim salesListJoin must return 50 rows (got ${withClaim.rows})`);
+          if (less.rows !== 50) { failures.push(`claim-less salesListJoin must return 50 rows (got ${less.rows})`); continue; }
+          if (withClaim.rows !== 50) { failures.push(`claim salesListJoin must return 50 rows (got ${withClaim.rows})`); continue; }
         } else if (less.rows !== withClaim.rows) {
-          throw new Error(`${shape.name}: claim-less count ${less.rows} != claim count ${withClaim.rows} — the two users see different org totals`);
+          failures.push(`${shape.name}: claim-less count ${less.rows} != claim count ${withClaim.rows} — the two users see different org totals`);
+          continue;
         }
       }
-      const aggLessMedian = stats(aggLessAll).median;
-      const aggClaimMedian = stats(aggClaimAll).median;
-      const aggPct = ((aggLessMedian / aggClaimMedian) - 1) * 100;
-      console.log(`  dashboard aggregates combined median: claim-less ${aggLessMedian.toFixed(2)}ms vs claim ${aggClaimMedian.toFixed(2)}ms (${aggPct >= 0 ? "+" : ""}${aggPct.toFixed(1)}%)`);
+      const aggLessMedian = aggLessAll.length > 0 ? stats(aggLessAll).median : 0;
+      const aggClaimMedian = aggClaimAll.length > 0 ? stats(aggClaimAll).median : 0;
+      const aggPct = aggClaimMedian > 0 ? ((aggLessMedian / aggClaimMedian) - 1) * 100 : 0;
+      if (aggLessAll.length > 0 && aggClaimAll.length > 0) {
+        console.log(`  dashboard aggregates combined median: claim-less ${aggLessMedian.toFixed(2)}ms vs claim ${aggClaimMedian.toFixed(2)}ms (${aggPct >= 0 ? "+" : ""}${aggPct.toFixed(1)}%)`);
+      } else {
+        console.log(`  dashboard aggregates combined median: not measured (a shape failed — see failures above)`);
+      }
 
       // (5) Write-latency A/B (message 40): the atomic sale itself,
       // claim-less vs claim, interleaved — the save comparison in
@@ -833,7 +868,6 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       const writePct = ((writeLessStats.median / writeClaimStats.median) - 1) * 100;
       console.log(`  write latency median: claim-less ${writeLessStats.median.toFixed(2)}ms vs claim ${writeClaimStats.median.toFixed(2)}ms (${writePct >= 0 ? "+" : ""}${writePct.toFixed(1)}%)`);
 
-      const failures: string[] = [];
       if (rpcStats.median > CLAIM_BASELINE_RPC_MEDIAN_MS * CLAIMLESS_SLOWDOWN_LIMIT) {
         failures.push(`raw RPC median ${rpcStats.median.toFixed(2)}ms is more than 20% slower than the claim baseline ${CLAIM_BASELINE_RPC_MEDIAN_MS}ms`);
       }
@@ -892,5 +926,16 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   console.error(`BENCH FAILED: ${err instanceof Error ? err.message : String(err)}`);
+  // Still write whatever results were collected, so a failed run leaves
+  // a bench file for the record instead of nothing (run #9: no file,
+  // only console lines, because the throw skipped the write in main).
+  if (outPath) {
+    try {
+      writeFileSync(outPath, JSON.stringify(results, null, 2));
+      console.log(`partial results written to ${outPath}`);
+    } catch {
+      // The file is a nice-to-have; the console lines are the record.
+    }
+  }
   process.exit(1);
 });
