@@ -1,0 +1,37 @@
+# TEMPORARY branch-only lint check (NOT for main).
+#
+# The dev box cannot run page.tsx ESLint: the file needs >4608MB V8 heap
+# (V8 aborts at 4352 and 4608) but 5120 gets OOM-killed by the box.
+# GitHub runners have ~7GB RAM, so lint runs there instead.
+# This workflow is scoped to this branch only and stays branch-only —
+# the fix merge takes 685b8cc without this file.
+name: CI lint page.tsx (temporary)
+
+on:
+  push:
+    branches: [fix/ai-alert-uuid-entity-ids]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-page:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint src/app/page.tsx
+        run: npx eslint src/app/page.tsx
+        env:
+          NODE_OPTIONS: --max-old-space-size=5120
