@@ -30,6 +30,20 @@
 //                             comparison alone can give false comfort,
 //                             because the fallback profile lookup runs
 //                             inside RLS and its cost grows with data.
+//                             Message 40 additions: dashboard aggregate
+//                             shapes at 50,000 rows (status-filtered
+//                             count, date-range count, invoice list with
+//                             the customer join) under the same rule, and
+//                             a live write-latency A/B (atomic sale as
+//                             claim-less vs claim, interleaved) instead
+//                             of only the hardcoded run #4 baselines.
+//                             NOTE on EXPLAIN ANALYZE: PostgREST cannot
+//                             run EXPLAIN. The bench measures the same
+//                             RLS-evaluated query shapes at realistic
+//                             size, interleaved claim vs claim-less; a
+//                             true EXPLAIN ANALYZE of the RLS path needs
+//                             a session carrying the claim-less JWT and
+//                             remains a manual SQL-editor step.
 //
 // Targets (UMAIR 2026-11-20): online save < 2s, offline save instant,
 // product search instant, print < 1s. Test data: 5,000 products,
@@ -726,6 +740,95 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       const bigPct = ((bigLessMedian / bigClaimMedian) - 1) * 100;
       console.log(`  server sales search combined median: claim-less ${bigLessMedian.toFixed(2)}ms vs claim ${bigClaimMedian.toFixed(2)}ms (${bigPct >= 0 ? "+" : ""}${bigPct.toFixed(1)}%)`);
 
+      // (4) Dashboard aggregate shapes at 50,000 rows (message 40):
+      // the queries the dashboard actually runs, not just the
+      // history list — a status-filtered count, a date-range count,
+      // and the invoice list with the customer join. Same interleaved
+      // 20-run comparison and 20% gate. For the count shapes the
+      // assertion is cross-user equality (both users must see the
+      // same org total), not an absolute number, so a miscount on
+      // one side fails instead of passing silently.
+      console.log("\n=== CLAIM-LESS: dashboard aggregates (50,000 rows, RLS path) ===");
+      const aggOut: Record<string, unknown> = {};
+      const aggLessAll: number[] = [];
+      const aggClaimAll: number[] = [];
+      const aggShapes = [
+        {
+          name: "salesPaidCount",
+          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact", head: true }).eq("status", "paid"),
+        },
+        {
+          name: "salesDateRange",
+          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact", head: true }).gte("sale_date", saleDate).lte("sale_date", saleDate),
+        },
+        {
+          name: "salesListJoin",
+          run: (c: SupabaseClient) =>
+            c.from("sales_transactions").select("id,invoice_number,total_amount,customers(customer_name)").order("created_at", { ascending: false }).limit(50),
+        },
+      ];
+      for (const shape of aggShapes) {
+        const measureAgg = async (c: SupabaseClient, label: string): Promise<{ s: Stats; rows: number; times: number[] }> => {
+          await shape.run(c); // warmup (not timed)
+          const times: number[] = [];
+          let rows = 0;
+          for (let i = 0; i < SEARCH_RUNS; i++) {
+            const { result, ms } = await timeAsync(async () => await shape.run(c));
+            times.push(ms);
+            if (result.error) throw new Error(`dashboard aggregate ${shape.name} (${label}) failed: ${result.error.message}`);
+            rows = typeof result.count === "number" ? result.count : Array.isArray(result.data) ? result.data.length : 0;
+          }
+          return { s: stats(times), rows, times };
+        };
+        const less = await measureAgg(userClient, "claim-less");
+        const withClaim = await measureAgg(claimClient, "claim");
+        aggLessAll.push(...less.times);
+        aggClaimAll.push(...withClaim.times);
+        console.log(`  ${shape.name}: claim-less median ${less.s.median.toFixed(2)}ms (rows=${less.rows}) vs claim median ${withClaim.s.median.toFixed(2)}ms (rows=${withClaim.rows})`);
+        aggOut[shape.name] = { claimlessMs: less.s, claimMs: withClaim.s, rows: { claimless: less.rows, claim: withClaim.rows } };
+        if (shape.name === "salesListJoin") {
+          if (less.rows !== 50) throw new Error(`claim-less salesListJoin must return 50 rows (got ${less.rows})`);
+          if (withClaim.rows !== 50) throw new Error(`claim salesListJoin must return 50 rows (got ${withClaim.rows})`);
+        } else if (less.rows !== withClaim.rows) {
+          throw new Error(`${shape.name}: claim-less count ${less.rows} != claim count ${withClaim.rows} — the two users see different org totals`);
+        }
+      }
+      const aggLessMedian = stats(aggLessAll).median;
+      const aggClaimMedian = stats(aggClaimAll).median;
+      const aggPct = ((aggLessMedian / aggClaimMedian) - 1) * 100;
+      console.log(`  dashboard aggregates combined median: claim-less ${aggLessMedian.toFixed(2)}ms vs claim ${aggClaimMedian.toFixed(2)}ms (${aggPct >= 0 ? "+" : ""}${aggPct.toFixed(1)}%)`);
+
+      // (5) Write-latency A/B (message 40): the atomic sale itself,
+      // claim-less vs claim, interleaved — the save comparison in
+      // (1) is against hardcoded run #4 baselines, this one is live.
+      // Each sale inserts real rows (cleaned up with the org).
+      console.log("\n=== CLAIM-LESS: write latency A/B (atomic sale, interleaved) ===");
+      const WRITE_RUNS = 5;
+      const writeLess: number[] = [];
+      const writeClaim: number[] = [];
+      const callSaleRpcAs = (c: SupabaseClient, input: AtomicSaleInput) =>
+        (c.rpc as unknown as (fn: string, params: Record<string, unknown>) => Promise<RpcOutcome>)(
+          "create_sales_invoice_atomic", { p_request_id: randomUUID(), p_input: input },
+        );
+      for (let i = 0; i < WRITE_RUNS; i++) {
+        for (const [c, arr, label] of [
+          [userClient, writeLess, "claim-less"],
+          [claimClient, writeClaim, "claim"],
+        ] as const) {
+          const { result, ms } = await timeAsync(() => callSaleRpcAs(c, onlineInput()));
+          arr.push(ms);
+          if (result.error || !result.data?.transaction) {
+            throw new Error(`write-latency sale ${i + 1} (${label}) failed: ${result.error?.message ?? "no transaction returned"}`);
+          }
+          created.saleIds.push(String(result.data.transaction.id));
+          console.log(`  write ${i + 1} (${label}): ${ms.toFixed(0)}ms invoice=${String(result.data.transaction.invoice_number ?? "?")}`);
+        }
+      }
+      const writeLessStats = stats(writeLess);
+      const writeClaimStats = stats(writeClaim);
+      const writePct = ((writeLessStats.median / writeClaimStats.median) - 1) * 100;
+      console.log(`  write latency median: claim-less ${writeLessStats.median.toFixed(2)}ms vs claim ${writeClaimStats.median.toFixed(2)}ms (${writePct >= 0 ? "+" : ""}${writePct.toFixed(1)}%)`);
+
       const failures: string[] = [];
       if (rpcStats.median > CLAIM_BASELINE_RPC_MEDIAN_MS * CLAIMLESS_SLOWDOWN_LIMIT) {
         failures.push(`raw RPC median ${rpcStats.median.toFixed(2)}ms is more than 20% slower than the claim baseline ${CLAIM_BASELINE_RPC_MEDIAN_MS}ms`);
@@ -739,6 +842,12 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       if (bigLessMedian > bigClaimMedian * CLAIMLESS_SLOWDOWN_LIMIT) {
         failures.push(`server sales search median ${bigLessMedian.toFixed(2)}ms is more than 20% slower than the claim median ${bigClaimMedian.toFixed(2)}ms (${BIG_SALES_COUNT} sales rows)`);
       }
+      if (aggLessMedian > aggClaimMedian * CLAIMLESS_SLOWDOWN_LIMIT) {
+        failures.push(`dashboard aggregates median ${aggLessMedian.toFixed(2)}ms is more than 20% slower than the claim median ${aggClaimMedian.toFixed(2)}ms (${BIG_SALES_COUNT} sales rows)`);
+      }
+      if (writeLessStats.median > writeClaimStats.median * CLAIMLESS_SLOWDOWN_LIMIT) {
+        failures.push(`write latency median ${writeLessStats.median.toFixed(2)}ms is more than 20% slower than the claim median ${writeClaimStats.median.toFixed(2)}ms`);
+      }
       results.claimless = {
         mode: "claimless",
         baselines: { rawRpcMedianMs: CLAIM_BASELINE_RPC_MEDIAN_MS, clientMedianMs: CLAIM_BASELINE_CLIENT_MEDIAN_MS },
@@ -748,6 +857,8 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
         clientPctSlower: +clientPct.toFixed(1),
         serverSearch: { ...searchOut, claimlessMedianMs: claimlessSearchMedian, claimMedianMs: claimSearchMedian, pctSlower: +searchPct.toFixed(1) },
         bigSales: { seeded: bigSeeded, ...bigSearchOut, claimlessMedianMs: bigLessMedian, claimMedianMs: bigClaimMedian, pctSlower: +bigPct.toFixed(1) },
+        aggregates: { ...aggOut, claimlessMedianMs: aggLessMedian, claimMedianMs: aggClaimMedian, pctSlower: +aggPct.toFixed(1) },
+        writeLatency: { runs: WRITE_RUNS, claimlessMs: writeLessStats, claimMs: writeClaimStats, pctSlower: +writePct.toFixed(1) },
         gate: failures.length === 0 ? "pass" : "fail",
       };
       if (failures.length > 0) {
