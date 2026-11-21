@@ -14,7 +14,7 @@
 # variables -> Actions): DISPOSABLE_SUPABASE_SERVICE_KEY — the DISPOSABLE
 # project's service_role key (rtfowunsyrdygyvubnvs). NEVER the production
 # key: every script below refuses to run against any other Supabase URL,
-# and all three scripts create real test users and delete them again.
+# and every script creates real test users and deletes them again.
 # The key is passed ONLY through env, never echoed, and a guard step
 # fails the job if any test script logs a secret value.
 #
@@ -267,4 +267,89 @@ jobs:
         with:
           name: slice1b-dev-server-log
           path: dev-server.log
+          if-no-files-found: warn
+
+  # (4) The claim-less user test + bench (SQL pack Step 4 gate). It lives
+  # on its own branch (hybrid-claimless-user-test), so this job checks
+  # that branch out into a sub-directory and runs ITS scripts there —
+  # the same pattern as the idempotency job. The test proves a user with
+  # no organization_id claim but a profile row still reads exactly their
+  # own org's rows (Step 4 fallback) and nothing of the other org; the
+  # bench runs the online saves + server search as that claim-less user
+  # and fails if the median is >20% slower than the claim baseline.
+  claimless-user:
+    if: github.repository == 'overpoweredchannels-gif/business-helper'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the claimless-test branch
+        uses: actions/checkout@v4
+        with:
+          ref: hybrid-claimless-user-test
+          path: claimless
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: claimless/package-lock.json
+
+      - name: Install dependencies
+        working-directory: claimless
+        run: npm ci
+
+      - name: Secret-leak guard (test scripts must never log the key)
+        run: |
+          cat > /tmp/secret-leak-guard.mjs <<'GUARD_EOF'
+          import fs from "node:fs";
+          const files = process.argv.slice(2);
+          const problems = [];
+          for (const file of files) {
+            const lines = fs.readFileSync(file, "utf8").split("\n");
+            lines.forEach((line, idx) => {
+              if (!/console\.(log|error|warn|info|debug)\b/.test(line)) return;
+              const noStrings = line.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""');
+              if (/\b(SERVICE_KEY_APIKEY|SERVICE_KEY_BEARER|SUPABASE_SERVICE_ROLE_KEY|ANON_KEY)\b/.test(noStrings)) {
+                problems.push(`${file}:${idx + 1}: secret variable referenced in console output`);
+              }
+              for (const m of line.matchAll(/\$\{([^}]*)\}/g)) {
+                const expr = m[1]
+                  .replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, '""')
+                  .replace(/stripTokenParams/g, "");
+                if (/(token|hash|password|secret|key)/i.test(expr) && !/amr(Password|Recovery)/.test(expr)) {
+                  problems.push(`${file}:${idx + 1}: sensitive interpolation in console output: ${expr.trim()}`);
+                }
+              }
+            });
+          }
+          if (problems.length > 0) {
+            console.error(problems.join("\n"));
+            process.exit(1);
+          }
+          console.log(`secret-leak guard: OK (${files.length} files checked)`);
+          GUARD_EOF
+          node /tmp/secret-leak-guard.mjs claimless/scripts/test-claimless-user.ts claimless/scripts/bench-sales-invoicing-speed.ts
+
+      - name: Run the claim-less user test
+        working-directory: claimless
+        run: npx tsx scripts/test-claimless-user.ts
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_APIKEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_BEARER: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+      - name: Run the bench in claim-less mode
+        working-directory: claimless
+        run: npx tsx scripts/bench-sales-invoicing-speed.ts --mode online --claimless --online-runs 5 --out bench-results-claimless.json
+        env:
+          DISPOSABLE_SUPABASE_SERVICE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          BENCH_COMMIT: ${{ github.sha }}
+
+      - name: Upload claim-less bench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-claimless-results
+          path: claimless/bench-results-claimless.json
           if-no-files-found: warn
