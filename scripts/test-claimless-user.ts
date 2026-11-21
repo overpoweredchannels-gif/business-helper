@@ -14,6 +14,21 @@
 //       cross-org isolation holds for a claim-less user;
 //   (c) user B (claim-less, org B, nothing seeded there) reads products +
 //       customers: ZERO rows — B sees nothing of A's data either.
+//   (d) CLAIM-FIRST (Claude audit, message 24): a user WITH an
+//       organization_id claim whose profile row points at a DIFFERENT
+//       org must read the CLAIM org's rows, not the profile org's —
+//       the claim wins, per the coalesce order in current_org_id().
+//   (e) TWO PROFILE ROWS (Claude audit, message 24): the profiles
+//       schema forbids two rows for one auth_user_id (partial unique
+//       index profiles_auth_user_id_unique_idx, WHERE auth_user_id IS
+//       NOT NULL). The duplicate case cannot be constructed, so the
+//       test asserts the constraint itself: a second insert must fail
+//       with 23505 naming that index. If it ever succeeds, the test
+//       FAILS LOUDLY — the schema has drifted and the duplicate hazard
+//       the SQL pack pre-check guards against is live.
+//
+//   23 assertions in total (1-12: a/b/c; 13-19: claim-first;
+//   20-23: duplicate-profile constraint).
 //
 //   If A's reads return NOTHING, the test FAILS LOUDLY: the fallback is
 //   missing, i.e. Step 4 has not run on this project yet. If B's rows
@@ -112,6 +127,92 @@ const CUSTOMER_COUNT = 3;
 
 type TrackedOrg = { userId: string; email: string; orgId: string; orgName: string };
 const tracked: TrackedOrg[] = [];
+
+// Bare auth users with no org/profile (the duplicate-profile case
+// needs a second, valid auth.users id for the FK on profiles.id).
+const extraAuthUsers: string[] = [];
+
+async function makeBareAuthUser(tag: string): Promise<{ userId: string; email: string; password: string }> {
+  const s = suffix();
+  const email = `claimless-test-${tag}-${s}@example.invalid`;
+  const password = `Cl_${randomBytes(6).toString("base64url")}X1!`;
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  assert.equal(error, null, `createUser (${tag}) must not error (got ${error?.message ?? "?"})`);
+  assert.ok(data.user?.id, `createUser (${tag}) must return a user id`);
+  extraAuthUsers.push(data.user.id);
+  return { userId: data.user.id, email, password };
+}
+
+async function makeClaimFirstUser(): Promise<{
+  userId: string;
+  email: string;
+  password: string;
+  claimOrgId: string;
+  profileOrgId: string;
+}> {
+  const s = suffix();
+  const email = `claimless-test-claimfirst-${s}@example.invalid`;
+  const password = `Cl_${randomBytes(6).toString("base64url")}X1!`;
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  assert.equal(error, null, `createUser (claim-first) must not error (got ${error?.message ?? "?"})`);
+  assert.ok(data.user?.id, "createUser (claim-first) must return a user id");
+  const userId = data.user.id;
+  // Two orgs: the claim points at org C, the profile row at org D.
+  const mkOrg = async (tag: string): Promise<string> => {
+    const { data: org, error: orgError } = await admin
+      .from("organizations")
+      .insert({
+        name: `CLAIMLESS-TEST-claimfirst-${tag}-${s}`,
+        phone: null,
+        address: null,
+        city: null,
+        invoice_footer_note: null,
+        default_payment_terms: "Due on receipt",
+      })
+      .select("id")
+      .single();
+    assert.equal(orgError, null, `org insert (claim-first ${tag}) must not error (got ${orgError?.message ?? "?"})`);
+    assert.ok(org?.id, `org insert (claim-first ${tag}) must return an org id`);
+    return org.id as string;
+  };
+  const claimOrgId = await mkOrg("claim");
+  const profileOrgId = await mkOrg("profile");
+  // Set the claim AFTER createUser — the same proven pattern as the
+  // bench script's claim user (updateUserById + verify with
+  // getUserById). Do NOT call /api/auth/provision here: provision
+  // would write the claim AND the profile for the same org.
+  const { error: claimError } = await admin.auth.admin.updateUserById(userId, {
+    app_metadata: { organization_id: claimOrgId },
+  });
+  assert.equal(claimError, null, `claim set (claim-first) must not error (got ${claimError?.message ?? "?"})`);
+  const { error: profileError } = await admin.from("profiles").insert({
+    id: userId,
+    organization_id: profileOrgId,
+    auth_user_id: userId,
+    full_name: "Claimless Test",
+    email,
+    display_name: "Claimless Test",
+    role: "owner",
+    role_name: "owner",
+    is_active: true,
+  });
+  assert.equal(profileError, null, `profile insert (claim-first) must not error (got ${profileError?.message ?? "?"})`);
+  await seedOrgRows(claimOrgId, claimOrgId.slice(0, 8));
+  await seedOrgRows(profileOrgId, profileOrgId.slice(0, 8));
+  // Two tracked entries share this userId: cleanup deletes both orgs
+  // (the second pass no-ops on rows the first pass already removed).
+  tracked.push({ userId, email, orgId: claimOrgId, orgName: `CLAIMLESS-TEST-claimfirst-claim-${s}` });
+  tracked.push({ userId, email, orgId: profileOrgId, orgName: `CLAIMLESS-TEST-claimfirst-profile-${s}` });
+  return { userId, email, password, claimOrgId, profileOrgId };
+}
 
 async function makeClaimlessUser(tag: string): Promise<TrackedOrg & { password: string }> {
   const s = suffix();
@@ -259,6 +360,10 @@ async function cleanup(): Promise<void> {
     const del = await admin.auth.admin.deleteUser(userId);
     console.log(`cleanup: auth user ${userId}: ${del.error ? `ERROR ${del.error.message}` : "deleted"}`);
   }
+  for (const uid of extraAuthUsers) {
+    const del = await admin.auth.admin.deleteUser(uid);
+    console.log(`cleanup: extra auth user ${uid}: ${del.error ? `ERROR ${del.error.message}` : "deleted"}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -352,6 +457,116 @@ async function main(): Promise<void> {
       `12. user B must read ZERO customers (got ${customersB.length}) — org A's rows leaked to B`,
     );
     console.log("(c) user B reads OK — zero rows (nothing of org A visible)");
+
+    // ── (5) CLAIM-FIRST: the claim org wins over the profile org ──
+    // current_org_id() coalesces claim first, profile fallback last,
+    // so a user whose claim says org C but whose profile says org D
+    // must see C's rows and none of D's. If the reads came back with
+    // D's rows, the claim would not be winning and the Step 4
+    // fallback would be shadowing the claim.
+    const userC = await makeClaimFirstUser();
+    assert.equal(
+      await getUserClaim(userC.userId),
+      userC.claimOrgId,
+      "13. claim-first user must carry the claim org in app_metadata",
+    );
+    assert.equal(
+      await getProfileOrg(userC.userId),
+      userC.profileOrgId,
+      "14. claim-first user's profile row must carry the profile org",
+    );
+    const sessionC = userClientFor(userC.email, userC.password);
+    await sessionC.signIn();
+    const clientC = sessionC.client;
+    const productsC = await readRows(clientC, "products", null);
+    assert.equal(
+      productsC.length,
+      PRODUCT_COUNT,
+      `15. claim-first user must read exactly ${PRODUCT_COUNT} products of the CLAIM org (got ${productsC.length}) — the claim did not win over the profile org`,
+    );
+    assert.ok(
+      productsC.every((r) => r.organization_id === userC.claimOrgId),
+      `16. every product the claim-first user reads must belong to the CLAIM org (got orgs: ${[...new Set(productsC.map((r) => r.organization_id))].join(", ")})`,
+    );
+    const productsDSeenByC = await readRows(clientC, "products", userC.profileOrgId);
+    assert.equal(
+      productsDSeenByC.length,
+      0,
+      `17. claim-first user must read ZERO products of the PROFILE org (got ${productsDSeenByC.length}) — the profile org leaked past the claim`,
+    );
+    const customersC = await readRows(clientC, "customers", null);
+    assert.equal(
+      customersC.length,
+      CUSTOMER_COUNT,
+      `18. claim-first user must read exactly ${CUSTOMER_COUNT} customers of the CLAIM org (got ${customersC.length})`,
+    );
+    assert.ok(
+      customersC.every((r) => r.organization_id === userC.claimOrgId),
+      `19. every customer the claim-first user reads must belong to the CLAIM org (got orgs: ${[...new Set(customersC.map((r) => r.organization_id))].join(", ")})`,
+    );
+    console.log("(d) claim-first OK — reads return the CLAIM org's rows, profile org invisible");
+
+    // ── (6) TWO PROFILE ROWS: the schema forbids them ──
+    // Repo evidence (20261011 snapshot): profiles carries the partial
+    // unique index profiles_auth_user_id_unique_idx on (auth_user_id)
+    // WHERE auth_user_id IS NOT NULL, plus PRIMARY KEY (id). Two rows
+    // for one auth_user_id cannot exist, so current_org_id()'s
+    // "limit 1 without order by" can never pick the wrong one of a
+    // pair — the hazard the SQL pack pre-check guards against could
+    // only come from rows created before the index existed. This case
+    // asserts the constraint itself: the second insert must fail with
+    // 23505 naming that index. If it ever succeeds, the test FAILS
+    // LOUDLY — the schema has drifted and the duplicate hazard is live.
+    const userE = await makeClaimlessUser("e");
+    const userF = await makeBareAuthUser("f");
+    const { error: dupError } = await admin.from("profiles").insert({
+      id: userF.userId,
+      organization_id: userE.orgId,
+      auth_user_id: userE.userId,
+      full_name: "Claimless Test Duplicate",
+      email: userF.email,
+      display_name: "Claimless Test Duplicate",
+      role: "owner",
+      role_name: "owner",
+      is_active: true,
+    });
+    if (!dupError) {
+      const { data: dupRows } = await admin
+        .from("profiles")
+        .select("id, organization_id")
+        .or(`id.eq.${userE.userId},auth_user_id.eq.${userE.userId}`);
+      console.log("=".repeat(70));
+      console.log("SCHEMA DRIFT: a second profile row for the same auth_user_id");
+      console.log("was ACCEPTED — profiles_auth_user_id_unique_idx is missing");
+      console.log("on this project. The duplicate-profile hazard is LIVE:");
+      console.log(`  rows for user E: ${JSON.stringify(dupRows)}`);
+      console.log("  current_org_id() 'limit 1' can pick either org.");
+      console.log("=".repeat(70));
+    }
+    assert.ok(
+      dupError,
+      "20. second profile row for the same auth_user_id must be rejected — the insert succeeded, so profiles_auth_user_id_unique_idx is missing on this project",
+    );
+    assert.equal(
+      dupError.code,
+      "23505",
+      `21. duplicate profile insert must fail with unique-violation 23505 (got ${dupError.code}: ${dupError.message})`,
+    );
+    assert.ok(
+      dupError.message.includes("profiles_auth_user_id_unique_idx"),
+      `22. duplicate violation must name profiles_auth_user_id_unique_idx (got: ${dupError.message})`,
+    );
+    const { data: eProfiles, error: eProfilesError } = await admin
+      .from("profiles")
+      .select("id")
+      .or(`id.eq.${userE.userId},auth_user_id.eq.${userE.userId}`);
+    assert.equal(eProfilesError, null, `profile re-read must not error (got ${eProfilesError?.message ?? "?"})`);
+    assert.equal(
+      (eProfiles ?? []).length,
+      1,
+      `23. exactly one profile row must exist for user E after the rejected insert (got ${(eProfiles ?? []).length})`,
+    );
+    console.log("(e) duplicate-profile constraint OK — second row rejected with 23505 on profiles_auth_user_id_unique_idx");
   } finally {
     await cleanup();
   }
