@@ -159,6 +159,16 @@ assert.ok(
   "SUPABASE_SERVICE_ROLE_KEY_BEARER must be a JWT or an hsurr: vault surrogate (the disposable .env.local currently holds the qa-fail-closed-dummy-key sentinel) — supply the real disposable service key before running this test",
 );
 
+// HARD SAFETY GUARD (Claude message 42): this script creates users,
+// poisons metadata and writes data. It must ONLY ever run against the
+// disposable project. Abort unless the Supabase URL contains the
+// disposable project ref — running against production by mistake
+// would be a serious incident.
+assert.ok(
+  SUPABASE_URL.includes("rtfowunsyrdygyvubnvs"),
+  "REFUSING TO RUN: NEXT_PUBLIC_SUPABASE_URL must point at the disposable project (ref rtfowunsyrdygyvubnvs) — this script creates users and poisons metadata and must never run against production",
+);
+
 const suffix = () => randomBytes(4).toString("hex");
 
 // The admin client must send the service key in BOTH headers, from TWO
