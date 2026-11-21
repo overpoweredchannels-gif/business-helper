@@ -22,6 +22,14 @@
 //                             user AND for a claim user in the same org,
 //                             and fails if the claim-less search median is
 //                             >20% slower than the claim search median.
+//                             Realistic-size gate (Claude audit, message
+//                             24): also seeds 50,000 sales rows and
+//                             compares a server-side sales read (full-org
+//                             count + recent-50 list) claim vs claim-less
+//                             under the same >20% rule — the 5,000-product
+//                             comparison alone can give false comfort,
+//                             because the fallback profile lookup runs
+//                             inside RLS and its cost grows with data.
 //
 // Targets (UMAIR 2026-11-20): online save < 2s, offline save instant,
 // product search instant, print < 1s. Test data: 5,000 products,
@@ -63,6 +71,14 @@ import { cloneDefaultTemplate } from "../src/lib/print/default-templates";
 const PRODUCT_COUNT = 5000;
 const CUSTOMER_COUNT = 2000;
 const INVOICE_LINES = 100;
+// Realistic-size gate (Claude audit, message 24): the 5,000-product
+// search comparison can give false comfort — the fallback profile
+// lookup runs inside RLS and its cost grows with data. The claim-less
+// run therefore also seeds 50,000 sales rows in the test org and
+// compares a server-side sales read (full-org count + recent-50 list)
+// claim vs claim-less under the same >20% rule.
+const BIG_SALES_COUNT = 50000;
+const BIG_SALES_BATCH = 500;
 const SCOPE = "bench-org:bench-profile";
 
 type Stats = { n: number; min: number; median: number; p95: number; p99: number; max: number; mean: number };
@@ -312,9 +328,11 @@ async function runLocal(): Promise<void> {
 // claim (same direct createUser + org + profile as claim mode — provision
 // is never called, it would write the claim). The save RPC resolves the
 // org from the profile row directly (SECURITY DEFINER, profiles lookup),
-// so the save comparison is a weak gate by construction; the STRONG gate
-// is the server-side product search below, whose RLS policies evaluate
-// current_org_id() — claim read vs Step 4 fallback profile lookup.
+// so the save comparison is a weak gate by construction; the STRONG gates
+// are the server-side searches below, whose RLS policies evaluate
+// current_org_id() — claim read vs Step 4 fallback profile lookup —
+// products on 5,000 rows, and sales on 50,000 rows (the realistic-size
+// gate: a per-row fallback cost only shows up at data size).
 // ---------------------------------------------------------------------------
 async function runOnline(claimlessMode: boolean): Promise<void> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -334,15 +352,24 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
   // rejects passwords over 72 chars (CI run 44795179725).
   const password = randomUUID();
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const created = { userId: "", orgId: "", productIds: [] as string[], customerIds: [] as string[], saleIds: [] as string[], extraUserIds: [] as string[] };
+  const created = { userId: "", orgId: "", productIds: [] as string[], customerIds: [] as string[], saleIds: [] as string[], extraUserIds: [] as string[], bigSaleCount: 0 };
 
   const cleanup = async () => {
     const report: string[] = [];
     try {
       if (created.saleIds.length) {
         await admin.from("sales_items").delete().in("sales_transaction_id", created.saleIds);
-        const { error } = await admin.from("sales_transactions").delete().in("id", created.saleIds);
-        report.push(`sales=${created.saleIds.length}${error ? ` (delete error: ${error.message})` : ""}`);
+      }
+      if (created.orgId) {
+        // Org-wide delete covers the real saves AND the 50,000 seeded
+        // big-sales rows (they have no items). The org is test-only,
+        // created by this run, so every sale in it is ours.
+        const { data: deletedSales, error } = await admin
+          .from("sales_transactions")
+          .delete()
+          .eq("organization_id", created.orgId)
+          .select("id");
+        report.push(`sales=${deletedSales?.length ?? "?"}${error ? ` (delete error: ${error.message})` : ""}`);
       }
       for (let i = 0; i < created.productIds.length; i += 500) {
         await admin.from("products").delete().in("id", created.productIds.slice(i, i + 500));
@@ -515,6 +542,57 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       console.log(`  raw RPC median ${rpcStats.median.toFixed(2)}ms vs claim baseline ${CLAIM_BASELINE_RPC_MEDIAN_MS}ms (${rpcPct >= 0 ? "+" : ""}${rpcPct.toFixed(1)}%)`);
       console.log(`  client path median ${clientStats.median.toFixed(2)}ms vs claim baseline ${CLAIM_BASELINE_CLIENT_MEDIAN_MS}ms (${clientPct >= 0 ? "+" : ""}${clientPct.toFixed(1)}%)`);
 
+      // (1b) Seed 50,000 sales rows — the realistic-size gate. Same
+      // columns the create_sales_invoice_atomic RPC writes (phase 13),
+      // so a direct insert cannot fail on a NOT NULL the RPC itself
+      // satisfies; ids/defaults come from the table. Spread across all
+      // 2,000 seeded customers (25 each): the
+      // sync_customer_outstanding_on_sale trigger recomputes that
+      // customer's stored balance per row, and 50,000 rows on ONE
+      // customer would make each recompute scan a growing set. Cash
+      // 'paid' sales leave derived outstanding at 0, so after the
+      // first row per customer the recompute is a small indexed scan
+      // with no UPDATE. No items are seeded (the inventory triggers
+      // live on sales_items, not sales_transactions).
+      console.log(`\n=== CLAIM-LESS: seed ${BIG_SALES_COUNT} sales rows (realistic-size gate) ===`);
+      const bigSeedStart = performance.now();
+      let bigSeeded = 0;
+      for (let i = 0; i < BIG_SALES_COUNT; i += BIG_SALES_BATCH) {
+        const batch = Array.from({ length: Math.min(BIG_SALES_BATCH, BIG_SALES_COUNT - i) }, (_, j) => {
+          const n = i + j + 1;
+          const total = 100 + (n % 50);
+          return {
+            organization_id: created.orgId,
+            customer_id: created.customerIds[(n - 1) % created.customerIds.length],
+            invoice_number: `BENCH-BIG-${stamp}-${String(n).padStart(6, "0")}`,
+            sale_date: saleDate,
+            payment_type: "cash",
+            credit_due_date: null,
+            credit_limit_snapshot: null,
+            credit_days_snapshot: null,
+            notes: null,
+            total_amount: total,
+            discount_amount: 0,
+            tax_rate: 0,
+            tax_amount: 0,
+            status: "paid",
+            invoice_type: "sales",
+            created_by_profile_id: created.userId,
+            request_id: randomUUID(),
+            request_fingerprint: `bench-big-${stamp}-${n}`,
+            cash_received: total,
+            change_due: 0,
+          };
+        });
+        const { error: bigError } = await admin.from("sales_transactions").insert(batch);
+        if (bigError) throw new Error(`big sales seed batch ${i} failed: ${bigError.message}`);
+        bigSeeded += batch.length;
+        if (bigSeeded % 10000 === 0) console.log(`  seeded ${bigSeeded}/${BIG_SALES_COUNT} sales...`);
+      }
+      created.bigSaleCount = bigSeeded;
+      console.log(`  seeded ${bigSeeded} sales in ${((performance.now() - bigSeedStart) / 1000).toFixed(1)}s (spread over ${created.customerIds.length} customers)`);
+      results.onlineBigSeed = { sales: bigSeeded, ms: +(performance.now() - bigSeedStart).toFixed(1) };
+
       // (2) Server-side product search — the STRONG gate. These PostgREST
       // reads go through the products RLS policy, which evaluates
       // current_org_id(): a JWT claim read for the claim user, the Step 4
@@ -593,6 +671,61 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       const searchPct = ((claimlessSearchMedian / claimSearchMedian) - 1) * 100;
       console.log(`  server search combined median: claim-less ${claimlessSearchMedian.toFixed(2)}ms vs claim ${claimSearchMedian.toFixed(2)}ms (${searchPct >= 0 ? "+" : ""}${searchPct.toFixed(1)}%)`);
 
+      // (3) Server-side SALES search on the 50,000 seeded rows — the
+      // realistic-size comparison. salesCount evaluates the
+      // sales_transactions RLS policy (organization_id =
+      // current_org_id()) over the whole org: a per-row fallback
+      // lookup would show up here, where the 5,000-product list
+      // cannot see it. salesList50 is the realistic history-list
+      // shape. Both users are in the same org, so the only
+      // difference between the two measurements is the claim itself.
+      console.log("\n=== CLAIM-LESS: server-side sales search (50,000 rows, RLS path) ===");
+      const expectedSales = BIG_SALES_COUNT + created.saleIds.length;
+      const bigSearchOut: Record<string, unknown> = {};
+      const bigLessAll: number[] = [];
+      const bigClaimAll: number[] = [];
+      const bigShapes = [
+        {
+          name: "salesCount",
+          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact", head: true }),
+        },
+        {
+          name: "salesList50",
+          run: (c: SupabaseClient) =>
+            c.from("sales_transactions").select("id,invoice_number,total_amount").order("created_at", { ascending: false }).limit(50),
+        },
+      ];
+      for (const shape of bigShapes) {
+        const measureBig = async (c: SupabaseClient, label: string): Promise<{ s: Stats; rows: number; times: number[] }> => {
+          await shape.run(c); // warmup (not timed)
+          const times: number[] = [];
+          let rows = 0;
+          for (let i = 0; i < SEARCH_RUNS; i++) {
+            const { result, ms } = await timeAsync(async () => await shape.run(c));
+            times.push(ms);
+            if (result.error) throw new Error(`server sales search ${shape.name} (${label}) failed: ${result.error.message}`);
+            // Count queries return the count, list queries return rows.
+            rows = typeof result.count === "number" ? result.count : Array.isArray(result.data) ? result.data.length : 0;
+          }
+          return { s: stats(times), rows, times };
+        };
+        const less = await measureBig(userClient, "claim-less");
+        const withClaim = await measureBig(claimClient, "claim");
+        bigLessAll.push(...less.times);
+        bigClaimAll.push(...withClaim.times);
+        console.log(`  ${shape.name}: claim-less median ${less.s.median.toFixed(2)}ms (rows=${less.rows}) vs claim median ${withClaim.s.median.toFixed(2)}ms (rows=${withClaim.rows})`);
+        bigSearchOut[shape.name] = { claimlessMs: less.s, claimMs: withClaim.s, rows: { claimless: less.rows, claim: withClaim.rows } };
+        if (shape.name === "salesCount") {
+          if (less.rows !== expectedSales) throw new Error(`claim-less salesCount must return ${expectedSales} (got ${less.rows}) — Step 4 fallback missing, reads return nothing`);
+          if (withClaim.rows !== expectedSales) throw new Error(`claim salesCount must return ${expectedSales} (got ${withClaim.rows})`);
+        }
+        if (shape.name === "salesList50" && less.rows !== 50) throw new Error(`claim-less salesList50 must return 50 rows (got ${less.rows})`);
+      }
+      const bigLessMedian = stats(bigLessAll).median;
+      const bigClaimMedian = stats(bigClaimAll).median;
+      const bigPct = ((bigLessMedian / bigClaimMedian) - 1) * 100;
+      console.log(`  server sales search combined median: claim-less ${bigLessMedian.toFixed(2)}ms vs claim ${bigClaimMedian.toFixed(2)}ms (${bigPct >= 0 ? "+" : ""}${bigPct.toFixed(1)}%)`);
+
       const failures: string[] = [];
       if (rpcStats.median > CLAIM_BASELINE_RPC_MEDIAN_MS * CLAIMLESS_SLOWDOWN_LIMIT) {
         failures.push(`raw RPC median ${rpcStats.median.toFixed(2)}ms is more than 20% slower than the claim baseline ${CLAIM_BASELINE_RPC_MEDIAN_MS}ms`);
@@ -603,6 +736,9 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       if (claimlessSearchMedian > claimSearchMedian * CLAIMLESS_SLOWDOWN_LIMIT) {
         failures.push(`server search median ${claimlessSearchMedian.toFixed(2)}ms is more than 20% slower than the claim median ${claimSearchMedian.toFixed(2)}ms`);
       }
+      if (bigLessMedian > bigClaimMedian * CLAIMLESS_SLOWDOWN_LIMIT) {
+        failures.push(`server sales search median ${bigLessMedian.toFixed(2)}ms is more than 20% slower than the claim median ${bigClaimMedian.toFixed(2)}ms (${BIG_SALES_COUNT} sales rows)`);
+      }
       results.claimless = {
         mode: "claimless",
         baselines: { rawRpcMedianMs: CLAIM_BASELINE_RPC_MEDIAN_MS, clientMedianMs: CLAIM_BASELINE_CLIENT_MEDIAN_MS },
@@ -611,6 +747,7 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
         rpcPctSlower: +rpcPct.toFixed(1),
         clientPctSlower: +clientPct.toFixed(1),
         serverSearch: { ...searchOut, claimlessMedianMs: claimlessSearchMedian, claimMedianMs: claimSearchMedian, pctSlower: +searchPct.toFixed(1) },
+        bigSales: { seeded: bigSeeded, ...bigSearchOut, claimlessMedianMs: bigLessMedian, claimMedianMs: bigClaimMedian, pctSlower: +bigPct.toFixed(1) },
         gate: failures.length === 0 ? "pass" : "fail",
       };
       if (failures.length > 0) {
