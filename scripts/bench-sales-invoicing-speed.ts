@@ -693,6 +693,10 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       // cannot see it. salesList50 is the realistic history-list
       // shape. Both users are in the same org, so the only
       // difference between the two measurements is the claim itself.
+      // Count shapes use .limit(0) instead of head:true (run #8):
+      // a HEAD response carries no body, so a failed count came
+      // back as {"message":""} with no status/code — undiagnosable.
+      // limit(0) runs the same exact-count work and returns a body.
       console.log("\n=== CLAIM-LESS: server-side sales search (50,000 rows, RLS path) ===");
       const expectedSales = BIG_SALES_COUNT + created.saleIds.length;
       const bigSearchOut: Record<string, unknown> = {};
@@ -701,7 +705,7 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       const bigShapes = [
         {
           name: "salesCount",
-          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact", head: true }),
+          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact" }).limit(0),
         },
         {
           name: "salesList50",
@@ -755,11 +759,11 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
       const aggShapes = [
         {
           name: "salesPaidCount",
-          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact", head: true }).eq("status", "paid"),
+          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact" }).limit(0).eq("status", "paid"),
         },
         {
           name: "salesDateRange",
-          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact", head: true }).gte("sale_date", saleDate).lte("sale_date", saleDate),
+          run: (c: SupabaseClient) => c.from("sales_transactions").select("id", { count: "exact" }).limit(0).gte("sale_date", saleDate).lte("sale_date", saleDate),
         },
         {
           name: "salesListJoin",
