@@ -11,13 +11,24 @@
 //                             createAtomicSale client path AND a raw RPC call).
 //                             Cleans up every row + the test user afterwards.
 //   --mode all     local + online.
+//   --claimless    (online mode only) Run the online measurements as a
+//                             CLAIM-LESS user (auth user + profile row, NO
+//                             organization_id claim — the Step 4 gate) and
+//                             compare against the claim baselines below.
+//                             Fails (exit 1) if the claim-less median save
+//                             is >20% slower than the matching claim median.
+//                             Also measures a server-side product search
+//                             (PostgREST, RLS applies) for the claim-less
+//                             user AND for a claim user in the same org,
+//                             and fails if the claim-less search median is
+//                             >20% slower than the claim search median.
 //
 // Targets (UMAIR 2026-11-20): online save < 2s, offline save instant,
 // product search instant, print < 1s. Test data: 5,000 products,
 // 2,000 customers, 100-line invoice.
 //
 // Run with:  npx tsx scripts/bench-sales-invoicing-speed.ts [--mode local|online|all]
-//            [--runs N] [--online-runs N] [--out results.json]
+//            [--runs N] [--online-runs N] [--out results.json] [--claimless]
 //
 // Env (online mode only; never printed):
 //   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -84,6 +95,20 @@ const mode = args.get("mode") ?? "local";
 const runs = Number(args.get("runs") ?? 50);
 const onlineRuns = Number(args.get("online-runs") ?? 5);
 const outPath = args.get("out") ?? null;
+// Bare flag only (--claimless); --claimless=false would still count as set.
+const claimless = process.argv.includes("--claimless");
+if (claimless && mode === "local") {
+  console.log("note: --claimless applies to online mode only — local measurements (SQLite, localStorage, in-memory search) are claim-independent, so they run unchanged.");
+}
+
+// Claim baselines for the --claimless gate — bench run #4 (44801788044,
+// main e3cc120, verified): raw RPC median 753.32ms, client-path median
+// 743.06ms (100-line invoice, 5,000 products / 2,000 customers, n=5).
+// The claim-less gate fails if the claim-less median save is more than
+// 20% slower than the matching claim median.
+const CLAIM_BASELINE_RPC_MEDIAN_MS = 753.32;
+const CLAIM_BASELINE_CLIENT_MEDIAN_MS = 743.06;
+const CLAIMLESS_SLOWDOWN_LIMIT = 1.2;
 if (!["local", "online", "all"].includes(mode)) {
   console.error(`Unknown --mode ${JSON.stringify(mode)} (local|online|all)`);
   process.exit(2);
@@ -282,8 +307,16 @@ async function runLocal(): Promise<void> {
 
 // ---------------------------------------------------------------------------
 // ONLINE MODE (CI / disposable project)
+//
+// In --claimless mode the test owner is created WITHOUT an organization_id
+// claim (same direct createUser + org + profile as claim mode — provision
+// is never called, it would write the claim). The save RPC resolves the
+// org from the profile row directly (SECURITY DEFINER, profiles lookup),
+// so the save comparison is a weak gate by construction; the STRONG gate
+// is the server-side product search below, whose RLS policies evaluate
+// current_org_id() — claim read vs Step 4 fallback profile lookup.
 // ---------------------------------------------------------------------------
-async function runOnline(): Promise<void> {
+async function runOnline(claimlessMode: boolean): Promise<void> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = process.env.DISPOSABLE_SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -301,7 +334,7 @@ async function runOnline(): Promise<void> {
   // rejects passwords over 72 chars (CI run 44795179725).
   const password = randomUUID();
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const created = { userId: "", orgId: "", productIds: [] as string[], customerIds: [] as string[], saleIds: [] as string[] };
+  const created = { userId: "", orgId: "", productIds: [] as string[], customerIds: [] as string[], saleIds: [] as string[], extraUserIds: [] as string[] };
 
   const cleanup = async () => {
     const report: string[] = [];
@@ -319,18 +352,20 @@ async function runOnline(): Promise<void> {
         await admin.from("customers").delete().in("id", created.customerIds.slice(i, i + 500));
       }
       if (created.customerIds.length) report.push(`customers=${created.customerIds.length}`);
-      if (created.userId) {
-        await admin.from("profiles").delete().eq("id", created.userId);
-        report.push("profile=1");
+      const allUserIds = [created.userId, ...created.extraUserIds].filter(Boolean);
+      for (const uid of allUserIds) {
+        await admin.from("profiles").delete().eq("id", uid);
       }
+      if (allUserIds.length) report.push(`profiles=${allUserIds.length}`);
       if (created.orgId) {
         await admin.from("organizations").delete().eq("id", created.orgId);
         report.push("org=1");
       }
-      if (created.userId) {
-        const { error } = await admin.auth.admin.deleteUser(created.userId);
-        report.push(`auth-user=1${error ? ` (delete error: ${error.message})` : ""}`);
+      for (const uid of allUserIds) {
+        const { error } = await admin.auth.admin.deleteUser(uid);
+        if (error) report.push(`auth-user ${uid} delete error: ${error.message}`);
       }
+      if (allUserIds.length) report.push(`auth-users=${allUserIds.length}`);
     } catch (e) {
       report.push(`cleanup threw: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -356,6 +391,19 @@ async function runOnline(): Promise<void> {
     });
     if (profileError) throw new Error(`profile insert failed: ${profileError.message}`);
     console.log("  test owner + org ready (ids not printed)");
+    if (claimlessMode) {
+      // The whole point of --claimless: this user must have NO
+      // organization_id claim. Provision is never called here (it would
+      // write the claim); verify the absence explicitly so a silent
+      // claim would fail the run instead of measuring the wrong thing.
+      const { data: claimCheck, error: claimCheckError } = await admin.auth.admin.getUserById(created.userId);
+      if (claimCheckError) throw new Error(`claim check failed: ${claimCheckError.message}`);
+      const claim = claimCheck.user?.app_metadata?.organization_id;
+      if (typeof claim === "string" && claim.length > 0) {
+        throw new Error("claim-less mode: test owner unexpectedly HAS an organization_id claim — aborting, the comparison would be meaningless");
+      }
+      console.log("  claim-less confirmed: test owner has no organization_id claim");
+    }
 
     const seedStart = performance.now();
     for (let i = 0; i < PRODUCT_COUNT; i += 500) {
@@ -453,6 +501,123 @@ async function runOnline(): Promise<void> {
     }
     console.log(`  createAtomicSale: ${fmt(stats(clientTimes))}`);
     results.onlineSaveClientPath = { ms: stats(clientTimes) };
+
+    if (claimlessMode) {
+      // ── CLAIM-LESS GATE ──
+      // (1) Save medians vs the claim baselines (run #4). The save RPC
+      // resolves the org from the profile row either way, so expect these
+      // to be close — this gate catches a regression, not the fallback.
+      const rpcStats = stats(rpcTimes);
+      const clientStats = stats(clientTimes);
+      const rpcPct = ((rpcStats.median / CLAIM_BASELINE_RPC_MEDIAN_MS) - 1) * 100;
+      const clientPct = ((clientStats.median / CLAIM_BASELINE_CLIENT_MEDIAN_MS) - 1) * 100;
+      console.log("\n=== CLAIM-LESS: save medians vs claim baselines (run #4) ===");
+      console.log(`  raw RPC median ${rpcStats.median.toFixed(2)}ms vs claim baseline ${CLAIM_BASELINE_RPC_MEDIAN_MS}ms (${rpcPct >= 0 ? "+" : ""}${rpcPct.toFixed(1)}%)`);
+      console.log(`  client path median ${clientStats.median.toFixed(2)}ms vs claim baseline ${CLAIM_BASELINE_CLIENT_MEDIAN_MS}ms (${clientPct >= 0 ? "+" : ""}${clientPct.toFixed(1)}%)`);
+
+      // (2) Server-side product search — the STRONG gate. These PostgREST
+      // reads go through the products RLS policy, which evaluates
+      // current_org_id(): a JWT claim read for the claim user, the Step 4
+      // fallback profile lookup for the claim-less user. A second user in
+      // the SAME org carries the claim, so the only difference between
+      // the two measurements is the claim itself.
+      console.log("\n=== CLAIM-LESS: server-side product search (RLS path) ===");
+      const claimEmail = `bench-claim-${stamp}@bench.local`;
+      const claimPassword = randomUUID();
+      const { data: claimUserData, error: claimUserError } = await admin.auth.admin.createUser({
+        email: claimEmail, password: claimPassword, email_confirm: true,
+      });
+      if (claimUserError || !claimUserData.user) throw new Error(`claim user createUser failed: ${claimUserError?.message ?? "no user returned"}`);
+      const claimUserId = claimUserData.user.id;
+      created.extraUserIds.push(claimUserId);
+      const { error: claimProfileError } = await admin.from("profiles").insert({
+        id: claimUserId, organization_id: created.orgId, auth_user_id: claimUserId,
+        full_name: "Bench Claim Owner", email: claimEmail, display_name: "Bench Claim Owner",
+        role: "owner", role_name: "owner", is_active: true,
+      });
+      if (claimProfileError) throw new Error(`claim user profile insert failed: ${claimProfileError.message}`);
+      const { error: claimSetError } = await admin.auth.admin.updateUserById(claimUserId, {
+        app_metadata: { organization_id: created.orgId },
+      });
+      if (claimSetError) throw new Error(`claim set failed: ${claimSetError.message}`);
+      const { data: claimVerify, error: claimVerifyError } = await admin.auth.admin.getUserById(claimUserId);
+      if (claimVerifyError) throw new Error(`claim verify failed: ${claimVerifyError.message}`);
+      if (claimVerify.user?.app_metadata?.organization_id !== created.orgId) {
+        throw new Error("claim user does not carry the organization_id claim after updateUserById — aborting, the comparison would be meaningless");
+      }
+      console.log("  claim user ready (same org, claim set and verified)");
+      const claimClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+      const { data: claimSignIn, error: claimSignInError } = await claimClient.auth.signInWithPassword({ email: claimEmail, password: claimPassword });
+      if (claimSignInError || !claimSignIn.session) throw new Error(`claim user sign-in failed: ${claimSignInError?.message ?? "no session"}`);
+
+      // The claim-less userClient above is still signed in as the
+      // claim-less user. Measure both users shape by shape (interleaved,
+      // so cache warming cannot favour one side).
+      const searchShapes = [
+        { name: "list50", run: (c: SupabaseClient) => c.from("products").select("id,name,default_selling_price,current_stock").limit(50) },
+        { name: "ilikeOil", run: (c: SupabaseClient) => c.from("products").select("id,name").ilike("name", "%Oil%").limit(20) },
+        { name: "ilikeShampoo", run: (c: SupabaseClient) => c.from("products").select("id,name").ilike("name", "%Shampoo%").limit(20) },
+      ];
+      const SEARCH_RUNS = 20;
+      const searchOut: Record<string, unknown> = {};
+      const claimlessAll: number[] = [];
+      const claimAll: number[] = [];
+      for (const shape of searchShapes) {
+        const measure = async (c: SupabaseClient, label: string): Promise<{ s: Stats; rows: number; times: number[] }> => {
+          await shape.run(c); // warmup (not timed)
+          const times: number[] = [];
+          let rows = 0;
+          for (let i = 0; i < SEARCH_RUNS; i++) {
+            // Await inside an async closure so timeAsync gets a real
+            // Promise (the builder union is thenable but not a Promise).
+            const { result, ms } = await timeAsync(async () => await shape.run(c));
+            times.push(ms);
+            if (result.error) throw new Error(`server search ${shape.name} (${label}) failed: ${result.error.message}`);
+            rows = Array.isArray(result.data) ? result.data.length : 0;
+          }
+          return { s: stats(times), rows, times };
+        };
+        const less = await measure(userClient, "claim-less");
+        const withClaim = await measure(claimClient, "claim");
+        claimlessAll.push(...less.times);
+        claimAll.push(...withClaim.times);
+        console.log(`  ${shape.name}: claim-less median ${less.s.median.toFixed(2)}ms (rows=${less.rows}) vs claim median ${withClaim.s.median.toFixed(2)}ms (rows=${withClaim.rows})`);
+        searchOut[shape.name] = { claimlessMs: less.s, claimMs: withClaim.s, rows: { claimless: less.rows, claim: withClaim.rows } };
+        if (shape.name === "list50") {
+          if (less.rows !== 50) throw new Error(`claim-less list50 must return 50 rows (got ${less.rows}) — Step 4 fallback missing, reads return nothing`);
+          if (withClaim.rows !== 50) throw new Error(`claim list50 must return 50 rows (got ${withClaim.rows})`);
+        }
+      }
+      const claimlessSearchMedian = stats(claimlessAll).median;
+      const claimSearchMedian = stats(claimAll).median;
+      const searchPct = ((claimlessSearchMedian / claimSearchMedian) - 1) * 100;
+      console.log(`  server search combined median: claim-less ${claimlessSearchMedian.toFixed(2)}ms vs claim ${claimSearchMedian.toFixed(2)}ms (${searchPct >= 0 ? "+" : ""}${searchPct.toFixed(1)}%)`);
+
+      const failures: string[] = [];
+      if (rpcStats.median > CLAIM_BASELINE_RPC_MEDIAN_MS * CLAIMLESS_SLOWDOWN_LIMIT) {
+        failures.push(`raw RPC median ${rpcStats.median.toFixed(2)}ms is more than 20% slower than the claim baseline ${CLAIM_BASELINE_RPC_MEDIAN_MS}ms`);
+      }
+      if (clientStats.median > CLAIM_BASELINE_CLIENT_MEDIAN_MS * CLAIMLESS_SLOWDOWN_LIMIT) {
+        failures.push(`client-path median ${clientStats.median.toFixed(2)}ms is more than 20% slower than the claim baseline ${CLAIM_BASELINE_CLIENT_MEDIAN_MS}ms`);
+      }
+      if (claimlessSearchMedian > claimSearchMedian * CLAIMLESS_SLOWDOWN_LIMIT) {
+        failures.push(`server search median ${claimlessSearchMedian.toFixed(2)}ms is more than 20% slower than the claim median ${claimSearchMedian.toFixed(2)}ms`);
+      }
+      results.claimless = {
+        mode: "claimless",
+        baselines: { rawRpcMedianMs: CLAIM_BASELINE_RPC_MEDIAN_MS, clientMedianMs: CLAIM_BASELINE_CLIENT_MEDIAN_MS },
+        rpcMedianMs: rpcStats.median,
+        clientMedianMs: clientStats.median,
+        rpcPctSlower: +rpcPct.toFixed(1),
+        clientPctSlower: +clientPct.toFixed(1),
+        serverSearch: { ...searchOut, claimlessMedianMs: claimlessSearchMedian, claimMedianMs: claimSearchMedian, pctSlower: +searchPct.toFixed(1) },
+        gate: failures.length === 0 ? "pass" : "fail",
+      };
+      if (failures.length > 0) {
+        throw new Error(`CLAIM-LESS GATE FAILED: ${failures.join("; ")} — Step 4 must NOT go to production until this is fixed`);
+      }
+      console.log("  claim-less gate: PASS");
+    }
   } finally {
     console.log("\n=== ONLINE: cleanup ===");
     await cleanup();
@@ -463,7 +628,7 @@ async function runOnline(): Promise<void> {
 async function main(): Promise<void> {
   const t0 = performance.now();
   if (mode === "local" || mode === "all") await runLocal();
-  if (mode === "online" || mode === "all") await runOnline();
+  if (mode === "online" || mode === "all") await runOnline(claimless);
   results.totalMs = +(performance.now() - t0).toFixed(1);
   console.log(`\n=== DONE in ${(results.totalMs as number / 1000).toFixed(1)}s ===`);
   console.log(JSON.stringify(results, null, 2));
