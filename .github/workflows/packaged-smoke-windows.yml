@@ -27,6 +27,18 @@
 # delay an unsigned installer. If the silent install hangs, SmartScreen
 # is the first suspect: the install step times out after 10 minutes
 # instead of hanging the job forever.
+#
+# Uninstall / reinstall phase (Claude message 42c): after the smoke
+# run, the job seeds %APPDATA%\Aankh BEFORE install with a real SQLite
+# database (created with better-sqlite3, one marker table + row), a
+# backups folder and a log; after launch + quit it snapshots every
+# file's sha256 + the file list, silent-uninstalls, and asserts NOTHING
+# in %APPDATA%\Aankh is missing or changed; then it reinstalls over the
+# same data and asserts the app starts again and the seeded marker row
+# is still readable. This is the realistic owner-PC scenario (run #5's
+# aankh.db under run #8): code reading is not proof, the uninstaller
+# itself must prove it. Install mode (per-user vs per-machine) and the
+# install path are logged, since Sunday users will hit whichever it is.
 name: Packaged smoke (Windows)
 
 on:
@@ -81,6 +93,24 @@ jobs:
           name: aankh-windows-installer-smoke
           path: dist-electron/*.exe
           if-no-files-found: error
+
+      # Uninstall phase, seed (Claude message 42c): put realistic user
+      # data in %APPDATA%\Aankh BEFORE install — a REAL SQLite database
+      # (better-sqlite3, installed by `npm ci` above; one marker table
+      # + row, so the reinstall check can prove the seeded database is
+      # still readable — a dummy file would fail the app's open), a
+      # backups folder with a dummy backup, and a log. The snapshot
+      # baseline is taken AFTER launch + quit (launch creates/mutates
+      # files), so the seed itself is only listed here, not hashed.
+      - name: Seed %APPDATA%\Aankh with test data
+        run: |
+          $dataDir = "$env:APPDATA\Aankh"
+          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dataDir\backups" | Out-Null
+          node -e "const db = require('better-sqlite3')(process.env.APPDATA + '\\Aankh\\aankh.db'); db.exec('CREATE TABLE IF NOT EXISTS seed_marker (id INTEGER PRIMARY KEY, note TEXT)'); db.prepare('INSERT OR REPLACE INTO seed_marker (id, note) VALUES (1, ?)').run('uninstall-seed'); db.close(); console.log('seeded aankh.db with marker row');"
+          Copy-Item "$dataDir\aankh.db" "$dataDir\backups\dummy-backup.db"
+          "uninstall-seed log $(Get-Date -Format o)" | Out-File -FilePath "$dataDir\app.log" -Encoding utf8
+          Get-ChildItem -Path $dataDir -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize | Out-String | Write-Host
 
       - name: Silent-install the app (NSIS /S)
         timeout-minutes: 10
@@ -183,3 +213,127 @@ jobs:
         run: |
           Stop-Process -Name Aankh -Force -ErrorAction SilentlyContinue
           Write-Host "app stopped"
+
+      # Uninstall phase, snapshot (Claude message 42c): hash every file
+      # in %APPDATA%\Aankh + the file list, AFTER launch + quit (the
+      # app has created/mutated files by now). This manifest is the
+      # baseline the post-uninstall comparison runs against.
+      - name: Snapshot %APPDATA%\Aankh before uninstall
+        run: |
+          $dataDir = "$env:APPDATA\Aankh"
+          if (-not (Test-Path $dataDir)) { throw "%APPDATA%\Aankh is missing before uninstall — nothing to assert" }
+          $manifest = "$env:RUNNER_TEMP\aankh-before-uninstall.json"
+          Get-ChildItem -Path $dataDir -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring($dataDir.Length + 1)
+            [PSCustomObject]@{ path = $rel; sha256 = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash; length = $_.Length }
+          } | ConvertTo-Json -Depth 2 | Out-File -FilePath $manifest -Encoding utf8
+          $count = @(Get-Content $manifest -Raw | ConvertFrom-Json).Count
+          Write-Host "snapshot: $count files recorded in $manifest"
+          echo "AANKH_MANIFEST=$manifest" >> $env:GITHUB_ENV
+
+      # Uninstall phase (Claude message 42c): kill any leftover process
+      # first, or file locks cause false results. The NSIS uninstaller
+      # lives next to the installed exe (electron-builder names it
+      # "Uninstall <product>.exe").
+      - name: Silent-uninstall the app (NSIS /S)
+        timeout-minutes: 10
+        run: |
+          Stop-Process -Name Aankh -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+          $installDir = [System.IO.Path]::GetDirectoryName($env:AANKH_EXE)
+          $uninstaller = Get-ChildItem -Path $installDir -Filter "Uninstall*.exe" | Select-Object -First 1
+          if (-not $uninstaller) { throw "no Uninstall*.exe found in $installDir" }
+          Write-Host "uninstalling via $($uninstaller.FullName) /S ..."
+          Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 10
+          if (Test-Path $env:AANKH_EXE) { throw "Aankh.exe still present after silent uninstall" }
+          if (Get-Process -Name Aankh -ErrorAction SilentlyContinue) { throw "Aankh.exe still running after silent uninstall" }
+          Write-Host "uninstalled; the install dir is gone — the data dir is checked next"
+          echo "AANKH_INSTALL_DIR=$installDir" >> $env:GITHUB_ENV
+
+      # Uninstall phase, verdict (Claude message 42c): the WHOLE folder
+      # must survive byte-for-byte — nothing missing, nothing changed.
+      # Extra files are allowed (the uninstaller may leave its own log)
+      # and only noted, never failed on.
+      - name: Assert %APPDATA%\Aankh survived uninstall
+        run: |
+          $dataDir = "$env:APPDATA\Aankh"
+          if (-not (Test-Path $dataDir)) { throw "%APPDATA%\Aankh is GONE after uninstall — the uninstaller deleted user data" }
+          $before = @(Get-Content $env:AANKH_MANIFEST -Raw | ConvertFrom-Json)
+          $now = @(Get-ChildItem -Path $dataDir -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring($dataDir.Length + 1)
+            [PSCustomObject]@{ path = $rel; sha256 = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash; length = $_.Length }
+          })
+          $beforeMap = @{}
+          foreach ($f in $before) { $beforeMap[$f.path] = $f }
+          $missing = @(); $changed = @()
+          foreach ($f in $before) {
+            $n = $now | Where-Object { $_.path -eq $f.path }
+            if (-not $n) { $missing += $f.path }
+            elseif ($n.sha256 -ne $f.sha256 -or $n.length -ne $f.length) { $changed += $f.path }
+          }
+          $extra = @($now | Where-Object { -not $beforeMap.ContainsKey($_.path) } | Select-Object -ExpandProperty path)
+          if ($missing) { throw "files MISSING after uninstall: $($missing -join ', ')" }
+          if ($changed) { throw "files CHANGED after uninstall: $($changed -join ', ')" }
+          if ($extra) { Write-Host "note: extra files after uninstall (allowed): $($extra -join ', ')" }
+          Write-Host "PASS: %APPDATA%\Aankh survived uninstall byte-for-byte ($($before.Count) files)"
+
+      # Reinstall phase (Claude message 42c): the realistic owner-PC
+      # scenario — run #8 goes on top of run #5's data. Install mode is
+      # logged (LOCALAPPDATA = per-user, Program Files = per-machine).
+      - name: Reinstall over the same data (NSIS /S)
+        timeout-minutes: 10
+        run: |
+          $installer = Get-ChildItem -Path dist-electron -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw "no installer found in dist-electron" }
+          Write-Host "reinstalling $($installer.FullName) silently over the surviving data..."
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S" -Wait
+          $candidates = @(
+            "$env:LOCALAPPDATA\Programs\Aankh\Aankh.exe",
+            "$env:ProgramFiles\Aankh\Aankh.exe"
+          )
+          $exe = $null
+          for ($i = 0; $i -lt 24 -and -not $exe; $i++) {
+            foreach ($c in $candidates) { if (Test-Path $c) { $exe = $c; break } }
+            if (-not $exe) { Start-Sleep -Seconds 5 }
+          }
+          if (-not $exe) { throw "Aankh.exe not found after reinstall" }
+          Write-Host "reinstalled at $exe"
+          echo "AANKH_EXE=$exe" >> $env:GITHUB_ENV
+          if ($exe -like "$env:LOCALAPPDATA*") { $mode = "per-user" } else { $mode = "per-machine" }
+          Write-Host "install mode: $mode; install path: $exe"
+          echo "AANKH_INSTALL_MODE=$mode" >> $env:GITHUB_ENV
+
+      # Reinstall phase, verdict (Claude message 42c): the app must
+      # start again over the surviving data, and the seeded database
+      # must still be readable with its marker row.
+      - name: Launch after reinstall and verify seeded database
+        timeout-minutes: 10
+        run: |
+          Write-Host "launching $env:AANKH_EXE over the surviving data..."
+          Start-Process -FilePath $env:AANKH_EXE
+          $port = $null
+          for ($i = 0; $i -lt 36 -and -not $port; $i++) {
+            $listeners = Get-NetTCPConnection -LocalAddress 127.0.0.1 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalPort -Unique
+            foreach ($p in $listeners) {
+              try {
+                $r = Invoke-WebRequest -Uri "http://127.0.0.1:$p/login" -TimeoutSec 2 -UseBasicParsing
+                if ($r.StatusCode -eq 200) { $port = $p; break }
+              } catch { }
+            }
+            if (-not $port) { Start-Sleep -Seconds 5 }
+          }
+          if (-not $port) { throw "no loopback listener answered GET /login after reinstall within 180s" }
+          Write-Host "PASS: app server answered GET /login after reinstall on http://127.0.0.1:$port/login"
+          $marker = node -e "const db = require('better-sqlite3')(process.env.APPDATA + '\\Aankh\\aankh.db', { readonly: true }); const row = db.prepare('SELECT note FROM seed_marker WHERE id = 1').get(); console.log(row && row.note === 'uninstall-seed' ? 'MARKER OK' : 'MARKER MISSING'); db.close();"
+          if ($marker -ne "MARKER OK") { throw "seeded aankh.db marker row missing after reinstall (got: $marker)" }
+          Write-Host "PASS: seeded aankh.db still readable after reinstall"
+          Stop-Process -Name Aankh -Force -ErrorAction SilentlyContinue
+
+      - name: Upload uninstall manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aankh-uninstall-manifests
+          path: ${{ runner.temp }}\aankh-before-uninstall.json
+          if-no-files-found: warn
