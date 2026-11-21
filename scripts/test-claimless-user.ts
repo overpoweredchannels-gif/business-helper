@@ -82,11 +82,11 @@
 //       this script (no web server in the CI job); it is covered
 //       by the packaged test matrix, not here.
 //
-//   89 assertions in total (1-12: a/b/c; 13-19: claim-first;
+//   91 assertions in total (1-12: a/b/c; 13-19: claim-first;
 //   20-23: duplicate-profile constraint; 24-29: user_metadata
 //   attack; 30-62: 33-table read loop; 63-71: write loop;
 //   72-76: no-profile / NULL / anon; 77: deactivated;
-//   78-89: E2E sale + purchase).
+//   78-89: E2E sale + purchase; 90-91: claim-user regression).
 //
 //   If A's reads return NOTHING, the test FAILS LOUDLY: the fallback is
 //   missing, i.e. Step 4 has not run on this project yet. If B's rows
@@ -1286,6 +1286,38 @@ async function main(): Promise<void> {
       `89. user A must read ZERO purchase_transactions rows of org B (got ${purchasesSeenByA.filter((r) => r.organization_id === userB.orgId).length}) — org A's purchase may or may not be visible depending on the table's RLS state, but B's must never leak`,
     );
     console.log("(k) E2E OK — atomic sale as a claim-less user confirms end to end; purchase RPC revoke holds; no org B purchase rows visible to A");
+
+    // ── (l) CLAIM-USER REGRESSION (Claude message 52) ──
+    // Patch S must not break the claim path: a user WITH an
+    // app_metadata claim must still resolve to the CLAIM org even
+    // when their user_metadata points at org B. The owner dashboard
+    // proves the claim path works today, but only this re-run proves
+    // it still works AFTER the patch — and the production run
+    // happens only once. Reuses the claim-first user (claim org C,
+    // profile org D): poison their user_metadata to org B and check
+    // the claim still wins. Passes in the baseline too (the claim is
+    // the first coalesce arg, ahead of user_metadata) — this is a
+    // regression guard, not a leak detector.
+    const { error: poisonCError } = await clientC.auth.updateUser({ data: { organization_id: userB.orgId } });
+    assert.equal(poisonCError, null, `poisoning the claim user's user_metadata must not error (got ${poisonCError?.message ?? "?"})`);
+    const { error: refreshCError } = await clientC.auth.refreshSession();
+    assert.equal(refreshCError, null, `session refresh after poisoning the claim user must not error (got ${refreshCError?.message ?? "?"})`);
+    const productsCPoisoned = await readRows(clientC, "products", null);
+    assert.ok(
+      productsCPoisoned.length === PRODUCT_COUNT &&
+        productsCPoisoned.every((r) => r.organization_id === userC.claimOrgId),
+      `90. after poisoning user_metadata, the CLAIM user must still read exactly ${PRODUCT_COUNT} products, all of the CLAIM org (got ${productsCPoisoned.length} rows, orgs: ${[...new Set(productsCPoisoned.map((r) => r.organization_id))].join(", ") || "none"})`,
+    );
+    const productsBSeenByC = await readRows(clientC, "products", userB.orgId);
+    assert.equal(
+      productsBSeenByC.length,
+      0,
+      `91. after poisoning user_metadata, the CLAIM user must read ZERO products of org B (got ${productsBSeenByC.length}) — the claim did not win`,
+    );
+    // Reset the poison (tidy; the user is deleted in cleanup anyway).
+    const { error: cleanCError } = await clientC.auth.updateUser({ data: { organization_id: null } });
+    assert.equal(cleanCError, null, `clearing the claim user's poisoned user_metadata must not error (got ${cleanCError?.message ?? "?"})`);
+    console.log("(l) claim-user regression OK — poisoned user_metadata cannot move a claim user off their org");
   } finally {
     await cleanup();
   }
