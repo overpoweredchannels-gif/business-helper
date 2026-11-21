@@ -297,7 +297,9 @@ async function runOnline(): Promise<void> {
   }
   const stamp = Date.now().toString(36);
   const email = `bench-${stamp}@bench.local`;
-  const password = `${randomUUID()}-${randomUUID()}`;
+  // One UUID (36 chars) — two UUIDs joined are 73 chars and bcrypt
+  // rejects passwords over 72 chars (CI run 44795179725).
+  const password = randomUUID();
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const created = { userId: "", orgId: "", productIds: [] as string[], customerIds: [] as string[], saleIds: [] as string[] };
 
@@ -359,7 +361,12 @@ async function runOnline(): Promise<void> {
     for (let i = 0; i < PRODUCT_COUNT; i += 500) {
       const batch = catalog.slice(i, i + 500).map((p, j) => ({
         organization_id: created.orgId,
-        name: p.name,
+        // The fixture names repeat (small brand x base x size pool) and
+        // the DB has a unique (org, name) index for null-brand products
+        // (CI run 44798963803: batch 500 collided). Suffix the 1-based
+        // index so all 5,000 seeded names are unique; the save/search
+        // measurements use product IDs and in-memory prices, not names.
+        name: `${p.name} #${String(i + j + 1).padStart(5, "0")}`,
         sku: `BENCH-${stamp}-${String(i + j + 1).padStart(5, "0")}`,
         barcode: null,
         unit_type: p.unit_type ?? "Pack",
