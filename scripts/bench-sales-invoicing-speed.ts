@@ -664,7 +664,7 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
             // Promise (the builder union is thenable but not a Promise).
             const { result, ms } = await timeAsync(async () => await shape.run(c));
             times.push(ms);
-            if (result.error) throw new Error(`server search ${shape.name} (${label}) failed: ${result.error.message}`);
+            if (result.error) throw new Error(`server search ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}`);
             rows = Array.isArray(result.data) ? result.data.length : 0;
           }
           return { s: stats(times), rows, times };
@@ -717,7 +717,7 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
           for (let i = 0; i < SEARCH_RUNS; i++) {
             const { result, ms } = await timeAsync(async () => await shape.run(c));
             times.push(ms);
-            if (result.error) throw new Error(`server sales search ${shape.name} (${label}) failed: ${result.error.message}`);
+            if (result.error) throw new Error(`server sales search ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}`);
             // Count queries return the count, list queries return rows.
             rows = typeof result.count === "number" ? result.count : Array.isArray(result.data) ? result.data.length : 0;
           }
@@ -775,7 +775,7 @@ async function runOnline(claimlessMode: boolean): Promise<void> {
           for (let i = 0; i < SEARCH_RUNS; i++) {
             const { result, ms } = await timeAsync(async () => await shape.run(c));
             times.push(ms);
-            if (result.error) throw new Error(`dashboard aggregate ${shape.name} (${label}) failed: ${result.error.message}`);
+            if (result.error) throw new Error(`dashboard aggregate ${shape.name} (${label}) failed: ${JSON.stringify(result.error)}`);
             rows = typeof result.count === "number" ? result.count : Array.isArray(result.data) ? result.data.length : 0;
           }
           return { s: stats(times), rows, times };
