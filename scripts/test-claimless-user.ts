@@ -14,10 +14,17 @@
 //       cross-org isolation holds for a claim-less user;
 //   (c) user B (claim-less, org B, nothing seeded there) reads products +
 //       customers: ZERO rows — B sees nothing of A's data either.
-//   (d) CLAIM-FIRST (Claude audit, message 24): a user WITH an
-//       organization_id claim whose profile row points at a DIFFERENT
-//       org must read the CLAIM org's rows, not the profile org's —
-//       the claim wins, per the coalesce order in current_org_id().
+//   (d) CLAIM-FIRST (Claude audit, message 24 — CORRECTED 2026-11-22
+//       after baseline run #4): a user WITH an organization_id claim
+//       whose profile row points at a DIFFERENT org reads the UNION
+//       of both orgs, not the claim org alone. Production carries TWO
+//       permissive policies per table — e.g. products_select_org
+//       (organization_id = current_org_id(), the claim) AND
+//       products_org_access (user_can_access_organization(...), the
+//       ACTIVE profile row's org) — and Postgres ORs permissive
+//       policies. The divergence is artificial (provision sets claim
+//       and profile to the same org); the security property is ZERO
+//       rows of any THIRD org.
 //   (e) TWO PROFILE ROWS (Claude audit, message 24): the profiles
 //       schema forbids two rows for one auth_user_id (partial unique
 //       index profiles_auth_user_id_unique_idx, WHERE auth_user_id IS
@@ -712,12 +719,24 @@ async function main(): Promise<void> {
     );
     console.log("(c) user B reads OK — zero rows (nothing of org A visible)");
 
-    // ── (5) CLAIM-FIRST: the claim org wins over the profile org ──
-    // current_org_id() coalesces claim first, profile fallback last,
-    // so a user whose claim says org C but whose profile says org D
-    // must see C's rows and none of D's. If the reads came back with
-    // D's rows, the claim would not be winning and the Step 4
-    // fallback would be shadowing the claim.
+    // ── (5) CLAIM-FIRST: the claim org AND the profile org (union) ──
+    // CORRECTED 2026-11-22 after baseline run #4 failed assertion 15
+    // ("got 10"): production carries TWO permissive policies per
+    // table — products_select_org (organization_id =
+    // current_org_id(), i.e. the claim) AND products_org_access
+    // (user_can_access_organization(organization_id), i.e. the ACTIVE
+    // profile row's org: "exists (select 1 from profiles where
+    // auth_user_id = auth.uid() and organization_id = target and
+    // is_active)"). Postgres ORs permissive policies, so a user
+    // whose claim says C and whose profile says D reads C + D (5 + 5
+    // = 10 products, 3 + 3 = 6 customers). The old "claim wins,
+    // profile invisible" expectation was wrong for this policy
+    // design — 37 policies use user_can_access_organization. The
+    // divergence is artificial (provision sets claim and profile to
+    // the same org); the security property is ZERO rows of any THIRD
+    // org (here org A). user_can_access_organization reads only the
+    // profile row — never user_metadata — so it cannot carry the
+    // (f) attack, and Patch S still closes the hole.
     const userC = await makeClaimFirstUser();
     assert.equal(
       await getUserClaim(userC.userId),
@@ -735,30 +754,33 @@ async function main(): Promise<void> {
     const productsC = await readRows(clientC, "products", null);
     assert.equal(
       productsC.length,
-      PRODUCT_COUNT,
-      `15. claim-first user must read exactly ${PRODUCT_COUNT} products of the CLAIM org (got ${productsC.length}) — the claim did not win over the profile org`,
+      PRODUCT_COUNT * 2,
+      `15. claim-first user must read exactly ${PRODUCT_COUNT * 2} products — the CLAIM org's ${PRODUCT_COUNT} plus the PROFILE org's ${PRODUCT_COUNT} (got ${productsC.length}) — the union of the two permissive policies`,
     );
     assert.ok(
-      productsC.every((r) => r.organization_id === userC.claimOrgId),
-      `16. every product the claim-first user reads must belong to the CLAIM org (got orgs: ${[...new Set(productsC.map((r) => r.organization_id))].join(", ")})`,
+      productsC.every((r) => r.organization_id === userC.claimOrgId || r.organization_id === userC.profileOrgId) &&
+        new Set(productsC.map((r) => r.organization_id)).size === 2,
+      `16. every product the claim-first user reads must belong to the CLAIM or PROFILE org, and BOTH orgs must appear (got orgs: ${[...new Set(productsC.map((r) => r.organization_id))].join(", ")})`,
     );
-    const productsDSeenByC = await readRows(clientC, "products", userC.profileOrgId);
+    const productsASeenByC = await readRows(clientC, "products", userA.orgId);
     assert.equal(
-      productsDSeenByC.length,
+      productsASeenByC.length,
       0,
-      `17. claim-first user must read ZERO products of the PROFILE org (got ${productsDSeenByC.length}) — the profile org leaked past the claim`,
+      `17. claim-first user must read ZERO products of a THIRD org (org A, got ${productsASeenByC.length}) — a third org leaking would be a real cross-org hole`,
     );
     const customersC = await readRows(clientC, "customers", null);
     assert.equal(
       customersC.length,
-      CUSTOMER_COUNT,
-      `18. claim-first user must read exactly ${CUSTOMER_COUNT} customers of the CLAIM org (got ${customersC.length})`,
+      CUSTOMER_COUNT * 2,
+      `18. claim-first user must read exactly ${CUSTOMER_COUNT * 2} customers — the CLAIM org's ${CUSTOMER_COUNT} plus the PROFILE org's ${CUSTOMER_COUNT} (got ${customersC.length})`,
     );
+    const customersASeenByC = await readRows(clientC, "customers", userA.orgId);
     assert.ok(
-      customersC.every((r) => r.organization_id === userC.claimOrgId),
-      `19. every customer the claim-first user reads must belong to the CLAIM org (got orgs: ${[...new Set(customersC.map((r) => r.organization_id))].join(", ")})`,
+      customersC.every((r) => r.organization_id === userC.claimOrgId || r.organization_id === userC.profileOrgId) &&
+        customersASeenByC.length === 0,
+      `19. every customer the claim-first user reads must belong to the CLAIM or PROFILE org, and ZERO customers of a THIRD org (org A, got orgs: ${[...new Set(customersC.map((r) => r.organization_id))].join(", ")})`,
     );
-    console.log("(d) claim-first OK — reads return the CLAIM org's rows, profile org invisible");
+    console.log("(d) claim-first OK — reads return the CLAIM + PROFILE orgs (union), third org invisible");
 
     // ── (6) TWO PROFILE ROWS: the schema forbids them ──
     // Repo evidence (20261011 snapshot): profiles carries the partial
@@ -1287,7 +1309,8 @@ async function main(): Promise<void> {
     );
     console.log("(k) E2E OK — atomic sale as a claim-less user confirms end to end; purchase RPC revoke holds; no org B purchase rows visible to A");
 
-    // ── (l) CLAIM-USER REGRESSION (Claude message 52) ──
+    // ── (l) CLAIM-USER REGRESSION (Claude message 52, CORRECTED
+    // 2026-11-22 after baseline run #4) ──
     // Patch S must not break the claim path: a user WITH an
     // app_metadata claim must still resolve to the CLAIM org even
     // when their user_metadata points at org B. The owner dashboard
@@ -1297,22 +1320,25 @@ async function main(): Promise<void> {
     // profile org D): poison their user_metadata to org B and check
     // the claim still wins. Passes in the baseline too (the claim is
     // the first coalesce arg, ahead of user_metadata) — this is a
-    // regression guard, not a leak detector.
+    // regression guard, not a leak detector. NOTE the union (see (d)):
+    // the claim user reads C + D (10 products), so the assertion is
+    // "still C + D, still ZERO of B", not "exactly 5 of C".
     const { error: poisonCError } = await clientC.auth.updateUser({ data: { organization_id: userB.orgId } });
     assert.equal(poisonCError, null, `poisoning the claim user's user_metadata must not error (got ${poisonCError?.message ?? "?"})`);
     const { error: refreshCError } = await clientC.auth.refreshSession();
     assert.equal(refreshCError, null, `session refresh after poisoning the claim user must not error (got ${refreshCError?.message ?? "?"})`);
     const productsCPoisoned = await readRows(clientC, "products", null);
     assert.ok(
-      productsCPoisoned.length === PRODUCT_COUNT &&
-        productsCPoisoned.every((r) => r.organization_id === userC.claimOrgId),
-      `90. after poisoning user_metadata, the CLAIM user must still read exactly ${PRODUCT_COUNT} products, all of the CLAIM org (got ${productsCPoisoned.length} rows, orgs: ${[...new Set(productsCPoisoned.map((r) => r.organization_id))].join(", ") || "none"})`,
+      productsCPoisoned.length === PRODUCT_COUNT * 2 &&
+        productsCPoisoned.every((r) => r.organization_id === userC.claimOrgId || r.organization_id === userC.profileOrgId) &&
+        new Set(productsCPoisoned.map((r) => r.organization_id)).size === 2,
+      `90. after poisoning user_metadata, the CLAIM user must still read exactly ${PRODUCT_COUNT * 2} products — the CLAIM org's ${PRODUCT_COUNT} plus the PROFILE org's ${PRODUCT_COUNT} (got ${productsCPoisoned.length} rows, orgs: ${[...new Set(productsCPoisoned.map((r) => r.organization_id))].join(", ") || "none"})`,
     );
     const productsBSeenByC = await readRows(clientC, "products", userB.orgId);
     assert.equal(
       productsBSeenByC.length,
       0,
-      `91. after poisoning user_metadata, the CLAIM user must read ZERO products of org B (got ${productsBSeenByC.length}) — the claim did not win`,
+      `91. after poisoning user_metadata, the CLAIM user must read ZERO products of org B (got ${productsBSeenByC.length}) — poisoned user_metadata moved the claim user to org B`,
     );
     // Reset the poison (tidy; the user is deleted in cleanup anyway).
     const { error: cleanCError } = await clientC.auth.updateUser({ data: { organization_id: null } });
