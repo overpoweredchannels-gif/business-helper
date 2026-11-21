@@ -879,12 +879,6 @@ async function main(): Promise<void> {
       const carriers = allUsers.users.filter((u) => typeof u.user_metadata?.organization_id === "string");
       console.log(`(f) users carrying user_metadata.organization_id on this project: ${carriers.length} (informational — the app writes the claim to app_metadata only)`);
     }
-    const productsAAfterAttack = await readRows(clientA, "products", null);
-    assert.ok(
-      productsAAfterAttack.length === PRODUCT_COUNT &&
-        productsAAfterAttack.every((r) => r.organization_id === userA.orgId),
-      `25. after the user_metadata attack user A must still read exactly ${PRODUCT_COUNT} products, all org A (got ${productsAAfterAttack.length} rows, orgs: ${[...new Set(productsAAfterAttack.map((r) => r.organization_id))].join(", ") || "none"})`,
-    );
     const productsBSeenAfterAttack = await readRows(clientA, "products", userB.orgId);
     if (productsBSeenAfterAttack.length !== 0) {
       console.log("=".repeat(70));
@@ -901,7 +895,19 @@ async function main(): Promise<void> {
     assert.equal(
       productsBSeenAfterAttack.length,
       0,
-      `26. after the user_metadata attack user A must read ZERO products of org B (got ${productsBSeenAfterAttack.length}) — USER_METADATA HOLE CONFIRMED`,
+      `25. after the user_metadata attack user A must read ZERO products of org B (got ${productsBSeenAfterAttack.length}) — USER_METADATA HOLE CONFIRMED`,
+    );
+    // The org-B leak check runs FIRST so the baseline failure prints
+    // the HOLE CONFIRMED banner above (node:assert throws on the
+    // first failure, so the own-org check below would otherwise hide
+    // it). After Patch S the poisoned user resolves to their OWN org
+    // via the profile fallback (4th coalesce arg), so this read must
+    // be exactly their own rows — see assertion 26.
+    const productsAAfterAttack = await readRows(clientA, "products", null);
+    assert.ok(
+      productsAAfterAttack.length === PRODUCT_COUNT &&
+        productsAAfterAttack.every((r) => r.organization_id === userA.orgId),
+      `26. after the user_metadata attack user A must still read exactly ${PRODUCT_COUNT} products, all org A (got ${productsAAfterAttack.length} rows, orgs: ${[...new Set(productsAAfterAttack.map((r) => r.organization_id))].join(", ") || "none"})`,
     );
     const customersBSeenAfterAttack = await readRows(clientA, "customers", userB.orgId);
     assert.equal(
