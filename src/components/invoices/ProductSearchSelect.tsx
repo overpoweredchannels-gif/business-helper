@@ -8,7 +8,7 @@ import { isBarcodeShaped } from "@/lib/invoices/scan-submit";
 import { useSuggestionPlacement } from "@/components/search/useSuggestionPlacement";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
-export function ProductSearchSelect({ value, onChange, products, label, searchPlaceholder, rankedFields, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0, inputRef }: {
+export function ProductSearchSelect({ value, onChange, products, label, searchPlaceholder, rankedFields, frequency, maxSuggestions = 12, onBarcodeEnter, focusSignal = 0, inputRef }: {
   value: string;
   onChange: (value: string) => void;
   products: Array<{ id: string; label: string }>;
@@ -31,6 +31,10 @@ export function ProductSearchSelect({ value, onChange, products, label, searchPl
    * person and city lowest). Omit only for lists without structured fields,
    * which keep the legacy label filter. */
   rankedFields?: Map<string, SearchRankFields>;
+  /** Optional per-product sold-frequency (e.g. total quantity sold). Inside a
+   * rank tier the most-sold product comes first; it never promotes a worse
+   * tier. Omit it and the within-tier order stays alphabetical. */
+  frequency?: (product: { id: string; label: string }) => number;
   /** Maximum options rendered in the popover; the ranking itself still scores
    * every candidate, so the top matches are always the most relevant ones. */
   maxSuggestions?: number;
@@ -58,8 +62,8 @@ export function ProductSearchSelect({ value, onChange, products, label, searchPl
       const terms = (query ?? "").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
       return products.filter(product => terms.every(term => product.label.toLocaleLowerCase().includes(term)));
     }
-    return rankSearchResults(products, query ?? "", (product) => rankedFields.get(product.id) ?? { name: product.label });
-  }, [products, query, rankedFields]);
+    return rankSearchResults(products, query ?? "", (product) => rankedFields.get(product.id) ?? { name: product.label }, frequency);
+  }, [products, query, rankedFields, frequency]);
   // Progressive browsing: the panel stays compact, but capped results remain
   // discoverable via "Show more". The visible count resets whenever the
   // result set changes (derived during render, not in an effect).

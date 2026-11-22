@@ -3116,6 +3116,12 @@ export default function Home() {
   const handleSalesPaymentTypeChange = (paymentType: "cash" | "card" | "credit") => {
     setSalesPaymentType(paymentType);
     clearCreditOverrideState();
+    // A credit sale needs a real customer: the Walk-in customer is cash-only,
+    // so switching to credit while it is selected clears the selection and
+    // forces an explicit customer choice (the save stays blocked until then).
+    if (paymentType === "credit" && selectedCustomerIdForSale && selectedCustomerIdForSale === walkInCustomerId.current) {
+      setSelectedCustomerIdForSale(null);
+    }
   };
 
   const handleSalesInvoiceDateChange = (value: string) => {
@@ -5344,7 +5350,7 @@ export default function Home() {
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || t('page.failedCreateDraftSale'));
         setSalesMessage(t('page.soCreatedApproval').replace('{number}', data.draft?.so_number ?? ""));
-        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
+        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(walkInCustomerId.current);
         setSaleScanFocus(value => value + 1);
         setSalesInvoiceNumber("");
         setSalesInvoiceDate(toDateInputValue(new Date()));
@@ -5463,7 +5469,7 @@ export default function Home() {
               + (saved.confirmedCount > 0 ? " " + t('offline.syncedCount').replace('{count}', String(saved.confirmedCount)) : "")
               + (saved.rejectedMessages.length > 0 ? " " + saved.rejectedMessages.join(" ") : ""),
         );
-        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
+        if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(walkInCustomerId.current);
         setSaleScanFocus(value => value + 1);
         setSalesInvoiceNumber("");
         setSalesInvoiceDate(toDateInputValue(new Date()));
@@ -5543,7 +5549,7 @@ export default function Home() {
         })()
         : "";
       setSalesMessage(t('page.salesInvoiceSaved').replace('{number}', invoiceNumber).replace('{retry}', result.replayed ? t('page.confirmedRetry') : "").replace('{change}', cashChangeMessage));
-      if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(quickSaleMode ? walkInCustomerId.current : null);
+      if (!quickSaleMode || !keepSaleCustomer) setSelectedCustomerIdForSale(walkInCustomerId.current);
       setSaleScanFocus(value => value + 1);
       setSalesInvoiceNumber("");
       setSalesInvoiceDate(toDateInputValue(new Date()));
@@ -7342,6 +7348,25 @@ export default function Home() {
   const [purchaseItems, setPurchaseItems] = useState<any[]>([]);
   const [salesItems, setSalesItems] = useState<any[]>([]);
 
+  // Per-product sold-frequency (total quantity sold across the already-loaded
+  // sales history) for the invoice-line product search: inside a rank tier
+  // the most-sold product comes first, so the most expected product is on
+  // top. Built once per salesItems change (O(n) once, O(1) lookup per
+  // keystroke) — no new fetch, no per-keystroke work.
+  const salesProductFrequency = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of salesItems) {
+      const productId = String(item?.product_id ?? "");
+      if (!productId) continue;
+      map.set(productId, (map.get(productId) ?? 0) + (Number(item?.quantity) || 0));
+    }
+    return map;
+  }, [salesItems]);
+  const invoiceProductFrequency = useCallback(
+    (product: { id: string; label: string }) => salesProductFrequency.get(product.id) ?? 0,
+    [salesProductFrequency],
+  );
+
   // Purchase Management (Phase 1) — orders + returns
   const [purchaseTab, setPurchaseTab] = useState<"invoice" | "orders" | "returns">("invoice");
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
@@ -8421,8 +8446,11 @@ export default function Home() {
   // route would create) is upserted into the local-customer store and
   // selected with zero network calls, so a quick sale starts offline.
   // The web build keeps the server route (it has the service key there).
+  // Walk-in is prepared in BOTH surfaces (Retail POS + full invoice), so a
+  // cash sale always has a customer; auto-select only when none is chosen,
+  // and a credit sale clears the Walk-in selection (handleSalesPaymentTypeChange).
   useEffect(() => {
-    if (!quickSaleMode || !currentOrganizationId || !currentProfile?.id) return;
+    if (!currentOrganizationId || !currentProfile?.id) return;
     walkInCustomerId.current = null;
     setWalkInFailed(false);
     if (isDesktopApp()) {
@@ -8454,7 +8482,7 @@ export default function Home() {
       if (!cancelled) { walkInCustomerId.current = result.customer.id; setCustomers(current => current.some(customer => customer.id === result.customer.id) ? current : [...current, result.customer]); setSelectedCustomerIdForSale(current => current ?? result.customer.id); }
     }).catch(error => { if (!cancelled) { setWalkInFailed(true); setSalesError(error.message); } }).finally(() => { if (!cancelled) setWalkInBusy(false); });
     return () => { cancelled = true; };
-  }, [quickSaleMode, currentOrganizationId, currentProfile?.id, walkInAttempt, t]);
+  }, [currentOrganizationId, currentProfile?.id, walkInAttempt, t]);
   // Sell mode persistence: reopening the Sell tab restores the surface the
   // user last worked on (Retail POS or the detailed invoice form) for this
   // organization + profile, instead of resetting to the detailed form on
@@ -13145,6 +13173,18 @@ export default function Home() {
   });
   const currentSaleAmounts = currentSaleDraft.amounts;
   const currentSalesInvoiceTotal = currentSaleAmounts?.total;
+  // Why the Save button is disabled (PC-test finding 2): a disabled button
+  // with no explanation looks broken, so the reason is shown next to it.
+  // With the Walk-in auto-select this is normally null — the customer is
+  // already picked — but the walk-in fetch can fail, and the draft can still
+  // be invalid (bad quantity/price, cash short). First blocker wins.
+  const saveDisabledReason =
+    salesInvoiceLoading ? null
+    : !salesLines.length ? t('page.addProductLine')
+    : !selectedCustomerIdForSale ? t('page.selectCustomer')
+    : salesPaymentType === "credit" && selectedCustomerCreditPolicy === "cash_only" ? t('page.customerCashOnly')
+    : !currentSaleDraft.valid ? (currentSaleDraft.issues[0]?.message ?? null)
+    : null;
   const todayDateValue = toDateInputValue(new Date());
   // Confirmed sales returns linked to an invoice offset what the customer
   // still owes on it (the goods came back, so that part of the invoice is no
@@ -23477,7 +23517,18 @@ export default function Home() {
             <QuickAddCustomerDialog key={quickAddCustomerOpen ? "quick-add-open" : "quick-add-closed"} open={quickAddCustomerOpen} busy={quickAddCustomerBusy} error={quickAddCustomerError} onClose={() => { if (!quickAddCustomerBusy) setQuickAddCustomerOpen(false); }} onSubmit={(fields) => void handleQuickAddCustomer(fields)} />
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
             <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
-            <section className="scanner-panel" data-help-topic="barcode">
+            <section className="scanner-panel" data-help-topic="barcode" onKeyDown={event => {
+              // Barcode skip (PC-test finding 1): Esc in the barcode box
+              // moves focus to the customer selection, same as the Skip
+              // button below. Esc is safe here: it is not an OS-reserved key
+              // (unlike the Windows key, which opens the Start menu) and the
+              // barcode box has no Escape handler of its own — the customer
+              // and product selectors handle their own Escape (close popover)
+              // and focus is in the barcode input here, so there is no
+              // conflict. Scoped to the barcode text input only (type="text";
+              // the section's checkboxes are type="checkbox").
+              if (event.key === "Escape" && event.target instanceof HTMLInputElement && event.target.type === "text") { event.preventDefault(); setSaleCustomerFocus(value => value + 1); saleCustomerInputRef.current?.focus(); }
+            }}>
               <h3 className="mb-3 text-lg font-medium">{quickSaleMode ? t('sell.quickSaleBarcode') : t('sell.scanProduct')}</h3>
               <label className="mb-3 block text-sm">{t('sell.eachScanAddsOne')} <select aria-label={t('sell.scanUnitAria')} data-entry-skip value={saleScanUnit} onChange={event => setSaleScanUnit(event.target.value as UnitMode)} className="rounded border p-2"><option value="subunit">{t('sell.scanSubUnit')}</option><option value="main">{t('sell.scanMainUnit')}</option></select></label>
               <BarcodeInput disabled={salesInvoiceLoading || productsLoading} autoFocus={quickSaleMode} focusSignal={saleScanFocus} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} afterScan={() => { if (detailScanCustomerFocusRef.current) saleCustomerInputRef.current?.focus(); }} onScan={code => {
@@ -23503,6 +23554,15 @@ export default function Home() {
                 return result.status !== "not-found";
               }} />
               <p className="mt-2 text-sm">{t('sell.scanRepeatedHint')}</p>
+              {/* Barcode skip (PC-test finding 1): a visible button AND the
+                  Esc key, both labelled on screen — the button names the key
+                  ("Skip barcode (Esc)") and the hint spells out the action.
+                  Skipping moves focus to the customer selection first; the
+                  barcode scan flow itself is untouched. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => { setSaleCustomerFocus(value => value + 1); saleCustomerInputRef.current?.focus(); }} className="min-h-11 rounded-lg border border-primary px-4 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('sell.skipBarcode')}</button>
+                <span className="text-sm text-muted-foreground">{t('sell.skipBarcodeHint')}</span>
+              </div>
               <label className="mt-3 block text-sm"><input type="checkbox" checked={quickSaleMode} onChange={event => setQuickSaleMode(event.target.checked)} /> {t('sell.keepQuickSale')}</label>
               {quickSaleMode && <label className="mt-2 block text-sm"><input type="checkbox" checked={keepSaleCustomer} onChange={event => setKeepSaleCustomer(event.target.checked)} /> {t('sell.keepCustomer')}</label>}
             </section>
@@ -23544,6 +23604,14 @@ export default function Home() {
                 <span>{t('sell.paymentType')}</span>
                 <select
                   data-sale-payment-type
+                  // Keyboard flow (PC-test finding 1): when the customer is
+                  // cash-only (or none is picked yet) the payment type is
+                  // cash by definition, so the Enter walk skips this select
+                  // and lands on the first product line. A customer who may
+                  // take credit keeps the payment-type step: choosing the
+                  // customer focuses and opens this select instead. Tab and
+                  // click still reach it, so cash/card can still be changed.
+                  data-entry-skip={selectedCustomerCreditPolicy === "cash_only" ? true : undefined}
                   value={salesPaymentType}
                   onChange={(e) => handleSalesPaymentTypeChange(e.target.value as "cash" | "card" | "credit")}
                   className="w-full rounded border border-border px-3 py-2 focus:border-ring focus:outline-none"
@@ -23659,7 +23727,7 @@ export default function Home() {
                       <div className="grid gap-2 sm:grid-cols-6">
                         <label className="flex flex-col gap-1 text-xs text-foreground/80">
                           <span>{t('sell.product')}</span>
-                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} onBarcodeEnter={text => runSalesScan(text, { reportNotFound: isBarcodeShaped(text) }).status !== "not-found"} />
+                          <ProductSearchSelect value={String(line.product_id ?? "")} onChange={value => handleSalesLineChange(index, "product_id", value || null)} products={invoiceProductOptions} rankedFields={invoiceProductRankFields} frequency={invoiceProductFrequency} onBarcodeEnter={text => runSalesScan(text, { reportNotFound: isBarcodeShaped(text) }).status !== "not-found"} />
                           {line.product_id && !lineProduct && scannedProductNames[line.product_id] && <span className="text-xs text-muted-foreground">{scannedProductNames[line.product_id]} (not in current product list)</span>}
                         </label>
 
@@ -23896,6 +23964,12 @@ export default function Home() {
                   </div>
                 )}
               </div>
+            )}
+
+            {saveDisabledReason && (
+              <p role="status" className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-text">
+                {saveDisabledReason}
+              </p>
             )}
 
             <button

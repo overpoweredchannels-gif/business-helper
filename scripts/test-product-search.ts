@@ -87,6 +87,36 @@ assert.deepEqual(
   "Hey ranks before Hey Shampoo before Premium Hey Soap before Whey Protein; unrelated excluded",
 );
 
+// --- sold-frequency breaks ties inside a rank, never across ranks ---
+const frequencyByName = new Map([
+  ["Hey Soap", 100],
+  ["Hey Shampoo", 5],
+  ["Premium Hey Soap", 1000],
+]);
+assert.deepEqual(
+  names(rankSearchResults(
+    [
+      fields({ name: "Hey Shampoo", sku: "HEY-002" }),
+      fields({ name: "Hey Soap", sku: "HEY-003" }),
+      fields({ name: "Premium Hey Soap", sku: "PRM-HEY-9" }),
+    ],
+    "Hey",
+    (p) => p,
+    (p) => frequencyByName.get(p.name) ?? 0,
+  )),
+  ["Hey Soap", "Hey Shampoo", "Premium Hey Soap"],
+  "inside one rank the most-sold product comes first; a lower rank with the biggest frequency still stays behind",
+);
+assert.deepEqual(
+  names(rankSearchResults(
+    [fields({ name: "Hey Shampoo", sku: "HEY-002" }), fields({ name: "Hey Soap", sku: "HEY-003" })],
+    "Hey",
+    (p) => p,
+  )),
+  ["Hey Shampoo", "Hey Soap"],
+  "without a frequency the within-rank order stays alphabetical",
+);
+
 // --- determinism and variants ---
 const dupes = [
   { ...fields({ name: "Sufi Cooking Oil", sku: "SUF-OIL-5L" }), id: "p-oil-a" },

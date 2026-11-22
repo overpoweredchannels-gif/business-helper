@@ -18,8 +18,13 @@
 //      "name — sku — barcode" label; single-word brand/category matches land
 //      here too, keeping them the lowest rank).
 //
-// Within a rank, ordering is by normalized name, then by id, so results are
-// stable across keystrokes and renders. Products matching nothing are excluded.
+// Within a rank, ordering is by how often the product is sold (most sold
+// first — the "most expected" product wins, Google-style), then by
+// normalized name, then by id, so results are stable across keystrokes and
+// renders. The sold-frequency is optional: callers that pass no frequency
+// get the historical alphabetical within-rank order. Frequency only breaks
+// ties inside a rank — it can never promote a worse rank above a better one.
+// Products matching nothing are excluded.
 export interface SearchRankFields {
   name: string;
   sku?: string | null;
@@ -71,12 +76,23 @@ export function rankProductMatch(fields: SearchRankFields, normalizedQuery: stri
 }
 
 /**
+ * Optional sold-frequency for a product: how often it is sold (e.g. total
+ * quantity sold). Used only to break ties inside a rank tier.
+ */
+export type SearchFrequency<T> = (item: T) => number;
+
+/**
  * Filter and relevance-rank items for a raw query. Empty queries return the
  * input untouched (callers decide what "no query" shows). Tenant/role scoping
  * stays with the caller: this only reorders already-authorized items.
  */
-export function rankSearchResults<T>(items: readonly T[], query: string, fieldsOf: (item: T) => SearchRankFields): T[] {
-  return rankSearchResultsWithTiers(items, query, fieldsOf).map((entry) => entry.item);
+export function rankSearchResults<T>(
+  items: readonly T[],
+  query: string,
+  fieldsOf: (item: T) => SearchRankFields,
+  frequency?: SearchFrequency<T>,
+): T[] {
+  return rankSearchResultsWithTiers(items, query, fieldsOf, frequency).map((entry) => entry.item);
 }
 
 export interface RankedResult<T> {
@@ -94,10 +110,11 @@ export function rankSearchResultsWithTiers<T>(
   items: readonly T[],
   query: string,
   fieldsOf: (item: T) => SearchRankFields,
+  frequency?: SearchFrequency<T>,
 ): RankedResult<T>[] {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return [...items].map((item) => ({ item, rank: Number.MAX_SAFE_INTEGER }));
-  const scored: Array<{ item: T; rank: number; sortName: string; sortId: string }> = [];
+  const scored: Array<{ item: T; rank: number; frequency: number; sortName: string; sortId: string }> = [];
   for (const item of items) {
     const fields = fieldsOf(item);
     const rank = rankProductMatch(fields, normalizedQuery);
@@ -106,12 +123,14 @@ export function rankSearchResultsWithTiers<T>(
     scored.push({
       item,
       rank,
+      frequency: frequency ? frequency(item) : 0,
       sortName: normalizeSearchText(fields.name),
       sortId: typeof anyItem.id === "string" || typeof anyItem.id === "number" ? String(anyItem.id) : "",
     });
   }
   scored.sort((a, b) =>
     a.rank - b.rank ||
+    b.frequency - a.frequency ||
     (a.sortName < b.sortName ? -1 : a.sortName > b.sortName ? 1 : 0) ||
     (a.sortId < b.sortId ? -1 : a.sortId > b.sortId ? 1 : 0),
   );
