@@ -1619,11 +1619,26 @@ async function main(): Promise<void> {
       .update({ organization_id: userA.orgId })
       .eq("id", userA.userId);
     assert.equal(restoreAError, null, `restoring user A's profile to org A must not error (got ${restoreAError?.message ?? "?"})`);
+    // The forged row uses a product that EXISTS in org B (the forged
+    // org), so the resolve_overselling_policy trigger passes and RLS
+    // is the deciding factor. Run #14 used an org-A product and the
+    // trigger blocked it with P0001 (product not found in org B),
+    // masking the RLS verdict. Fetched via admin (org B's products
+    // are seeded at line 902; productsB at line 757 is empty because
+    // it was read before seeding).
+    const { data: orgBProducts, error: orgBProductsError } = await admin
+      .from("products")
+      .select("id")
+      .eq("organization_id", userB.orgId)
+      .limit(1);
+    assert.equal(orgBProductsError, null, `org B product lookup must not error (got ${orgBProductsError?.message ?? "?"})`);
+    assert.ok((orgBProducts ?? []).length > 0, "org B must have at least one seeded product for leg 7");
+    const orgBProductId = (orgBProducts as { id: string }[])[0].id;
     const { data: injItem, error: injError } = await clientA
       .from("sales_items")
       .insert({
         sales_transaction_id: saleA.transactionId as string,
-        product_id: productsA[0].id,
+        product_id: orgBProductId,
         quantity: 1,
         selling_price: 100,
         purchase_price_snapshot: 0,
