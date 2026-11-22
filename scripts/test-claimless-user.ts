@@ -99,22 +99,46 @@
 //       move their own profile to ANY org (and promote themselves
 //       to owner); the profile fallback + user_can_access_organization
 //       (profile row only) then resolve to that org — the (f) leak
-//       by another route. Three legs, each with the user-JWT client
+//       by another route. Six legs, each with the user-JWT client
 //       and an admin re-read as ground truth: (1) claim-less user A
 //       moves their own profile to org B; (2) a staff user promotes
-//       themselves to owner; (3) claim user C moves their own
-//       profile to org B. All three legs run and their banners print
+//       themselves to owner; (3) claim user C (split claim: claim
+//       org C, profile org D) moves their own profile to org B;
+//       (4) a user with NO profile row inserts one (org B, role
+//       owner, own auth id) — the INSERT policy is with_check true;
+//       (5) attacker X inserts a profile row for victim Y (another
+//       user's auth id); (6) a claim-holding OWNER (claim =
+//       profile org, the normal provisioned case) moves their own
+//       profile to org B. All legs run and their banners print
 //       before any assert throws, so one run reports the full
 //       picture. If any move lands, the test FAILS LOUDLY with a
 //       PROFILES_UPDATE HOLE CONFIRMED banner. Does NOT block
 //       Patch S (already live); DOES block onboarding new users.
 //
-//   94 assertions in total (1-12: a/b/c; 13-19: claim-first;
+//   (n) SALES_ACCESS_PARENT INJECTION (Claude message 66, leg 7):
+//       sales_access_parent (ALL) accepts an insert when the parent
+//       exists, without pinning the new row's own organization_id.
+//       A user can attach a sales_items row with organization_id =
+//       org B to their own org's parent sale; org B's server-side
+//       reports filtering by organization_id would show the forged
+//       item. One leg: user A inserts the forged row, admin re-read
+//       is ground truth, and the forged row is removed via admin
+//       right after (so cleanup stays FK-safe).
+//
+//   (o) ANON READ — employees / profiles / sales_items (Claude
+//       message 66): employees policies are roles {public}
+//       (includes anon), but the qual calls current_org_id(),
+//       which is null for anon, so anon must read zero rows.
+//       Same for profiles and sales_items (RLS, no policy covers
+//       anon). Reuses the anonClient from section (i).
+//
+//   101 assertions in total (1-12: a/b/c; 13-19: claim-first;
 //   20-23: duplicate-profile constraint; 24-29: user_metadata
 //   attack; 30-62: 33-table read loop; 63-71: write loop;
 //   72-76: no-profile / NULL / anon; 77: deactivated;
 //   78-89: E2E sale + purchase; 90-91: claim-user regression;
-//   92-94: profiles_update).
+//   92-97: profiles_update + profiles_insert (legs 1-6);
+//   98: sales_access_parent injection; 99-101: anon read).
 //
 //   If A's reads return NOTHING, the test FAILS LOUDLY: the fallback is
 //   missing, i.e. Step 4 has not run on this project yet. If B's rows
@@ -618,6 +642,10 @@ async function cleanup(): Promise<void> {
     console.log(`cleanup: purchase_transactions for org ${orgId}: ${purch.error ? `ERROR ${purch.error.message}` : "deleted"}`);
     const prod = await admin.from("products").delete().eq("organization_id", orgId);
     console.log(`cleanup: products for org ${orgId}: ${prod.error ? `ERROR ${prod.error.message}` : "deleted"}`);
+    const cAlloc = await admin.from("customer_payment_allocations").delete().eq("organization_id", orgId);
+    console.log(`cleanup: customer_payment_allocations for org ${orgId}: ${cAlloc.error ? `ERROR ${cAlloc.error.message}` : "deleted"}`);
+    const cPay = await admin.from("customer_payments").delete().eq("organization_id", orgId);
+    console.log(`cleanup: customer_payments for org ${orgId}: ${cPay.error ? `ERROR ${cPay.error.message}` : "deleted"}`);
     const cust = await admin.from("customers").delete().eq("organization_id", orgId);
     console.log(`cleanup: customers for org ${orgId}: ${cust.error ? `ERROR ${cust.error.message}` : "deleted"}`);
     for (const t of ["brands", "categories", "territories", "suppliers"] as const) {
@@ -1471,6 +1499,97 @@ async function main(): Promise<void> {
       console.log("=".repeat(70));
     }
     //
+    // Leg 4 — INSERT: a user with NO profile row inserts one
+    // (org B, role owner, own auth id). The INSERT policy is
+    // with_check true, so on paper any new signup can do this
+    // before provisioning.
+    const userN = await makeBareAuthUser("noprofile");
+    const sessionN = userClientFor(userN.email, userN.password);
+    await sessionN.signIn();
+    const clientN = sessionN.client;
+    const { data: insN, error: insNError } = await clientN
+      .from("profiles")
+      .insert({
+        id: userN.userId,
+        organization_id: userB.orgId,
+        auth_user_id: userN.userId,
+        full_name: "Claimless Test",
+        email: userN.email,
+        display_name: "Claimless Test",
+        role: "owner",
+        role_name: "owner",
+        is_active: true,
+      })
+      .select("id, organization_id");
+    console.log(`(m) no-profile insert attempt: error=${insNError?.code ?? "none"} (${insNError?.message ?? "no error"}), rows returned=${(insN ?? []).length}`);
+    const profileOrgAfterN = await getProfileOrg(userN.userId);
+    if (profileOrgAfterN === userB.orgId) {
+      console.log("=".repeat(70));
+      console.log("PROFILES_INSERT HOLE CONFIRMED: a user with NO profile");
+      console.log("row inserted their own profile (org B, role owner).");
+      console.log("Any new signup can become any org's owner before");
+      console.log("provisioning. Fix: revoke INSERT + drop the");
+      console.log("profiles_insert_authenticated policy.");
+      console.log("=".repeat(70));
+    }
+    //
+    // Leg 5 — INSERT with ANOTHER user's auth id: attacker X inserts
+    // a profile row for victim Y (both bare auth users, no profiles).
+    const userX = await makeBareAuthUser("attacker");
+    const userY = await makeBareAuthUser("victim");
+    const sessionX = userClientFor(userX.email, userX.password);
+    await sessionX.signIn();
+    const clientX = sessionX.client;
+    const { data: insX, error: insXError } = await clientX
+      .from("profiles")
+      .insert({
+        id: userY.userId,
+        organization_id: userB.orgId,
+        auth_user_id: userY.userId,
+        full_name: "Claimless Test",
+        email: userY.email,
+        display_name: "Claimless Test",
+        role: "owner",
+        role_name: "owner",
+        is_active: true,
+      })
+      .select("id, organization_id");
+    console.log(`(m) cross-user insert attempt: error=${insXError?.code ?? "none"} (${insXError?.message ?? "no error"}), rows returned=${(insX ?? []).length}`);
+    const profileOrgAfterY = await getProfileOrg(userY.userId);
+    if (profileOrgAfterY === userB.orgId) {
+      console.log("=".repeat(70));
+      console.log("PROFILES_INSERT HOLE CONFIRMED (cross-user): attacker X");
+      console.log("inserted a profile row for victim Y (org B, owner).");
+      console.log("An invited user not yet provisioned can be claimed.");
+      console.log("=".repeat(70));
+    }
+    //
+    // Leg 6 — a claim-holding OWNER (claim = profile org, the normal
+    // provisioned case) moves their own profile to org B. Leg 3's
+    // user C is the split-claim case (claim org C, profile org D);
+    // this is the matching-claim case.
+    const userO = await makeClaimlessUser("ownerclaim");
+    const { error: claimOError } = await admin.auth.admin.updateUserById(userO.userId, {
+      app_metadata: { organization_id: userO.orgId },
+    });
+    assert.equal(claimOError, null, `claim set (ownerclaim) must not error (got ${claimOError?.message ?? "?"})`);
+    const sessionO = userClientFor(userO.email, userO.password);
+    await sessionO.signIn();
+    const clientO = sessionO.client;
+    const { data: updO, error: updOError } = await clientO
+      .from("profiles")
+      .update({ organization_id: userB.orgId })
+      .eq("id", userO.userId)
+      .select("id, organization_id");
+    console.log(`(m) owner-claim org-change attempt: error=${updOError?.code ?? "none"} (${updOError?.message ?? "no error"}), rows returned=${(updO ?? []).length}`);
+    const profileOrgAfterO = await getProfileOrg(userO.userId);
+    if (profileOrgAfterO === userB.orgId) {
+      console.log("=".repeat(70));
+      console.log("PROFILES_UPDATE HOLE CONFIRMED (owner + claim): a");
+      console.log("provisioned owner moved their own profile to org B.");
+      console.log("=".repeat(70));
+    }
+    //
     // Verdicts, in order — the first failing assert throws, but every
     // banner above already printed, so the log holds the full picture.
     assert.equal(
@@ -1488,7 +1607,108 @@ async function main(): Promise<void> {
       userC.profileOrgId,
       `94. the CLAIM user must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterC ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
     );
-    console.log("(m) profiles_update OK — a user cannot move their own profile to another org or promote themselves to owner");
+    assert.equal(
+      profileOrgAfterN,
+      null,
+      `95. a user with NO profile row must NOT be able to insert their own profile (org B, owner) — profile now reads ${profileOrgAfterN ?? "null"} — PROFILES_INSERT HOLE CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterY,
+      null,
+      `96. attacker X must NOT be able to insert a profile row for victim Y (org B, owner) — Y's profile now reads ${profileOrgAfterY ?? "null"} — PROFILES_INSERT HOLE CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterO,
+      userO.orgId,
+      `97. a claim-holding OWNER must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterO ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
+    );
+    console.log("(m) profiles_update/insert OK — no user can move their own profile to another org, promote themselves, or insert a profile row");
+
+    // ── (n) SALES_ACCESS_PARENT INJECTION (Claude message 66, leg 7) ──
+    // sales_access_parent (ALL) accepts an insert when the parent
+    // exists, without pinning the new row's own organization_id.
+    // A user can attach a sales_items row with organization_id =
+    // org B to their own org's parent sale. Org B's server-side
+    // reports filtering by organization_id would show the forged
+    // item (the client-side SELECT policies are parent-checked, so
+    // clientB may not see it directly — the admin re-read is the
+    // ground truth for whether the row landed).
+    const { data: injItem, error: injError } = await clientA
+      .from("sales_items")
+      .insert({
+        sales_transaction_id: saleA.transactionId as string,
+        product_id: productsA[0].id,
+        quantity: 1,
+        selling_price: 100,
+        purchase_price_snapshot: 0,
+        organization_id: userB.orgId,
+      })
+      .select("id, organization_id");
+    console.log(`(n) forged sales_items insert attempt: error=${injError?.code ?? "none"} (${injError?.message ?? "no error"}), rows returned=${(injItem ?? []).length}`);
+    const { data: forgedRows, error: forgedReadError } = await admin
+      .from("sales_items")
+      .select("id")
+      .eq("sales_transaction_id", saleA.transactionId as string)
+      .eq("organization_id", userB.orgId);
+    assert.equal(forgedReadError, null, `forged sales_items re-read must not error (got ${forgedReadError?.message ?? "?"})`);
+    const forgedCount = (forgedRows ?? []).length;
+    const { data: forgedSeenByB, error: forgedSeenByBError } = await clientB
+      .from("sales_items")
+      .select("id")
+      .eq("sales_transaction_id", saleA.transactionId as string)
+      .eq("organization_id", userB.orgId);
+    assert.equal(forgedSeenByBError, null, `org B forged-row read must not error (got ${forgedSeenByBError?.message ?? "?"})`);
+    const forgedSeenByBCount = (forgedSeenByB ?? []).length;
+    if (forgedCount > 0) {
+      console.log("=".repeat(70));
+      console.log("SALES_ACCESS_PARENT INJECTION CONFIRMED: user A attached");
+      console.log("a sales_items row with organization_id = org B to their");
+      console.log("own org's parent sale. Rows landed:");
+      console.log(`  forged rows in org B: ${forgedCount}`);
+      console.log(`  forged rows visible to B's client: ${forgedSeenByBCount}`);
+      console.log("  Fix: pin organization_id = current_org_id() in the");
+      console.log("  ALL policies' with_check, or drop the ALL policies.");
+      console.log("=".repeat(70));
+      // Remove the forged row via admin so cleanup() stays FK-safe
+      // (it references org A's sale but carries org B).
+      await admin
+        .from("sales_items")
+        .delete()
+        .eq("sales_transaction_id", saleA.transactionId as string)
+        .eq("organization_id", userB.orgId);
+    }
+    assert.equal(
+      forgedCount,
+      0,
+      `98. a user must NOT be able to attach a sales_items row with organization_id = org B to their own org's parent (forged rows landed: ${forgedCount}) — SALES_ACCESS_PARENT INJECTION CONFIRMED`,
+    );
+    console.log("(n) sales_access_parent OK — no forged item row can be attached to another org");
+
+    // ── (o) ANON READ — employees / profiles / sales_items (Claude message 66) ──
+    // employees policies are roles {public} (includes anon), but the
+    // qual calls current_org_id(), which is null for anon, so anon
+    // must read zero rows. Same for profiles and sales_items (RLS,
+    // no policy covers anon). Reuses the anonClient from section (i).
+    const anonEmployees = await readTableAs(anonClient, "employees", true);
+    const anonProfiles = await readTableAs(anonClient, "profiles", true);
+    const anonSalesItems = await readTableAs(anonClient, "sales_items", true);
+    console.log(`(o) anon reads: employees=${anonEmployees.length}, profiles=${anonProfiles.length}, sales_items=${anonSalesItems.length}`);
+    assert.equal(
+      anonEmployees.length,
+      0,
+      `99. the anon role must read ZERO employees (got ${anonEmployees.length})`,
+    );
+    assert.equal(
+      anonProfiles.length,
+      0,
+      `100. the anon role must read ZERO profiles (got ${anonProfiles.length})`,
+    );
+    assert.equal(
+      anonSalesItems.length,
+      0,
+      `101. the anon role must read ZERO sales_items (got ${anonSalesItems.length})`,
+    );
+    console.log("(o) anon read OK — zero rows on employees, profiles, sales_items");
   } finally {
     await cleanup();
   }
