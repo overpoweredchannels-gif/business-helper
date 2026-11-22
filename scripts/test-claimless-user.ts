@@ -1540,7 +1540,13 @@ async function main(): Promise<void> {
     const sessionX = userClientFor(userX.email, userX.password);
     await sessionX.signIn();
     const clientX = sessionX.client;
-    const { data: insX, error: insXError } = await clientX
+    // No .select() (RETURNING) on purpose: a RETURNING clause makes
+    // Postgres also check the SELECT policy, which would mask the
+    // INSERT hole — the row's auth_user_id is Y, not X, so the
+    // select_same_org qual fails and the statement errors 42501 even
+    // though the INSERT policy itself is with_check true. A real
+    // attacker inserts without RETURNING. Admin re-read is ground truth.
+    const { error: insXError } = await clientX
       .from("profiles")
       .insert({
         id: userY.userId,
@@ -1552,9 +1558,8 @@ async function main(): Promise<void> {
         role: "owner",
         role_name: "owner",
         is_active: true,
-      })
-      .select("id, organization_id");
-    console.log(`(m) cross-user insert attempt: error=${insXError?.code ?? "none"} (${insXError?.message ?? "no error"}), rows returned=${(insX ?? []).length}`);
+      });
+    console.log(`(m) cross-user insert attempt: error=${insXError?.code ?? "none"} (${insXError?.message ?? "no error"})`);
     const profileOrgAfterY = await getProfileOrg(userY.userId);
     if (profileOrgAfterY === userB.orgId) {
       console.log("=".repeat(70));
@@ -1589,40 +1594,9 @@ async function main(): Promise<void> {
       console.log("provisioned owner moved their own profile to org B.");
       console.log("=".repeat(70));
     }
-    //
-    // Verdicts, in order — the first failing assert throws, but every
-    // banner above already printed, so the log holds the full picture.
-    assert.equal(
-      profileOrgAfterA,
-      userA.orgId,
-      `92. user A must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterA ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
-    );
-    assert.equal(
-      roleAfterS,
-      "staff",
-      `93. a staff user must NOT be able to promote their own profile to owner (role now reads ${roleAfterS ?? "null"}) — PROFILES_UPDATE ROLE ESCALATION CONFIRMED`,
-    );
-    assert.equal(
-      profileOrgAfterC,
-      userC.profileOrgId,
-      `94. the CLAIM user must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterC ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
-    );
-    assert.equal(
-      profileOrgAfterN,
-      null,
-      `95. a user with NO profile row must NOT be able to insert their own profile (org B, owner) — profile now reads ${profileOrgAfterN ?? "null"} — PROFILES_INSERT HOLE CONFIRMED`,
-    );
-    assert.equal(
-      profileOrgAfterY,
-      null,
-      `96. attacker X must NOT be able to insert a profile row for victim Y (org B, owner) — Y's profile now reads ${profileOrgAfterY ?? "null"} — PROFILES_INSERT HOLE CONFIRMED`,
-    );
-    assert.equal(
-      profileOrgAfterO,
-      userO.orgId,
-      `97. a claim-holding OWNER must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterO ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
-    );
-    console.log("(m) profiles_update/insert OK — no user can move their own profile to another org, promote themselves, or insert a profile row");
+    // Verdicts for (m) are at the end (after (n) and (o)) so one run
+    // reports the full picture even when a leg fails — the asserts
+    // used to sit here and the first throw skipped (n) and (o).
 
     // ── (n) SALES_ACCESS_PARENT INJECTION (Claude message 66, leg 7) ──
     // sales_access_parent (ALL) accepts an insert when the parent
@@ -1677,12 +1651,7 @@ async function main(): Promise<void> {
         .eq("sales_transaction_id", saleA.transactionId as string)
         .eq("organization_id", userB.orgId);
     }
-    assert.equal(
-      forgedCount,
-      0,
-      `98. a user must NOT be able to attach a sales_items row with organization_id = org B to their own org's parent (forged rows landed: ${forgedCount}) — SALES_ACCESS_PARENT INJECTION CONFIRMED`,
-    );
-    console.log("(n) sales_access_parent OK — no forged item row can be attached to another org");
+    // Verdict for (n) is at the end (after (o)).
 
     // ── (o) ANON READ — employees / profiles / sales_items (Claude message 66) ──
     // employees policies are roles {public} (includes anon), but the
@@ -1693,6 +1662,45 @@ async function main(): Promise<void> {
     const anonProfiles = await readTableAs(anonClient, "profiles", true);
     const anonSalesItems = await readTableAs(anonClient, "sales_items", true);
     console.log(`(o) anon reads: employees=${anonEmployees.length}, profiles=${anonProfiles.length}, sales_items=${anonSalesItems.length}`);
+    // Verdicts for (o) are at the end.
+    // ── VERDICTS (all sections) ──
+    // Every leg above ran and printed its banner before any assert
+    // throws, so one run reports the full picture.
+    assert.equal(
+      profileOrgAfterA,
+      userA.orgId,
+      `92. user A must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterA ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
+    );
+    assert.equal(
+      roleAfterS,
+      "staff",
+      `93. a staff user must NOT be able to promote their own profile to owner (role now reads ${roleAfterS ?? "null"}) — PROFILES_UPDATE ROLE ESCALATION CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterC,
+      userC.profileOrgId,
+      `94. the CLAIM user must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterC ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterN,
+      null,
+      `95. a user with NO profile row must NOT be able to insert their own profile (org B, owner) — profile now reads ${profileOrgAfterN ?? "null"} — PROFILES_INSERT HOLE CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterY,
+      null,
+      `96. attacker X must NOT be able to insert a profile row for victim Y (org B, owner) — Y's profile now reads ${profileOrgAfterY ?? "null"} — PROFILES_INSERT HOLE CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterO,
+      userO.orgId,
+      `97. a claim-holding OWNER must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterO ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
+    );
+    assert.equal(
+      forgedCount,
+      0,
+      `98. a user must NOT be able to attach a sales_items row with organization_id = org B to their own org's parent (forged rows landed: ${forgedCount}) — SALES_ACCESS_PARENT INJECTION CONFIRMED`,
+    );
     assert.equal(
       anonEmployees.length,
       0,
@@ -1708,7 +1716,7 @@ async function main(): Promise<void> {
       0,
       `101. the anon role must read ZERO sales_items (got ${anonSalesItems.length})`,
     );
-    console.log("(o) anon read OK — zero rows on employees, profiles, sales_items");
+    console.log("all sections OK — profiles_update/insert, sales_access_parent, anon read");
   } finally {
     await cleanup();
   }
