@@ -1,21 +1,19 @@
 "use client";
 
 import { Sparkles, ArrowRight, Lightbulb } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface AIInsightCardProps {
   insight: string;
-  confidence: number;
+  /** Freshness label ("Updated X min ago"). A rule-based alert has no confidence to show. */
+  updatedLabel?: string;
   action?: string;
   onLearnMore?: () => void;
   reason?: string;
 }
 
-export function AIInsightCard({ insight, confidence, action, onLearnMore, reason }: AIInsightCardProps) {
+export function AIInsightCard({ insight, updatedLabel, action, onLearnMore, reason }: AIInsightCardProps) {
   const { t } = useRegional();
-  const confidenceColor =
-    confidence >= 80 ? "text-success" : confidence >= 60 ? "text-warning-text" : "text-destructive";
   return (
     <div className="aankh-card rounded-xl border border-border bg-primary-light p-5 transition-all duration-200">
       <div className="flex items-start gap-3">
@@ -30,10 +28,9 @@ export function AIInsightCard({ insight, confidence, action, onLearnMore, reason
           <p className="text-sm text-foreground font-medium leading-relaxed">{insight}</p>
           {reason && <p className="text-xs text-light-text mt-1.5 leading-relaxed">{reason}</p>}
           <div className="flex flex-wrap items-center gap-3 mt-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-light-text">{t('dashboard.aiConfidence')}</span>
-              <span className={cn("text-xs font-semibold", confidenceColor)}>{confidence}%</span>
-            </div>
+            {updatedLabel && (
+              <span className="text-xs text-light-text">{updatedLabel}</span>
+            )}
             {action && (
               <button
                 onClick={onLearnMore}

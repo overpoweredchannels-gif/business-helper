@@ -22,11 +22,12 @@
  * the "no urgent" line stays in the BI insight list, where it is an
  * honest status line — it just never reaches this card any more.
  *
- * Out of scope (separate Area J tracker item): the confidence values
- * (85 for the alert branch, 90 for the fallback) are still hardcoded
- * and the "AI Recommendation" heading is unchanged. The alert branch
- * itself is also still the rule-generated alert title/summary, not LLM
- * insight — this slice only fixes which branch fires.
+ * The card shows NO confidence %: a rule-based alert has no confidence
+ * to show, so both branches render an "Updated X min ago" freshness
+ * label instead (alert branch: the alert row's created_at; fallback:
+ * the last successful products read). The "AI Recommendation" heading
+ * is unchanged. The alert branch itself is still the rule-generated
+ * alert title/summary, not LLM insight.
  */
 
 export type DashboardAiInsightKind = "alert" | "fallback" | "none";

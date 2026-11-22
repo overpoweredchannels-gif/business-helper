@@ -20905,6 +20905,24 @@ export default function Home() {
   const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
   const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardSourceStates[source].status;
   const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardSourceStates[source].lastSuccessAt;
+  // AI Insight freshness: the card shows when its underlying data was
+  // produced — the alert row's own created_at for the alert branch, the
+  // last successful products read for the low-stock fallback. A rule-based
+  // alert has no confidence to show, so no % is rendered anywhere.
+  const formatAiInsightUpdatedLabel = (timestamp: string | null | undefined): string | undefined => {
+    if (!timestamp) return undefined;
+    const updatedAt = new Date(timestamp).getTime();
+    if (Number.isNaN(updatedAt)) return undefined;
+    const elapsedMs = Date.now() - updatedAt;
+    if (elapsedMs < 0) return t('dashboard.aiUpdatedJustNow');
+    const minutes = Math.floor(elapsedMs / 60000);
+    if (minutes < 1) return t('dashboard.aiUpdatedJustNow');
+    if (minutes < 60) return t('dashboard.aiUpdatedMinAgo').replace('{minutes}', String(minutes));
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return t('dashboard.aiUpdatedHoursAgo').replace('{hours}', String(hours));
+    const days = Math.floor(hours / 24);
+    return t('dashboard.aiUpdatedDaysAgo').replace('{days}', String(days));
+  };
   const healthReadStatus = dashboardMetricReadStates["business-health"];
   const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
   const retryFailedDashboardReads = () => {
@@ -21716,7 +21734,7 @@ export default function Home() {
               if (kind === "alert" && latestAlert) {
                 return {
                   insight: latestAlert.summary || latestAlert.title,
-                  confidence: 85,
+                  updatedLabel: formatAiInsightUpdatedLabel(latestAlert.created_at),
                   action: latestAlert.recommended_action ?? undefined,
                   reason: t('dashboard.basedOn').replace('{source}', latestAlert.source_type || t('dashboard.recentData')),
                   onLearnMore: () => handleSectionChange("ai-analytics"),
@@ -21725,7 +21743,7 @@ export default function Home() {
               if (kind === "fallback") {
                 return {
                   insight: businessIntelligenceAnalytics.insights.lowStockWarning,
-                  confidence: 90,
+                  updatedLabel: formatAiInsightUpdatedLabel(dashboardLastSuccessFor("products")),
                   action: t('dashboard.reviewInventory'),
                   reason: t('dashboard.stockAnalysisReason'),
                   onLearnMore: () => handleSectionChange("inventory"),

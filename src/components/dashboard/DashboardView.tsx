@@ -54,7 +54,8 @@ interface DashboardViewProps {
   customersToday?: { value: string };
   aiInsight?: {
     insight: string;
-    confidence: number;
+    /** Freshness label ("Updated X min ago"). No confidence % is shown. */
+    updatedLabel?: string;
     action?: string;
     reason?: string;
     onLearnMore?: () => void;

@@ -25,8 +25,10 @@
  * cannot alter the warning text; the fallback branch passes
  * `insights.lowStockWarning` through verbatim.
  *
- * Out of scope (separate Area J tracker item): the confidence values
- * (85 alert / 90 fallback) and the "AI Recommendation" heading are
+ * The card shows NO confidence % (Area J confidence slice): a
+ * rule-based alert has no confidence to show, so both branches render
+ * an "Updated X min ago" freshness label instead of the old hardcoded
+ * 85 (alert) / 90 (fallback). The "AI Recommendation" heading is
  * unchanged, and the alert branch is still the rule-generated alert
  * title/summary, not LLM insight.
  *
