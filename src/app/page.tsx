@@ -135,10 +135,10 @@ import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
 import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-modules";
 import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
-import { AI_ALERT_SYNC_SAVE_KIND_LABEL, shouldRegenerateAiAlertsAfterSave, staleAiAlertIdsForSave, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
+import { AI_ALERT_SYNC_SAVE_KIND_LABEL, SHOWN_AI_ALERT_STATUSES, shouldRegenerateAiAlertsAfterSave, staleAiAlertUpdateTarget, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
 import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";
 import { dayKeyedAlertEntityId } from "@/lib/ai/ai-alert-entity-ids";
-import { aiAlertDedupeKey, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";
+import { aiAlertDedupeKey, buildActiveAiAlertKeySet, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";
 import { aiAlertThresholdsRelative } from "@/lib/ai/ai-alert-thresholds";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -1648,9 +1648,13 @@ export default function Home() {
   // active alert older than the newest 100 was invisible to the dedupe
   // and got re-inserted as a duplicate (Fanta, 2026-11-23). This read
   // deliberately does NOT touch rendered state (no setAiAlerts) — it
-  // exists only for the generator's dedupe. Fail-open like fetchAiAlerts:
-  // on error the generator falls back to the rendered-state list.
-  const fetchActiveAiAlertKeys = async (organizationId?: string | null): Promise<Set<string>> => {
+  // exists only for the generator's dedupe. Returns null (NOT an empty
+  // set) on error, so the caller can tell "no active alerts" apart
+  // from "the read failed": the caller falls back to rendered state
+  // only on null, and writes an Audit Log entry for the failure
+  // (37→36, 2026-11-23 — a silent fallback hides the failure the
+  // same way the silent generation failure did before dd6a210).
+  const fetchActiveAiAlertKeys = async (organizationId?: string | null): Promise<Set<string> | null> => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) return new Set();
     const { data, error } = await supabase
@@ -1660,9 +1664,28 @@ export default function Home() {
       .eq("status", "active");
     if (error) {
       console.error("Supabase fetch active AI alert keys error:", JSON.stringify(error, null, 2));
-      return new Set();
+      return null;
     }
     return new Set((data ?? []).map((row) => aiAlertDedupeKey(row)));
+  };
+
+  // Audit, never console-only: a failed dedupe read that falls back
+  // to rendered state must be visible in the Audit Log (same rule as
+  // the generation-failure entry from dd6a210). Best-effort, never
+  // blocks the generator.
+  const auditAiAlertDedupeReadFailure = async (context: string): Promise<void> => {
+    try {
+      await createAuditLog({
+        action: "created",
+        entity_type: "ai_alert",
+        entity_id: null,
+        entity_label: "AI business alerts",
+        description: `AI alert dedupe read failed (${context}); fell back to rendered state`,
+        new_values: { context, fallback: "rendered_state" },
+      });
+    } catch (auditError) {
+      console.error("AI alert dedupe-read-failure audit log failed (non-fatal):", auditError);
+    }
   };
 
   const fetchRealNotifications = async (organizationId?: string | null) => {
@@ -17549,23 +17572,35 @@ export default function Home() {
           (item) => aiAlertDedupeKey(item) === aiAlertDedupeKey(candidate)
         )
     );
-    // Dedupe against a FRESH server read, not only rendered state: a
+    // Dedupe against a FRESH server read, not rendered state: a
     // second run (another tab, or a retry after a lost response) must
     // never re-insert an alert that is already active. No unique
     // constraint exists on ai_alerts to target with onConflict (PK is
     // id only — docs/database/DATABASE_INVENTORY.md Table 28), and no
-    // migration is in scope, so the check lives here. The union with
-    // state covers a failed read (fetchActiveAiAlertKeys returns an
-    // empty set on error), so this is never weaker than the old
-    // state-only dedupe. The key is (alert_type, source_entity_type,
-    // source_entity_id) — title is display text, NOT identity: the old
-    // Fanta row's title was 29 chars vs the new row's 28 (one trailing
-    // space), so the old title match missed it and a duplicate was
-    // inserted (2026-11-23). The server read is key-only with NO limit:
-    // the UI fetch caps at 100 newest rows, so an older active alert
-    // was invisible to the dedupe and got re-inserted too.
+    // migration is in scope, so the check lives here. The key is
+    // (alert_type, source_entity_type, source_entity_id) — title is
+    // display text, NOT identity: the old Fanta row's title was 29
+    // chars vs the new row's 28 (one trailing space), so the old
+    // title match missed it and a duplicate was inserted (2026-11-23).
+    // The server read is key-only with NO limit: the UI fetch caps at
+    // 100 newest rows, so an older active alert was invisible to the
+    // dedupe and got re-inserted too.
+    //
+    // Rendered state is NOT a second input (37→36, 2026-11-23): the
+    // old union of state + server keys vetoed the fresh candidate
+    // from the closed-over state on a same-tick invalidate→generate
+    // (the state still showed the just-resolved alert as 'active'),
+    // so the generator returned silently and the alert never came
+    // back. The caller picks ONE known-keys set here: the server
+    // keys, or rendered state only when the server read FAILED
+    // (null) — and that fallback writes an Audit Log entry, never
+    // silently.
     const serverKeys = await fetchActiveAiAlertKeys(currentOrganizationId);
-    const newCandidates = filterNewAlertCandidates(uniqueCandidates, aiAlerts, serverKeys);
+    const knownKeys = serverKeys ?? buildActiveAiAlertKeySet(aiAlerts);
+    if (serverKeys === null) {
+      await auditAiAlertDedupeReadFailure("generator dedupe");
+    }
+    const newCandidates = filterNewAlertCandidates(uniqueCandidates, knownKeys);
 
     if (newCandidates.length === 0) {
       const message = t('page.noNewAlerts');
@@ -17598,7 +17633,15 @@ export default function Home() {
       // alert appeared at all). Retry row by row; rows the failed
       // batch already stored (lost response) are skipped via a fresh
       // server read, so this can never create duplicates.
-      const storedKeys = await fetchActiveAiAlertKeys(currentOrganizationId);
+      // Re-read what the failed batch already stored, so the per-row
+      // retry never re-inserts a row a lost response already wrote.
+      // If THIS read fails too, the retry runs blind (old behaviour)
+      // — but the failure is audited, never silent.
+      const storedKeysResult = await fetchActiveAiAlertKeys(currentOrganizationId);
+      if (storedKeysResult === null) {
+        await auditAiAlertDedupeReadFailure("per-row retry after failed batch");
+      }
+      const storedKeys = storedKeysResult ?? new Set<string>();
       const insertedCandidates: typeof newCandidates = [];
       const failedRows: Array<{ title: string; source_entity_type: string; error: string }> = [];
       for (let i = 0; i < newCandidates.length; i++) {
@@ -17690,42 +17733,53 @@ export default function Home() {
     void (async () => {
       try {
         if (!currentOrganizationId) return;
-        // Fresh server rows, not the rendered state: the state may not
-        // include alerts created since the last fetch, and the generator
-        // dedupes against state — deciding on stale state could both
-        // miss a stale alert and recreate a duplicate.
-        const freshAlerts = await fetchAiAlerts(currentOrganizationId);
-        const staleIds = staleAiAlertIdsForSave(save, freshAlerts);
-        if (staleIds.length > 0) {
+        // ONE atomic update, not read-then-write: the target (source
+        // type + entity ids) comes from the save itself, and the
+        // WHERE clause resolves exactly the shown (active/new) alerts
+        // for that party. A read first would race a second tab — an
+        // alert created between the read and the update would never
+        // be invalidated and would live on as a stale alert (the
+        // reverse of the 37→36 veto, same stale-state class,
+        // 2026-11-23). `.select("id")` returns the resolved ids for
+        // the audit entry below.
+        const target = staleAiAlertUpdateTarget(save);
+        if (target !== null) {
           const now = new Date().toISOString();
-          const { error } = await supabase
+          const { data: resolvedRows, error } = await supabase
             .from("ai_alerts")
             .update({ status: "resolved", updated_at: now, resolved_at: now })
-            .in("id", staleIds)
-            .eq("organization_id", currentOrganizationId);
+            .eq("organization_id", currentOrganizationId)
+            .eq("source_type", target.sourceType)
+            .in("source_entity_id", target.entityIds)
+            .in("status", [...SHOWN_AI_ALERT_STATUSES])
+            .select("id");
           if (error) {
             console.error("Supabase AI alert sync after save error:", JSON.stringify(error, null, 2));
             return;
           }
-          // One audit entry for the batch (best-effort: never blocks).
-          try {
-            await createAuditLog({
-              action: "updated",
-              entity_type: "ai_alert",
-              entity_id: null,
-              entity_label: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
-              description: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
-              new_values: { count: staleIds.length, alert_ids: staleIds },
-            });
-          } catch (auditError) {
-            console.error("AI alert sync audit log failed (non-fatal):", auditError);
+          const staleIds = (resolvedRows ?? []).map((row) => row.id);
+          if (staleIds.length > 0) {
+            // One audit entry for the batch (best-effort: never blocks).
+            try {
+              await createAuditLog({
+                action: "updated",
+                entity_type: "ai_alert",
+                entity_id: null,
+                entity_label: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
+                description: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
+                new_values: { count: staleIds.length, alert_ids: staleIds },
+              });
+            } catch (auditError) {
+              console.error("AI alert sync audit log failed (non-fatal):", auditError);
+            }
+            // Re-read state so the card/bell show the resolved rows
+            // right away (the generator's dedupe no longer reads
+            // state — it uses the fresh server read).
+            await fetchAiAlerts(currentOrganizationId);
+            // Cross-tab: the other tabs drop the stale alert now, before
+            // regeneration below broadcasts the fresh rows.
+            broadcastAiAlertsInvalidated(currentOrganizationId);
           }
-          // Re-read state so the generator's dedupe sees the resolved
-          // rows; otherwise it would skip recreating them.
-          await fetchAiAlerts(currentOrganizationId);
-          // Cross-tab: the other tabs drop the stale alert now, before
-          // regeneration below broadcasts the fresh rows.
-          broadcastAiAlertsInvalidated(currentOrganizationId);
         }
         if (shouldRegenerateAiAlertsAfterSave(currentProfile?.role ?? null)) {
           await generateAiBusinessAlerts({ silent: true });

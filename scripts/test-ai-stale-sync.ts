@@ -356,9 +356,10 @@ function main(): void {
     "fetchAiAlerts returns its rows",
   );
   check(
-    hookSource.includes("const freshAlerts = await fetchAiAlerts(currentOrganizationId);") &&
-      hookSource.includes("staleAiAlertIdsForSave(save, freshAlerts)"),
-    "the hook decides on fresh server rows, not rendered state",
+    hookSource.includes("const target = staleAiAlertUpdateTarget(save);") &&
+      hookSource.includes('.eq("source_type", target.sourceType)') &&
+      hookSource.includes('.select("id")'),
+    "the hook resolves in one atomic update from the save's own target — no read-then-write a second tab could race",
   );
   check(
     hookSource.indexOf("await fetchAiAlerts(currentOrganizationId);") <

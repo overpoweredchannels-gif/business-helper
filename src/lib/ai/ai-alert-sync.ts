@@ -129,30 +129,24 @@ export const AI_ALERT_SYNC_SAVE_KIND_LABEL: Record<AiAlertSyncSaveKind, string> 
 };
 
 /**
- * Which stored alerts a save makes stale: the active/new alerts for the
- * party whose figures the save changed, in the source type that carries
- * those figures. Returns alert ids (deduped, in input order).
+ * The single atomic-update target for a save's invalidation: the
+ * source type and entity ids whose shown (active/new) alerts the save
+ * makes stale. Returns null when the save invalidates nothing (no
+ * party id, or an expense save with no day).
  *
- * - sale / customer_payment / sales_return with a customer id: that
- *   customer's `customer_credit` (overdue) alerts.
- * - purchase / supplier_payment / purchase_return with a supplier id:
- *   that supplier's `supplier_ledger` (payable) alerts.
- * - expense with a day: that day's `expenses` alert (the generator's
- *   `expense_day` candidate keys the alert by day — the stored id is
- *   the deterministic UUID derived from the day, but the raw date
- *   string is matched too, defensively: a row stored under the old
- *   identity must still invalidate when its day's figures change).
- * - a save with no party id (e.g. a walk-in cash sale, which has no
- *   customer record) changes no party's overdue/payable figures, so
- *   nothing is invalidated; an expense save with no day invalidates
- *   nothing.
- * - already-resolved/archived alerts and alerts for other parties or
- *   other source types (market, staff) are untouched.
+ * This is the SAME decision `staleAiAlertIdsForSave` makes, factored
+ * out so the save hook can resolve in ONE update — `update ai_alerts
+ * set status='resolved' ... where organization_id=? and
+ * source_type=? and source_entity_id in (...) and status in
+ * ('active','new')` — instead of reading rows and then updating by
+ * id. The read-then-write races a second tab: an alert created
+ * between the read and the update is never invalidated and lives on
+ * as a stale alert (the reverse of the 37→36 veto, same stale-state
+ * class, 2026-11-23).
  */
-export function staleAiAlertIdsForSave(
+export function staleAiAlertUpdateTarget(
   save: AiAlertSyncSave,
-  alerts: ReadonlyArray<AiAlertLike>,
-): string[] {
+): { sourceType: string; entityIds: string[] } | null {
   // Expense rows are keyed by the deterministic UUID derived from the
   // day (see ai-alert-entity-ids.ts) — but the raw date string is
   // matched too, defensively: a row stored under the old identity
@@ -178,13 +172,43 @@ export function staleAiAlertIdsForSave(
   const entityIds = target.entityIds
     .map((id) => (typeof id === "string" ? id.trim() : ""))
     .filter((id) => id !== "");
-  if (entityIds.length === 0) return [];
+  if (entityIds.length === 0) return null;
+  return { sourceType: target.sourceType, entityIds };
+}
+
+/**
+ * Which stored alerts a save makes stale: the active/new alerts for the
+ * party whose figures the save changed, in the source type that carries
+ * those figures. Returns alert ids (deduped, in input order).
+ *
+ * - sale / customer_payment / sales_return with a customer id: that
+ *   customer's `customer_credit` (overdue) alerts.
+ * - purchase / supplier_payment / purchase_return with a supplier id:
+ *   that supplier's `supplier_ledger` (payable) alerts.
+ * - expense with a day: that day's `expenses` alert (the generator's
+ *   `expense_day` candidate keys the alert by day — the stored id is
+ *   the deterministic UUID derived from the day, but the raw date
+ *   string is matched too, defensively: a row stored under the old
+ *   identity must still invalidate when its day's figures change).
+ * - a save with no party id (e.g. a walk-in cash sale, which has no
+ *   customer record) changes no party's overdue/payable figures, so
+ *   nothing is invalidated; an expense save with no day invalidates
+ *   nothing.
+ * - already-resolved/archived alerts and alerts for other parties or
+ *   other source types (market, staff) are untouched.
+ */
+export function staleAiAlertIdsForSave(
+  save: AiAlertSyncSave,
+  alerts: ReadonlyArray<AiAlertLike>,
+): string[] {
+  const target = staleAiAlertUpdateTarget(save);
+  if (target === null) return [];
 
   const ids: string[] = [];
   for (const alert of alerts) {
     if (!SHOWN_AI_ALERT_STATUSES.includes(alert.status)) continue;
     if (alert.source_type !== target.sourceType) continue;
-    if (alert.source_entity_id === null || !entityIds.includes(alert.source_entity_id)) continue;
+    if (alert.source_entity_id === null || !target.entityIds.includes(alert.source_entity_id)) continue;
     if (!ids.includes(alert.id)) ids.push(alert.id);
   }
   return ids;

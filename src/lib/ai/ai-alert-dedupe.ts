@@ -48,19 +48,28 @@ export function buildActiveAiAlertKeySet(alerts: ReadonlyArray<AiAlertDedupeLike
 }
 
 /**
- * Candidates with no active alert for the same key. `knownAlerts` is the
- * rendered-state list (or any row list); `extraKnownKeys` carries keys
- * from the dedicated key-only server read, which is NOT capped at 100
- * rows and therefore also covers alerts older than the newest 100.
- * The union of the two is never weaker than the old state-only dedupe:
- * it covers a failed server read (empty set) the same way the old
- * `[...serverAlerts, ...aiAlerts]` union did.
+ * Candidates with no active alert for the same key. `knownKeys` is ONE
+ * set, chosen by the caller — normally the keys from the dedicated
+ * key-only server read (`fetchActiveAiAlertKeys` in page.tsx), which
+ * is NOT capped at 100 rows and therefore also covers alerts older
+ * than the newest 100. The caller falls back to rendered-state keys
+ * ONLY when that server read FAILED (null) — never as a second veto
+ * on the success path.
+ *
+ * Why one set (37→36, 2026-11-23): the filter used to take the
+ * rendered-state list AND the server keys and union them. A
+ * same-tick invalidate→generate runs from the closure of the render
+ * that started the save, so the state still showed the just-resolved
+ * alert as 'active' and vetoed its fresh candidate — the generator
+ * returned silently with no audit entry, and the alert never came
+ * back (NATURA payable, resolved 03:21 PKT, never regenerated).
+ * A `setAiAlerts` re-read cannot fix the running closure: it only
+ * schedules a re-render. So the state must not be an input here at
+ * all; the caller decides the single source of truth in one place.
  */
 export function filterNewAlertCandidates<T extends AiAlertDedupeLike>(
   candidates: ReadonlyArray<T>,
-  knownAlerts: ReadonlyArray<AiAlertDedupeLike>,
-  extraKnownKeys: ReadonlySet<string> = new Set(),
+  knownKeys: ReadonlySet<string>,
 ): T[] {
-  const knownKeys = new Set<string>([...buildActiveAiAlertKeySet(knownAlerts), ...extraKnownKeys]);
   return candidates.filter((candidate) => !knownKeys.has(aiAlertDedupeKey(candidate)));
 }

@@ -329,7 +329,7 @@ function main(): void {
     "on a batch-insert error the generator retries row by row instead of dropping every candidate",
   );
   check(
-    pageSource.includes("const storedKeys = await fetchActiveAiAlertKeys(currentOrganizationId);"),
+    pageSource.includes("const storedKeysResult = await fetchActiveAiAlertKeys(currentOrganizationId);"),
     "the per-row retry skips rows the failed batch already stored (lost response) via a fresh server read — no duplicates from the retry",
   );
   check(
@@ -341,8 +341,8 @@ function main(): void {
     "no upsert call on ai_alerts — there is no unique constraint to target with onConflict",
   );
   check(
-    pageSource.includes("filterNewAlertCandidates(uniqueCandidates, aiAlerts, serverKeys)"),
-    "regeneration dedupes against a fresh server read unioned with state, not rendered state alone",
+    pageSource.includes("filterNewAlertCandidates(uniqueCandidates, knownKeys)"),
+    "regeneration dedupes against one known-keys set picked by the caller (server read, state only as fallback)",
   );
   check(
     pageSource.includes("batch_error: error.message"),

@@ -31,6 +31,17 @@
  * key-only read).
  *
  * Run: npx tsx scripts/test-ai-alert-dedupe.ts
+ *
+ * Stale-state veto (37→36, 2026-11-23): the filter used to take the
+ * rendered-state list AND the server keys and union them, so a
+ * same-tick invalidate→generate vetoed the fresh candidate from the
+ * closed-over state (the NATURA payable alert was resolved by a
+ * payment save and never recreated). The filter now takes ONE
+ * known-keys set (`filterNewAlertCandidates(candidates, knownKeys)`);
+ * the caller picks the server keys, or rendered state only when the
+ * server read FAILS (null). The invalidation is one atomic UPDATE,
+ * not read-then-write, and a failed dedupe read writes an Audit Log
+ * entry. See section (h).
  */
 
 import assert from "node:assert/strict";
@@ -107,7 +118,7 @@ function main(): void {
     "the OLD title-keyed check would have inserted a duplicate (this is the bug)",
   );
   check(
-    filterNewAlertCandidates([fantaCandidate], [oldFantaRow]).length === 0,
+    filterNewAlertCandidates([fantaCandidate], buildActiveAiAlertKeySet([oldFantaRow])).length === 0,
     "the new filter drops the renamed Fanta candidate — zero new rows, active count stays 1",
   );
 
@@ -144,12 +155,8 @@ function main(): void {
     "the key-only read contains the old Fanta row's key",
   );
   check(
-    filterNewAlertCandidates([fantaCandidate], [], keyOnlyRead).length === 0,
+    filterNewAlertCandidates([fantaCandidate], keyOnlyRead).length === 0,
     "with the key-only read the renamed Fanta candidate is dropped",
-  );
-  check(
-    filterNewAlertCandidates([fantaCandidate], cappedRead, keyOnlyRead).length === 0,
-    "server keys + rendered state together still drop it (union, never weaker)",
   );
 
   console.log("(c) genuinely-new candidates still insert");
@@ -169,7 +176,7 @@ function main(): void {
   };
   const inserted = filterNewAlertCandidates(
     [fantaCandidate, newProductCandidate, newSupplierCandidate],
-    allRows,
+    buildActiveAiAlertKeySet(allRows),
   );
   check(inserted.length === 2, "two genuinely-new candidates pass the filter");
   check(
@@ -190,15 +197,15 @@ function main(): void {
   const archivedSameKey: FixtureRow = { ...oldFantaRow, id: "archived-fanta", status: "archived" };
   const newStatusSameKey: FixtureRow = { ...oldFantaRow, id: "new-fanta", status: "new" };
   check(
-    filterNewAlertCandidates([fantaCandidate], [resolvedSameKey]).length === 1,
+    filterNewAlertCandidates([fantaCandidate], buildActiveAiAlertKeySet([resolvedSameKey])).length === 1,
     "a resolved row for the same entity does not block a fresh alert",
   );
   check(
-    filterNewAlertCandidates([fantaCandidate], [archivedSameKey]).length === 1,
+    filterNewAlertCandidates([fantaCandidate], buildActiveAiAlertKeySet([archivedSameKey])).length === 1,
     "an archived row for the same entity does not block a fresh alert",
   );
   check(
-    filterNewAlertCandidates([fantaCandidate], [newStatusSameKey]).length === 1,
+    filterNewAlertCandidates([fantaCandidate], buildActiveAiAlertKeySet([newStatusSameKey])).length === 1,
     "a 'new' row does not block either — only 'active' counts (server query filters status='active')",
   );
   check(
@@ -215,7 +222,7 @@ function main(): void {
     status: "active",
   };
   check(
-    filterNewAlertCandidates([marketCandidateSameProduct], [oldFantaRow]).length === 1,
+    filterNewAlertCandidates([marketCandidateSameProduct], buildActiveAiAlertKeySet([oldFantaRow])).length === 1,
     "a different alert_type for the same product still inserts",
   );
   check(
@@ -232,8 +239,8 @@ function main(): void {
   console.log("(f) page.tsx wiring: the generator uses the key helper + the uncapped key read");
   const pageSource = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
   check(
-    pageSource.includes('import { aiAlertDedupeKey, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";'),
-    "page.tsx imports the dedupe helpers",
+    pageSource.includes('import { aiAlertDedupeKey, buildActiveAiAlertKeySet, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";'),
+    "page.tsx imports the dedupe helpers (key, active-key set for the read-failure fallback, filter)",
   );
   const keyReadUses = pageSource.split("fetchActiveAiAlertKeys(currentOrganizationId)").length - 1;
   check(keyReadUses >= 2, `the key-only read is used in both dedupe paths (main + retry), found ${keyReadUses} uses`);
@@ -246,8 +253,24 @@ function main(): void {
     "the within-run candidate dedupe uses the key, not title",
   );
   check(
-    pageSource.includes('filterNewAlertCandidates(uniqueCandidates, aiAlerts, serverKeys)'),
-    "the main dedupe filters through the helper with server keys + rendered state",
+    pageSource.includes("filterNewAlertCandidates(uniqueCandidates, knownKeys)"),
+    "the main dedupe filters through the helper with ONE known-keys set — no rendered-state argument",
+  );
+  check(
+    pageSource.includes("const knownKeys = serverKeys ?? buildActiveAiAlertKeySet(aiAlerts);"),
+    "the caller picks the keys in one place: server keys, or rendered state only when the server read failed",
+  );
+  check(
+    !pageSource.includes("filterNewAlertCandidates(uniqueCandidates, aiAlerts, serverKeys)"),
+    "the old three-argument call (state unioned with server keys) is gone",
+  );
+  check(
+    pageSource.includes("Promise<Set<string> | null>"),
+    "the key-only read returns null on failure, so 'no active alerts' and 'read failed' stay distinct",
+  );
+  check(
+    pageSource.includes("AI alert dedupe read failed"),
+    "a failed dedupe read writes an Audit Log entry, not just console.error",
   );
   check(
     pageSource.includes('storedKeys.has(aiAlertDedupeKey(candidate))'),
@@ -263,11 +286,97 @@ function main(): void {
   check(keyReadBody.length > 0, "the key-only read helper exists in page.tsx");
   check(!keyReadBody.includes(".limit("), "the key-only read has NO limit (age-independent)");
   check(keyReadBody.includes('.eq("status", "active")'), "the key-only read filters status='active' server-side");
+  check(keyReadBody.includes("return null"), "the key-only read returns null (not an empty set) on error");
   check(!keyReadBody.includes("setAiAlerts"), "the key-only read does not touch rendered state");
   const uiReadStart = pageSource.indexOf("const fetchAiAlerts");
   const uiReadEnd = pageSource.indexOf("\n  };", uiReadStart);
   const uiReadBody = pageSource.slice(uiReadStart, uiReadEnd);
   check(uiReadBody.includes(".limit(100)"), "the UI read still caps at 100 newest rows (unchanged — only the dedupe read is uncapped)");
+
+  console.log("(h) the stale-state veto must not block regeneration (37→36, 2026-11-23)");
+  // Production evidence: the NATURA payable alert was resolved by a
+  // €0.01 payment save at 03:21 PKT, but no fresh alert was created —
+  // the generator ran in the same tick, and the dedupe unioned the
+  // closed-over rendered state (still showing NATURA 'active') with
+  // the fresh server keys, so the candidate was vetoed and the
+  // generator returned silently with no audit entry. The fix: the
+  // filter takes ONE known-keys set, chosen by the caller from the
+  // server read alone; rendered state is only the fallback when that
+  // read FAILS (null), never a second veto on the success path.
+  const NATURA_SUPPLIER_ID = "44444444-4444-4444-8444-444444444444";
+  const naturaCandidate: FixtureCandidate = {
+    alert_type: "payment",
+    title: "Supplier payable pressure: NATURA HARVERST",
+    source_entity_type: "supplier_ledger",
+    source_entity_id: NATURA_SUPPLIER_ID,
+    status: "active",
+  };
+  const staleNaturaRow: FixtureRow = {
+    id: "stale-natura-alert",
+    alert_type: "payment",
+    title: "Supplier payable pressure: NATURA HARVERST",
+    source_entity_type: "supplier_ledger",
+    source_entity_id: NATURA_SUPPLIER_ID,
+    status: "active",
+    created_at: "2026-11-22T19:54:58.000Z",
+  };
+  // The pre-fix dedupe predicate, replicated here ONLY to prove the
+  // bug: it unioned rendered state with the server keys.
+  function oldUnionWouldDrop(
+    candidate: FixtureCandidate,
+    knownAlerts: ReadonlyArray<FixtureRow>,
+    extraKnownKeys: ReadonlySet<string>,
+  ): boolean {
+    const knownKeys = new Set<string>([...buildActiveAiAlertKeySet(knownAlerts), ...extraKnownKeys]);
+    return knownKeys.has(aiAlertDedupeKey(candidate));
+  }
+  // The server has already resolved NATURA, so its key set is empty;
+  // the rendered state still shows it active (same-tick closure).
+  const serverKeysAfterResolve = new Set<string>();
+  check(
+    oldUnionWouldDrop(naturaCandidate, [staleNaturaRow], serverKeysAfterResolve),
+    "the OLD union drops the NATURA candidate when rendered state is stale (this is the bug)",
+  );
+  check(
+    filterNewAlertCandidates([naturaCandidate], serverKeysAfterResolve).length === 1,
+    "with server-only keys the resolved NATURA candidate passes — rendered state is never consulted",
+  );
+  check(
+    filterNewAlertCandidates([naturaCandidate], new Set([aiAlertDedupeKey(naturaCandidate)])).length === 0,
+    "a key that IS still active on the server still blocks the candidate",
+  );
+  check(
+    filterNewAlertCandidates([naturaCandidate], buildActiveAiAlertKeySet([staleNaturaRow])).length === 0,
+    "the state fallback still blocks when the server read failed and state is all the caller has",
+  );
+  // Case 4 (Claude msg 43/44): a resolved row for the same key must
+  // not block a fresh alert on a fresh generator call.
+  const resolvedNaturaRow: FixtureRow = { ...staleNaturaRow, id: "resolved-natura", status: "resolved" };
+  check(
+    filterNewAlertCandidates([naturaCandidate], buildActiveAiAlertKeySet([resolvedNaturaRow])).length === 1,
+    "a resolved NATURA row does not block a fresh alert (server read filters status='active')",
+  );
+  console.log("  (h2) the invalidation is one atomic update, not read-then-write from state");
+  check(
+    pageSource.includes("staleAiAlertUpdateTarget(save)"),
+    "the save hook computes the invalidation target from the save, not from a row list",
+  );
+  check(
+    !pageSource.includes("staleAiAlertIdsForSave(save, freshAlerts)"),
+    "the save hook no longer reads rows and then updates by id (a second tab could create one in between)",
+  );
+  check(
+    pageSource.includes('.eq("source_type", target.sourceType)'),
+    "the atomic update matches the source type in the WHERE clause",
+  );
+  check(
+    pageSource.includes('.in("source_entity_id", target.entityIds)'),
+    "the atomic update matches the entity ids in the WHERE clause",
+  );
+  check(
+    pageSource.includes('.in("status", [...SHOWN_AI_ALERT_STATUSES])'),
+    "the atomic update only resolves shown (active/new) alerts",
+  );
 
   console.log("(g) the test is wired into the suite");
   const packageSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
