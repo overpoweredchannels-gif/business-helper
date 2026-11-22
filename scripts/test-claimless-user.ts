@@ -1607,6 +1607,18 @@ async function main(): Promise<void> {
     // item (the client-side SELECT policies are parent-checked, so
     // clientB may not see it directly — the admin re-read is the
     // ground truth for whether the row landed).
+    // Restore user A's profile to org A before this leg: leg 1 moved
+    // it to org B, so A's current_org_id() now resolves to org B and
+    // the forged insert would be denied for the wrong reason (the
+    // parent is in org A, but A's org context is B). The verdicts
+    // for legs 1-3 are already captured in variables, so this
+    // restore does not affect them. (In a post-fix run leg 1 is
+    // blocked, so this restore is a no-op.)
+    const { error: restoreAError } = await admin
+      .from("profiles")
+      .update({ organization_id: userA.orgId })
+      .eq("id", userA.userId);
+    assert.equal(restoreAError, null, `restoring user A's profile to org A must not error (got ${restoreAError?.message ?? "?"})`);
     const { data: injItem, error: injError } = await clientA
       .from("sales_items")
       .insert({
