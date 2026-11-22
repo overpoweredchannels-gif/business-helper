@@ -241,13 +241,15 @@ create trigger categories_set_updated_at before update on public.categories
 -- current_org_id() resolves the tenant from the access token. GoTrue embeds
 -- admin-set custom claims under "app_metadata" (top-level custom claims require
 -- a custom token hook), so we read the claim from app_metadata first, with
--- fallbacks to user_metadata and a top-level claim for legacy setups.
+-- fallbacks to a top-level claim and the profile row. (Patch S, 2026-11-22:
+-- the user_metadata fallback was removed — user-controlled metadata must
+-- never pick the tenant.)
 create or replace function public.current_org_id()
 returns uuid language sql stable as $$
   select coalesce(
     nullif(auth.jwt() -> 'app_metadata' ->> 'organization_id', ''),
-    nullif(auth.jwt() -> 'user_metadata' ->> 'organization_id', ''),
-    nullif(auth.jwt() ->> 'organization_id', '')
+    nullif(auth.jwt() ->> 'organization_id', ''),
+    public.current_user_organization_id()::text
   )::uuid;
 $$;
 
