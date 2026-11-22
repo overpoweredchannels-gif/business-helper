@@ -15,7 +15,7 @@
  * (1) the embedded generation-time figure/currency above;
  * (2) the generator's dedupe lock — a candidate is skipped when an
  *     ACTIVE alert with the same (alert_type, source_entity_type,
- *     source_entity_id, title) already exists, whatever its amount.
+ *     source_entity_id) already exists, whatever its amount.
  *     Regenerating alone can therefore NEVER fix a stale figure: the
  *     old alert must be resolved FIRST, then a fresh one can be created.
  *

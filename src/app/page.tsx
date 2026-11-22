@@ -138,6 +138,7 @@ import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceL
 import { AI_ALERT_SYNC_SAVE_KIND_LABEL, shouldRegenerateAiAlertsAfterSave, staleAiAlertIdsForSave, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
 import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";
 import { dayKeyedAlertEntityId } from "@/lib/ai/ai-alert-entity-ids";
+import { aiAlertDedupeKey, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";
 import { aiAlertThresholdsRelative } from "@/lib/ai/ai-alert-thresholds";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
@@ -1640,6 +1641,28 @@ export default function Home() {
 
     setAiAlerts(data ?? []);
     return data ?? [];
+  };
+
+  // Dedupe-only read of ai_alerts: key columns only, NO limit, active
+  // rows only. The UI fetch above caps at the 100 newest rows, so an
+  // active alert older than the newest 100 was invisible to the dedupe
+  // and got re-inserted as a duplicate (Fanta, 2026-11-23). This read
+  // deliberately does NOT touch rendered state (no setAiAlerts) — it
+  // exists only for the generator's dedupe. Fail-open like fetchAiAlerts:
+  // on error the generator falls back to the rendered-state list.
+  const fetchActiveAiAlertKeys = async (organizationId?: string | null): Promise<Set<string>> => {
+    const orgId = organizationId ?? currentOrganizationId;
+    if (!orgId) return new Set();
+    const { data, error } = await supabase
+      .from("ai_alerts")
+      .select("alert_type, source_entity_type, source_entity_id")
+      .eq("organization_id", orgId)
+      .eq("status", "active");
+    if (error) {
+      console.error("Supabase fetch active AI alert keys error:", JSON.stringify(error, null, 2));
+      return new Set();
+    }
+    return new Set((data ?? []).map((row) => aiAlertDedupeKey(row)));
   };
 
   const fetchRealNotifications = async (organizationId?: string | null) => {
@@ -17517,15 +17540,13 @@ export default function Home() {
       });
     }
 
+    // Within-run dedupe uses the same key as the server dedupe below:
+    // title is display text, never identity (Fanta, 2026-11-23).
     const uniqueCandidates = candidates.filter(
       (candidate, index, allCandidates) =>
         index ===
         allCandidates.findIndex(
-          (item) =>
-            item.alert_type === candidate.alert_type &&
-            item.source_entity_type === candidate.source_entity_type &&
-            item.source_entity_id === candidate.source_entity_id &&
-            item.title === candidate.title
+          (item) => aiAlertDedupeKey(item) === aiAlertDedupeKey(candidate)
         )
     );
     // Dedupe against a FRESH server read, not only rendered state: a
@@ -17534,21 +17555,17 @@ export default function Home() {
     // constraint exists on ai_alerts to target with onConflict (PK is
     // id only — docs/database/DATABASE_INVENTORY.md Table 28), and no
     // migration is in scope, so the check lives here. The union with
-    // state covers a failed read (fetchAiAlerts returns [] on error),
-    // so this is never weaker than the old state-only dedupe.
-    const serverAlerts = await fetchAiAlerts(currentOrganizationId);
-    const knownAlerts = [...serverAlerts, ...aiAlerts];
-    const newCandidates = uniqueCandidates.filter(
-      (candidate) =>
-        !knownAlerts.some(
-          (alert) =>
-            alert.status === "active" &&
-            alert.alert_type === candidate.alert_type &&
-            alert.source_entity_type === candidate.source_entity_type &&
-            alert.source_entity_id === candidate.source_entity_id &&
-            alert.title === candidate.title
-        )
-    );
+    // state covers a failed read (fetchActiveAiAlertKeys returns an
+    // empty set on error), so this is never weaker than the old
+    // state-only dedupe. The key is (alert_type, source_entity_type,
+    // source_entity_id) — title is display text, NOT identity: the old
+    // Fanta row's title was 29 chars vs the new row's 28 (one trailing
+    // space), so the old title match missed it and a duplicate was
+    // inserted (2026-11-23). The server read is key-only with NO limit:
+    // the UI fetch caps at 100 newest rows, so an older active alert
+    // was invisible to the dedupe and got re-inserted too.
+    const serverKeys = await fetchActiveAiAlertKeys(currentOrganizationId);
+    const newCandidates = filterNewAlertCandidates(uniqueCandidates, aiAlerts, serverKeys);
 
     if (newCandidates.length === 0) {
       const message = t('page.noNewAlerts');
@@ -17581,19 +17598,12 @@ export default function Home() {
       // alert appeared at all). Retry row by row; rows the failed
       // batch already stored (lost response) are skipped via a fresh
       // server read, so this can never create duplicates.
-      const storedAlerts = await fetchAiAlerts(currentOrganizationId);
+      const storedKeys = await fetchActiveAiAlertKeys(currentOrganizationId);
       const insertedCandidates: typeof newCandidates = [];
       const failedRows: Array<{ title: string; source_entity_type: string; error: string }> = [];
       for (let i = 0; i < newCandidates.length; i++) {
         const candidate = newCandidates[i];
-        const alreadyStored = storedAlerts.some(
-          (alert) =>
-            alert.status === "active" &&
-            alert.alert_type === candidate.alert_type &&
-            alert.source_entity_type === candidate.source_entity_type &&
-            alert.source_entity_id === candidate.source_entity_id &&
-            alert.title === candidate.title
-        );
+        const alreadyStored = storedKeys.has(aiAlertDedupeKey(candidate));
         if (alreadyStored) {
           insertedCandidates.push(candidate);
           continue;
@@ -17669,7 +17679,7 @@ export default function Home() {
   // "Current payable is Rs204,000." alert, generated while the books
   // currency was PKR). The generator's dedupe lock means regenerating
   // alone can never fix a stale figure — an active alert with the same
-  // title is skipped — so the stale alert is resolved FIRST and only
+  // key (alert_type, source_entity_type, source_entity_id) is skipped — so the stale alert is resolved FIRST and only
   // then are fresh alerts regenerated from live data (in the ACTIVE
   // books currency, via `formatBooksMoney`). Fire-and-forget and
   // fail-open by design: this must NEVER fail, delay or change a save.

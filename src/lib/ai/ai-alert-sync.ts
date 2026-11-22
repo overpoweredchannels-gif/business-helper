@@ -19,7 +19,7 @@
  *
  * (2) The generator's dedupe lock: a candidate is skipped when an ACTIVE
  *     alert with the same (alert_type, source_entity_type,
- *     source_entity_id, title) already exists — regardless of the amount
+ *     source_entity_id) already exists — regardless of the amount
  *     in its summary. Regenerating alone can therefore NEVER fix a stale
  *     figure: the old alert must be resolved FIRST, and only then can a
  *     fresh alert with live figures (in the ACTIVE books currency, via
@@ -54,7 +54,7 @@
  * Unrelated alerts (other parties, other source types — market, staff)
  * are untouched. Regeneration is the generator's own full pass,
  * which only inserts genuinely-new alerts (its dedupe skips the ones
- * that are still active with the same title), so untouched alerts are
+ * that are still active with the same key), so untouched alerts are
  * never churned.
  *
  * Staff saves invalidate but do NOT regenerate: the generator is

@@ -18,7 +18,7 @@
  * Fix: derive a deterministic UUID from a namespaced key instead of
  * storing the date string. Deterministic matters twice:
  * - the generator's dedupe matches on (alert_type,
- *   source_entity_type, source_entity_id, title), so the same day must
+ *   source_entity_type, source_entity_id), so the same day must
  *   always map to the same id, or a second run would re-insert a
  *   duplicate;
  * - `staleAiAlertIdsForSave` (ai-alert-sync.ts) matches a stored
