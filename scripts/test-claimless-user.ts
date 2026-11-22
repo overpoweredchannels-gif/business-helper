@@ -89,11 +89,32 @@
 //       this script (no web server in the CI job); it is covered
 //       by the packaged test matrix, not here.
 //
-//   91 assertions in total (1-12: a/b/c; 13-19: claim-first;
+//   (m) PROFILES_UPDATE HOLE (Claude message 62): policy
+//       profiles_update_same_org_owner_admin_or_self lets a user
+//       update their own profile row — its qual/with_check is
+//       (auth_user_id = auth.uid()) OR ((organization_id =
+//       current_user_organization_id()) AND
+//       is_current_user_owner_or_admin()), and the first OR branch
+//       does not pin organization_id or role. On paper a user can
+//       move their own profile to ANY org (and promote themselves
+//       to owner); the profile fallback + user_can_access_organization
+//       (profile row only) then resolve to that org — the (f) leak
+//       by another route. Three legs, each with the user-JWT client
+//       and an admin re-read as ground truth: (1) claim-less user A
+//       moves their own profile to org B; (2) a staff user promotes
+//       themselves to owner; (3) claim user C moves their own
+//       profile to org B. All three legs run and their banners print
+//       before any assert throws, so one run reports the full
+//       picture. If any move lands, the test FAILS LOUDLY with a
+//       PROFILES_UPDATE HOLE CONFIRMED banner. Does NOT block
+//       Patch S (already live); DOES block onboarding new users.
+//
+//   94 assertions in total (1-12: a/b/c; 13-19: claim-first;
 //   20-23: duplicate-profile constraint; 24-29: user_metadata
 //   attack; 30-62: 33-table read loop; 63-71: write loop;
 //   72-76: no-profile / NULL / anon; 77: deactivated;
-//   78-89: E2E sale + purchase; 90-91: claim-user regression).
+//   78-89: E2E sale + purchase; 90-91: claim-user regression;
+//   92-94: profiles_update).
 //
 //   If A's reads return NOTHING, the test FAILS LOUDLY: the fallback is
 //   missing, i.e. Step 4 has not run on this project yet. If B's rows
@@ -1344,6 +1365,130 @@ async function main(): Promise<void> {
     const { error: cleanCError } = await clientC.auth.updateUser({ data: { organization_id: null } });
     assert.equal(cleanCError, null, `clearing the claim user's poisoned user_metadata must not error (got ${cleanCError?.message ?? "?"})`);
     console.log("(l) claim-user regression OK — poisoned user_metadata cannot move a claim user off their org");
+
+    // ── (m) PROFILES_UPDATE HOLE (Claude message 62) ──
+    // Policy profiles_update_same_org_owner_admin_or_self lets a user
+    // update their OWN profile row: qual/with_check is
+    // (auth_user_id = auth.uid()) OR ((organization_id =
+    // current_user_organization_id()) AND is_current_user_owner_or_admin()).
+    // The first OR branch only requires the NEW row's auth_user_id to
+    // still be the user themselves — it does NOT pin organization_id
+    // or role. On paper, a user can move their own profile to ANY org
+    // (and promote themselves to owner), and then current_org_id()'s
+    // profile fallback + user_can_access_organization() (which reads
+    // only the profile row) resolve to that org — the same leak as (f)
+    // by another route. Three legs, each attempted with the user-JWT
+    // client exactly as a real attacker would, with an admin re-read
+    // as ground truth (the user client can only report what RLS let
+    // it see). All three legs run and their banners print before any
+    // assert throws, so one run reports the full picture. If any move
+    // lands, the test FAILS LOUDLY with a PROFILES_UPDATE HOLE
+    // CONFIRMED banner. Does NOT block Patch S (already live); DOES
+    // block onboarding new users until the policy is fixed or proven
+    // safe.
+    //
+    // Leg 1 — claim-less user A moves their own profile to org B.
+    const { data: updA, error: updAError } = await clientA
+      .from("profiles")
+      .update({ organization_id: userB.orgId })
+      .eq("id", userA.userId)
+      .select("id, organization_id");
+    console.log(`(m) user A org-change attempt: error=${updAError?.code ?? "none"} (${updAError?.message ?? "no error"}), rows returned=${(updA ?? []).length}`);
+    const profileOrgAfterA = await getProfileOrg(userA.userId);
+    let productsBSeenAfterProfileMove = -1;
+    if (profileOrgAfterA === userB.orgId) {
+      // End-to-end proof: the profile move alone is the hole, but
+      // show the actual harm — can A now read org B's rows? No
+      // session refresh is needed: the fallback reads the profile
+      // row live on every query.
+      productsBSeenAfterProfileMove = (await readRows(clientA, "products", userB.orgId)).length;
+      console.log("=".repeat(70));
+      console.log("PROFILES_UPDATE HOLE CONFIRMED: user A (claim-less, org A)");
+      console.log("updated their OWN profiles row to org B's id, and the");
+      console.log("row changed. current_org_id()'s profile fallback and");
+      console.log("user_can_access_organization() now resolve to org B:");
+      console.log(`  org B product rows visible to A: ${productsBSeenAfterProfileMove}`);
+      console.log("  Fix the profiles_update_same_org_owner_admin_or_self");
+      console.log("  policy (pin organization_id/role on self-update)");
+      console.log("  before onboarding new users.");
+      console.log("=".repeat(70));
+    }
+    //
+    // Leg 2 — role escalation: a STAFF user promotes themselves to owner.
+    // Fresh org (own tracked entry, so cleanup stays FK-safe); the
+    // role is set to staff by admin, then the user tries owner.
+    const userS = await makeClaimlessUser("staff");
+    const { error: staffRoleError } = await admin
+      .from("profiles")
+      .update({ role: "staff", role_name: "staff" })
+      .eq("id", userS.userId);
+    assert.equal(staffRoleError, null, `staff profile role set must not error (got ${staffRoleError?.message ?? "?"})`);
+    const sessionS = userClientFor(userS.email, userS.password);
+    await sessionS.signIn();
+    const clientS = sessionS.client;
+    const { data: updS, error: updSError } = await clientS
+      .from("profiles")
+      .update({ role: "owner", role_name: "owner" })
+      .eq("id", userS.userId)
+      .select("id, role");
+    console.log(`(m) staff role-escalation attempt: error=${updSError?.code ?? "none"} (${updSError?.message ?? "no error"}), rows returned=${(updS ?? []).length}`);
+    const { data: roleRowS, error: roleReadError } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userS.userId)
+      .maybeSingle();
+    assert.equal(roleReadError, null, `staff role re-read must not error (got ${roleReadError?.message ?? "?"})`);
+    const roleAfterS = (roleRowS as { role?: string } | null)?.role ?? null;
+    if (roleAfterS === "owner") {
+      console.log("=".repeat(70));
+      console.log("PROFILES_UPDATE ROLE ESCALATION CONFIRMED: a staff user");
+      console.log("promoted their OWN profile row to owner. Fix the");
+      console.log("profiles_update_same_org_owner_admin_or_self policy");
+      console.log("before onboarding new users.");
+      console.log("=".repeat(70));
+    }
+    //
+    // Leg 3 — CLAIM user C moves their own profile to org B. The claim
+    // (first coalesce arg) still wins for current_org_id(), but the
+    // profile-org policies (user_can_access_organization, profile row)
+    // would union org B in — so a profile move still leaks for C.
+    const { data: updC, error: updCError } = await clientC
+      .from("profiles")
+      .update({ organization_id: userB.orgId })
+      .eq("id", userC.userId)
+      .select("id, organization_id");
+    console.log(`(m) claim user C org-change attempt: error=${updCError?.code ?? "none"} (${updCError?.message ?? "no error"}), rows returned=${(updC ?? []).length}`);
+    const profileOrgAfterC = await getProfileOrg(userC.userId);
+    let productsBSeenByCAfterMove = -1;
+    if (profileOrgAfterC === userB.orgId) {
+      productsBSeenByCAfterMove = (await readRows(clientC, "products", userB.orgId)).length;
+      console.log("=".repeat(70));
+      console.log("PROFILES_UPDATE HOLE CONFIRMED (claim user): user C");
+      console.log("moved their OWN profile row to org B's id. The claim");
+      console.log("still resolves current_org_id(), but the profile-org");
+      console.log("policies now union org B in:");
+      console.log(`  org B product rows visible to C: ${productsBSeenByCAfterMove}`);
+      console.log("=".repeat(70));
+    }
+    //
+    // Verdicts, in order — the first failing assert throws, but every
+    // banner above already printed, so the log holds the full picture.
+    assert.equal(
+      profileOrgAfterA,
+      userA.orgId,
+      `92. user A must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterA ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
+    );
+    assert.equal(
+      roleAfterS,
+      "staff",
+      `93. a staff user must NOT be able to promote their own profile to owner (role now reads ${roleAfterS ?? "null"}) — PROFILES_UPDATE ROLE ESCALATION CONFIRMED`,
+    );
+    assert.equal(
+      profileOrgAfterC,
+      userC.profileOrgId,
+      `94. the CLAIM user must NOT be able to move their own profile to org B (profile now reads ${profileOrgAfterC ?? "null"}) — PROFILES_UPDATE HOLE CONFIRMED`,
+    );
+    console.log("(m) profiles_update OK — a user cannot move their own profile to another org or promote themselves to owner");
   } finally {
     await cleanup();
   }
