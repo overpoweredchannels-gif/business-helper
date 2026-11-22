@@ -377,8 +377,13 @@ function main(): void {
     "no migration was added for this slice",
   );
   check(
-    pageSource.includes("confidence: 85,") && pageSource.includes("confidence: 90,"),
-    "confidence 85/90 are untouched by this slice (separate tracker item)",
+    !pageSource.includes("confidence: 85,") && !pageSource.includes("confidence: 90,"),
+    "confidence % removed by the confidence slice (2026-11-23) — no hardcoded 85/90 in the AI Insight path",
+  );
+  check(
+    pageSource.includes("formatAiInsightUpdatedLabel") &&
+      pageSource.includes("updatedLabel: formatAiInsightUpdatedLabel(latestAlert.created_at)"),
+    "AI Insight shows a freshness label from the alert timestamp, not a %",
   );
 
   console.log("(i) extension: returns invalidate the same party figures as the sale/purchase");
