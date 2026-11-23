@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans, Libre_Baskerville } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "./workspace.css";
 import AppHelp from "@/components/help/AppHelp";
@@ -10,17 +10,28 @@ import { LANGUAGE_BOOTSTRAP_SCRIPT } from "@/lib/regional/settings";
 import { regionalQaEnabled } from "@/lib/regional/qa";
 import { DISPLAY_ZOOM_BOOTSTRAP_SCRIPT } from "@/lib/preferences/display-zoom";
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Self-hosted latin woff2 files (Google Fonts binaries, committed to the
+// repo). next/font/google is a build-time fetch: Turbopack serialises the
+// font URL Google serves into an internal import query, and Google
+// occasionally serves a URL containing "&" (or with no file extension),
+// which breaks the build with "next/font/google queries have exactly one
+// entry" / "Can't resolve '@vercel/turbopack-next/internal/font/google/font'"
+// (vercel/next.js#99114, still open). Desktop run #8 passed and run #9
+// failed with identical code — the failure depends on what Google serves at
+// build time. Self-hosting removes the network dependency from every build;
+// the families, weights and CSS variables are unchanged. Plus Jakarta Sans
+// is a variable font (wght 200-800); the woff2 covers the 400-700 range.
+const plusJakartaSans = localFont({
+  src: "./fonts/plus-jakarta-sans-latin.woff2",
   variable: "--font-plus-jakarta",
+  weight: "400 700",
   display: "swap",
 });
 
-const libreBaskerville = Libre_Baskerville({
-  subsets: ["latin"],
-  weight: ["700"],
+const libreBaskerville = localFont({
+  src: "./fonts/libre-baskerville-700-latin.woff2",
   variable: "--font-libre-baskerville",
+  weight: "700",
   display: "swap",
 });
 
