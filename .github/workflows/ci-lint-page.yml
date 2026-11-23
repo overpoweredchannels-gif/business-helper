@@ -1,0 +1,108 @@
+# ci-lint-page.yml — permanent page.tsx lint (baseline capture)
+#
+# Step (a) of the permanent CI lint workflow (Claude msg 46): this workflow
+# CAPTURES the lint report for src/app/page.tsx on every non-main push, PR,
+# and manual dispatch. It does NOT gate on the baseline yet — the
+# compare-against-baseline gate (line-insensitive key: file + ruleId +
+# message + enclosing function) lands with the baseline file merge in step (b).
+# Until then, this run is informational: it records the report as an artifact
+# and prints the human summary in the log.
+#
+# Permissions are intentionally minimal: contents: read, no secrets.
+# NOTE: actions/upload-artifact may need `actions: write` to upload the
+# report; if the upload step fails with 403 "Resource not accessible by
+# integration", add `actions: write` under permissions in step (b).
+
+name: CI lint page.tsx
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-page:
+    name: Lint src/app/page.tsx
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint src/app/page.tsx
+        id: lint
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set +e
+          npx eslint --format json --output-file lint-report.json src/app/page.tsx
+          echo "eslint_exit=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Print lint summary
+        run: |
+          cat > /tmp/lint-summary.mjs <<'EOF'
+          import fs from "node:fs";
+          const reportPath = "lint-report.json";
+          if (!fs.existsSync(reportPath)) {
+            console.error(`::error::${reportPath} not found — eslint did not produce a report (exit ${process.env.ESLINT_EXIT ?? "unknown"}).`);
+            process.exit(1);
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+          const src = fs.readFileSync("src/app/page.tsx", "utf8").split("\n");
+          // Best-effort enclosing-function lookup for the baseline key:
+          // nearest function-like declaration above the reported line.
+          function enclosingFunction(lineNo) {
+            for (let i = lineNo - 1; i >= 0; i--) {
+              const line = src[i];
+              let m = line.match(/^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/);
+              if (m) return m[1];
+              m = line.match(/^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?function\s*\(/);
+              if (m) return m[1];
+              m = line.match(/^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*use(?:Callback|Memo)\s*\(/);
+              if (m) return m[1];
+              m = line.match(/^\s*const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/);
+              if (m) return m[1];
+            }
+            return "(top level)";
+          }
+          let errors = 0;
+          let warnings = 0;
+          const errorKeys = [];
+          for (const file of report) {
+            errors += file.errorCount;
+            warnings += file.warningCount;
+            for (const msg of file.messages) {
+              if (msg.severity !== 2) continue;
+              const fn = enclosingFunction(msg.line);
+              errorKeys.push(`${file.filePath}:${msg.line}:${msg.column} [${msg.ruleId ?? "no-rule"}] ${msg.message} (in ${fn})`);
+            }
+          }
+          console.log(`ESLint exit code: ${process.env.ESLINT_EXIT ?? "unknown"}`);
+          console.log(`Errors: ${errors} | Warnings: ${warnings}`);
+          console.log("Error keys (file + ruleId + message + enclosing function):");
+          if (errorKeys.length === 0) console.log("  (none)");
+          for (const k of errorKeys) console.log(`  - ${k}`);
+          EOF
+          ESLINT_EXIT="${{ steps.lint.outputs.eslint_exit }}" node /tmp/lint-summary.mjs
+
+      - name: Upload lint report
+        if: always() && hashFiles('lint-report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: lint-report.json
+          if-no-files-found: error
