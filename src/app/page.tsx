@@ -7,6 +7,7 @@ import { RegionalSettingsPanel } from "@/components/regional/RegionalSettingsPan
 import { FxRatesPanel } from "@/components/regional/FxRatesPanel";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { navigationLabel } from "@/lib/regional/navigation";
+import type { MessageKey } from "@/lib/regional/messages";
 import { allPages } from "@/lib/supabase/all-pages";
 import { highlightSearchMatches, rankSearchResults, rankSearchResultsWithTiers, type SearchRankFields } from "@/lib/products/search-rank";
 import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
@@ -472,6 +473,44 @@ async function authorizedFetch(input: string, init: RequestInit = {}): Promise<R
 // directly and are unaffected by this helper.
 function formatDashboardMoney(displayCurrency: string, displayFxRate: number | null, value: unknown) {
   return displayCurrency !== getActiveBooksCurrency() && displayFxRate ? formatCurrency(value) : formatBooksMoney(value);
+}
+
+// AI Insight freshness label — module-level (not a render-scope closure):
+// the formatter reads the live clock (Date.now()), which the React
+// Compiler's purity check flags when it lives in a render-scope closure.
+// The card shows when its underlying data was produced — the alert row's
+// own created_at for the alert branch, the last successful products read
+// for the low-stock fallback. A rule-based alert has no confidence to
+// show, so no % is rendered anywhere. The two branches tell different
+// truths and use different keys: an alert was GENERATED at its created_at,
+// while the fallback insight rests on products data last UPDATED at the
+// products read time.
+const aiGeneratedLabelKeys = {
+  justNow: 'dashboard.aiGeneratedJustNow',
+  minAgo: 'dashboard.aiGeneratedMinAgo',
+  hoursAgo: 'dashboard.aiGeneratedHoursAgo',
+  daysAgo: 'dashboard.aiGeneratedDaysAgo',
+} as const;
+const aiDataUpdatedLabelKeys = {
+  justNow: 'dashboard.aiDataUpdatedJustNow',
+  minAgo: 'dashboard.aiDataUpdatedMinAgo',
+  hoursAgo: 'dashboard.aiDataUpdatedHoursAgo',
+  daysAgo: 'dashboard.aiDataUpdatedDaysAgo',
+} as const;
+type AiInsightLabelKeys = typeof aiGeneratedLabelKeys | typeof aiDataUpdatedLabelKeys;
+function formatAiInsightLabel(timestamp: string | null | undefined, keys: AiInsightLabelKeys, t: (key: MessageKey) => string): string | undefined {
+  if (!timestamp) return undefined;
+  const labelledAt = new Date(timestamp).getTime();
+  if (Number.isNaN(labelledAt)) return undefined;
+  const elapsedMs = Date.now() - labelledAt;
+  if (elapsedMs < 0) return t(keys.justNow);
+  const minutes = Math.floor(elapsedMs / 60000);
+  if (minutes < 1) return t(keys.justNow);
+  if (minutes < 60) return t(keys.minAgo).replace('{minutes}', String(minutes));
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t(keys.hoursAgo).replace('{hours}', String(hours));
+  const days = Math.floor(hours / 24);
+  return t(keys.daysAgo).replace('{days}', String(days));
 }
 
 export default function Home() {
@@ -20905,39 +20944,6 @@ export default function Home() {
   const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
   const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardSourceStates[source].status;
   const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardSourceStates[source].lastSuccessAt;
-  // AI Insight freshness: the card shows when its underlying data was
-  // produced — the alert row's own created_at for the alert branch, the
-  // last successful products read for the low-stock fallback. A rule-based
-  // alert has no confidence to show, so no % is rendered anywhere. The two
-  // branches tell different truths and use different keys: an alert was
-  // GENERATED at its created_at, while the fallback insight rests on
-  // products data last UPDATED at the products read time.
-  const aiGeneratedLabelKeys = {
-    justNow: 'dashboard.aiGeneratedJustNow',
-    minAgo: 'dashboard.aiGeneratedMinAgo',
-    hoursAgo: 'dashboard.aiGeneratedHoursAgo',
-    daysAgo: 'dashboard.aiGeneratedDaysAgo',
-  } as const;
-  const aiDataUpdatedLabelKeys = {
-    justNow: 'dashboard.aiDataUpdatedJustNow',
-    minAgo: 'dashboard.aiDataUpdatedMinAgo',
-    hoursAgo: 'dashboard.aiDataUpdatedHoursAgo',
-    daysAgo: 'dashboard.aiDataUpdatedDaysAgo',
-  } as const;
-  const formatAiInsightLabel = (timestamp: string | null | undefined, keys: typeof aiGeneratedLabelKeys | typeof aiDataUpdatedLabelKeys): string | undefined => {
-    if (!timestamp) return undefined;
-    const labelledAt = new Date(timestamp).getTime();
-    if (Number.isNaN(labelledAt)) return undefined;
-    const elapsedMs = Date.now() - labelledAt;
-    if (elapsedMs < 0) return t(keys.justNow);
-    const minutes = Math.floor(elapsedMs / 60000);
-    if (minutes < 1) return t(keys.justNow);
-    if (minutes < 60) return t(keys.minAgo).replace('{minutes}', String(minutes));
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return t(keys.hoursAgo).replace('{hours}', String(hours));
-    const days = Math.floor(hours / 24);
-    return t(keys.daysAgo).replace('{days}', String(days));
-  };
   const healthReadStatus = dashboardMetricReadStates["business-health"];
   const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
   const retryFailedDashboardReads = () => {
@@ -21749,7 +21755,7 @@ export default function Home() {
               if (kind === "alert" && latestAlert) {
                 return {
                   insight: latestAlert.summary || latestAlert.title,
-                  updatedLabel: formatAiInsightLabel(latestAlert.created_at, aiGeneratedLabelKeys),
+                  updatedLabel: formatAiInsightLabel(latestAlert.created_at, aiGeneratedLabelKeys, t),
                   action: latestAlert.recommended_action ?? undefined,
                   reason: t('dashboard.basedOn').replace('{source}', latestAlert.source_type || t('dashboard.recentData')),
                   onLearnMore: () => handleSectionChange("ai-analytics"),
@@ -21758,7 +21764,7 @@ export default function Home() {
               if (kind === "fallback") {
                 return {
                   insight: businessIntelligenceAnalytics.insights.lowStockWarning,
-                  updatedLabel: formatAiInsightLabel(dashboardLastSuccessFor("products"), aiDataUpdatedLabelKeys),
+                  updatedLabel: formatAiInsightLabel(dashboardLastSuccessFor("products"), aiDataUpdatedLabelKeys, t),
                   action: t('dashboard.reviewInventory'),
                   reason: t('dashboard.stockAnalysisReason'),
                   onLearnMore: () => handleSectionChange("inventory"),
