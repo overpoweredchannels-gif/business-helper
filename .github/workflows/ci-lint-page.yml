@@ -1,17 +1,22 @@
-# ci-lint-page.yml — permanent page.tsx lint (baseline capture)
+# ci-lint-page.yml — permanent page.tsx lint (baseline + compare gate)
 #
-# Step (a) of the permanent CI lint workflow (Claude msg 46): this workflow
-# CAPTURES the lint report for src/app/page.tsx on every non-main push, PR,
-# and manual dispatch. It does NOT gate on the baseline yet — the
-# compare-against-baseline gate (line-insensitive key: file + ruleId +
-# message + enclosing function) lands with the baseline file merge in step (b).
-# Until then, this run is informational: it records the report as an artifact
-# and prints the human summary in the log.
+# Permanent CI lint workflow (Claude msg 46): this workflow lints
+# src/app/page.tsx on every non-main push, PR, and manual dispatch, then
+# compares the report against the committed baseline
+# .github/lint-baseline.json via .github/scripts/compare-lint-baseline.mjs.
+# The gate FAILS on any error key not in the baseline, or on warnings above
+# the baseline. Error keys are line-insensitive (file + ruleId + message +
+# enclosing function); the baseline's messages are the stable heading +
+# description, with the eslint location line and code frame stripped.
+#
+# Baseline (run #3, commit 81c4c73, 2026-11-23): 5 errors, 213 warnings —
+# identical to the Nov 21 baseline. The 5 errors are all
+# react-hooks/preserve-manual-memoization ("Compilation Skipped: Existing
+# memoization could not be preserved") and are allowed until fixed.
 #
 # Permissions are intentionally minimal: contents: read, no secrets.
-# NOTE: actions/upload-artifact may need `actions: write` to upload the
-# report; if the upload step fails with 403 "Resource not accessible by
-# integration", add `actions: write` under permissions in step (b).
+# NOTE: the artifact upload worked with contents: read only on run #3
+# (no 403), so no `actions: write` permission is needed.
 
 name: CI lint page.tsx
 
@@ -98,6 +103,10 @@ jobs:
           for (const k of errorKeys) console.log(`  - ${k}`);
           EOF
           ESLINT_EXIT="${{ steps.lint.outputs.eslint_exit }}" node /tmp/lint-summary.mjs
+
+      - name: Compare lint against baseline
+        if: always()
+        run: node .github/scripts/compare-lint-baseline.mjs lint-report.json .github/lint-baseline.json
 
       - name: Upload lint report
         if: always() && hashFiles('lint-report.json') != ''
