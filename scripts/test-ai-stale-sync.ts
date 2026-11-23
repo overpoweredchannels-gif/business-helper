@@ -381,8 +381,8 @@ function main(): void {
     "confidence % removed by the confidence slice (2026-11-23) — no hardcoded 85/90 in the AI Insight path",
   );
   check(
-    pageSource.includes("formatAiInsightUpdatedLabel") &&
-      pageSource.includes("updatedLabel: formatAiInsightUpdatedLabel(latestAlert.created_at)"),
+    pageSource.includes("formatAiInsightLabel(latestAlert.created_at, aiGeneratedLabelKeys)") &&
+      pageSource.includes("formatAiInsightLabel(dashboardLastSuccessFor(\"products\"), aiDataUpdatedLabelKeys)"),
     "AI Insight shows a freshness label from the alert timestamp, not a %",
   );
 
