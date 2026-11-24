@@ -325,7 +325,7 @@ jobs:
           $list = gh release list --json tagName | ConvertFrom-Json
           $count = @($list | Where-Object { $_.tagName -eq $tag }).Count
           if ($count -ne 1) { throw "expected exactly 1 release tagged $tag, found $count — duplicate releases exist" }
-          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name], downloads: [.assets[] | {name: .name, url: .browserDownloadUrl}]}'
+          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name], downloads: [.assets[] | {name: .name, url: .url}]}'
           Write-Host "Release $tag : $rel"
           $draft = ($rel | ConvertFrom-Json).draft
           $prerelease = ($rel | ConvertFrom-Json).prerelease
@@ -335,23 +335,36 @@ jobs:
           if ($assets -notcontains "Aankh-Setup-$version.exe") { throw "release $tag is missing the installer Aankh-Setup-$version.exe" }
           if ($assets -notcontains "Aankh-Setup-$version.exe.blockmap") { throw "release $tag is missing the blockmap Aankh-Setup-$version.exe.blockmap" }
           if ($assets -notcontains "latest.yml") { throw "release $tag is missing latest.yml — the updater has no feed" }
-          # The updater fetches by tag: each uploaded asset's download
-          # URL must contain /download/<tag>/. (Source archives are
-          # excluded — they live under /archive/refs/tags/<tag>/, not
-          # /download/.) If the slug really broke downloads, this fails.
-          $downloads = @((($rel | ConvertFrom-Json).downloads))
-          foreach ($d in $downloads) {
-            if ($d.name -in @("Aankh-Setup-$version.exe", "Aankh-Setup-$version.exe.blockmap", "latest.yml")) {
-              if ([string]::IsNullOrEmpty($d.url)) { throw "asset $($d.name) has no download URL" }
-              if ($d.url.IndexOf("/download/$tag/") -lt 0) { throw "asset $($d.name) download URL '$($d.url)' does not contain /download/$tag/ — the updater fetches by tag, so this release would not update installed apps" }
-            }
-          }
-          Write-Host "Verified: uploaded assets are served from /download/$tag/."
-          $yml = gh release download $tag --pattern "latest.yml" --dir "$env:RUNNER_TEMP" --clobber | Out-Null
-          $ymlText = Get-Content "$env:RUNNER_TEMP/latest.yml" -Raw
+          # The updater (electron-updater GitHubProvider) fetches
+          # latest.yml and the installer from TAG-BASED URLs
+          # (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>),
+          # never from an asset's browser_download_url. A release whose
+          # URL slug is "untagged-<hex>" (GitHub mints the slug at
+          # creation and never rewrites it, even when the tag IS
+          # attached) has browser_download_url values under
+          # /download/untagged-<hex>/ — that does not matter, because
+          # the updater never uses them. What matters is that the
+          # TAG-BASED URLs resolve. Test them directly (with the token,
+          # because this is a draft). The downloads array above is only
+          # diagnostic (it shows the real browser_download_url values).
+          $repo = "overpoweredchannels-gif/business-helper"
+          $base = "https://github.com/$repo/releases/download/$tag"
+          $latestPath = Join-Path $env:RUNNER_TEMP "latest-tag.yml"
+          $code = curl.exe -s -L -o $latestPath -w "%{http_code}" -H "Authorization: Bearer $env:GH_TOKEN" "$base/latest.yml"
+          $code = "$code".Trim()
+          if ($code -ne "200") { throw "tag-based download URL for latest.yml returned HTTP $code (expected 200) — the updater fetches latest.yml by tag, so this release would not update installed apps. URL: $base/latest.yml" }
+          $ymlText = Get-Content $latestPath -Raw
           Write-Host $ymlText
           if ($ymlText -notmatch "version: $version") { throw "latest.yml does not carry version $version" }
-          Write-Host "Verified: release $tag is a DRAFT with installer + latest.yml version $version."
+          Write-Host "Verified: latest.yml is fetchable by tag ($base/latest.yml) and carries version $version."
+          foreach ($f in @("Aankh-Setup-$version.exe", "Aankh-Setup-$version.exe.blockmap")) {
+            $u = "$base/$f"
+            $code = curl.exe -s -o NUL -w "%{http_code}" -L -H "Authorization: Bearer $env:GH_TOKEN" -H "Range: bytes=0-0" $u
+            $code = "$code".Trim()
+            if (($code -ne "200") -and ($code -ne "206")) { throw "tag-based download URL for $f returned HTTP $code (expected 200 or 206). URL: $u" }
+            Write-Host "Verified: $f is fetchable by tag (HTTP $code)."
+          }
+          Write-Host "Verified: release $tag is a DRAFT with installer + latest.yml version $version, all fetchable by tag."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
