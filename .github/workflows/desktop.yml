@@ -182,10 +182,14 @@ jobs:
       # Creating the tag here makes the draft a real tagged draft. No
       # workflow triggers on tag pushes, so creating the tag is safe.
       # After creating the tag, POLL until it is visible before `gh
-      # release create`: the releases service may not see a just-created
-      # tag yet, and then `gh release create` mints an untagged draft
-      # (run 45462676529: tag created fine, `gh release create` exited 0
-      # with an untagged- URL, and the step's own URL check caught it).
+      # release create` (the releases service may lag behind the git
+      # refs API). NOTE: the poll alone does not guarantee a tagged URL
+      # slug — run 45465421607 passed the poll (tag visible on the first
+      # attempt) and `gh release create` still minted an untagged- URL,
+      # while tagName was v0.1.2 and isDraft true. The slug is minted at
+      # creation and never rewritten, so it is not checked below;
+      # tagName + isDraft (here) and the download-URL check (verify
+      # step) are the proof that matters.
       - name: Create the release (draft)
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -228,7 +232,14 @@ jobs:
           $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
           if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
           if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
-          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the git tag was not applied" }
+          # NOTE: the release URL slug is deliberately NOT checked.
+          # GitHub mints the slug as "untagged-<hex>" at creation and
+          # never rewrites it, even when the tag IS attached (run
+          # 45465421607: tagName was v0.1.2 and isDraft true, yet the
+          # URL was untagged-71999ef0ee195c061e31). tagName + isDraft
+          # are the real proof the draft is tagged; the verify step
+          # additionally checks the assets' download URLs contain
+          # /download/<tag>/, which is what the updater fetches.
           Write-Host "Created tagged draft release $tag ($($check.url))."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -300,10 +311,13 @@ jobs:
       # Proof step: the release must exist, be a DRAFT at this point (it
       # is created as a draft in BOTH modes; a real run publishes it in
       # the next step, after this check passes), carry the installer +
-      # latest.yml with the exact computed version, and be the ONLY
-      # release carrying the tag. A duplicate release, a missing
-      # latest.yml, or a wrong version fails the workflow loudly instead
-      # of silently leaving users without an update.
+      # latest.yml with the exact computed version, be the ONLY release
+      # carrying the tag, and serve its uploaded assets from download
+      # URLs containing /download/<tag>/ (the path electron-updater
+      # fetches by tag — the release URL slug itself is not checked,
+      # see step 8). A duplicate release, a missing latest.yml, a
+      # wrong version, or a tag-less download path fails the workflow
+      # loudly instead of silently leaving users without an update.
       - name: Verify the release the updater will read
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -311,7 +325,7 @@ jobs:
           $list = gh release list --json tagName | ConvertFrom-Json
           $count = @($list | Where-Object { $_.tagName -eq $tag }).Count
           if ($count -ne 1) { throw "expected exactly 1 release tagged $tag, found $count — duplicate releases exist" }
-          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name]}'
+          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name], downloads: [.assets[] | {name: .name, url: .browserDownloadUrl}]}'
           Write-Host "Release $tag : $rel"
           $draft = ($rel | ConvertFrom-Json).draft
           $prerelease = ($rel | ConvertFrom-Json).prerelease
@@ -319,7 +333,20 @@ jobs:
           if (-not $draft) { throw "release $tag is NOT a draft at verify time — it should be a draft until the publish step" }
           if ($prerelease) { throw "release $tag is a prerelease — the updater 'latest' channel ignores it" }
           if ($assets -notcontains "Aankh-Setup-$version.exe") { throw "release $tag is missing the installer Aankh-Setup-$version.exe" }
+          if ($assets -notcontains "Aankh-Setup-$version.exe.blockmap") { throw "release $tag is missing the blockmap Aankh-Setup-$version.exe.blockmap" }
           if ($assets -notcontains "latest.yml") { throw "release $tag is missing latest.yml — the updater has no feed" }
+          # The updater fetches by tag: each uploaded asset's download
+          # URL must contain /download/<tag>/. (Source archives are
+          # excluded — they live under /archive/refs/tags/<tag>/, not
+          # /download/.) If the slug really broke downloads, this fails.
+          $downloads = @((($rel | ConvertFrom-Json).downloads))
+          foreach ($d in $downloads) {
+            if ($d.name -in @("Aankh-Setup-$version.exe", "Aankh-Setup-$version.exe.blockmap", "latest.yml")) {
+              if ([string]::IsNullOrEmpty($d.url)) { throw "asset $($d.name) has no download URL" }
+              if ($d.url.IndexOf("/download/$tag/") -lt 0) { throw "asset $($d.name) download URL '$($d.url)' does not contain /download/$tag/ — the updater fetches by tag, so this release would not update installed apps" }
+            }
+          }
+          Write-Host "Verified: uploaded assets are served from /download/$tag/."
           $yml = gh release download $tag --pattern "latest.yml" --dir "$env:RUNNER_TEMP" --clobber | Out-Null
           $ymlText = Get-Content "$env:RUNNER_TEMP/latest.yml" -Raw
           Write-Host $ymlText
