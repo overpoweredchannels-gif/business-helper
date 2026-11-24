@@ -55,7 +55,7 @@
  */
 
 import type { ActionType } from "./conversation-engine";
-import { resolveAiCurrency } from "./ai-money";
+import { aiCurrencyPromptLine } from "./ai-money";
 
 export type BusinessQueryLanguage = "auto" | "english" | "urdu" | "roman_urdu";
 
@@ -107,7 +107,7 @@ export function buildBusinessQueryDirectPrompt(input: {
     `You are the AI assistant for a Pakistani retail/wholesale business called Aankh.`,
     `Answer the user's question concisely using the business context below.`,
     `If the user greets you, greet back and ask how you can help.`,
-    `Use ${resolveAiCurrency(input.currency)} currency formatting.`,
+    aiCurrencyPromptLine(input.currency),
     businessQueryLanguageLine(input.language),
     ``,
     `BUSINESS CONTEXT:`,
