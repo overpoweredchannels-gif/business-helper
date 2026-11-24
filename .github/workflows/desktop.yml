@@ -181,17 +181,19 @@ jobs:
       # untagged- URL (run 45458292084 produced untagged-2273e0d50df1b5225cf9).
       # Creating the tag here makes the draft a real tagged draft. No
       # workflow triggers on tag pushes, so creating the tag is safe.
-      # After creating the tag, POLL until it is visible before `gh
-      # release create` (the releases service may lag behind the git
-      # refs API). NOTE: the poll alone does not guarantee a tagged URL
-      # slug — run 45465421607 passed the poll (tag visible on the first
-      # attempt) and `gh release create` still minted an untagged- URL,
-      # while tagName was v0.1.2 and isDraft true. The slug is minted at
-      # creation and never rewritten, and the tag-based download URL
-      # 404s for such a release (run 45472163785, step 13), so the
-      # updater could never fetch it. The create below therefore
-      # RETRIES (sleep, delete the bad draft, sleep longer, up to 3
-      # attempts) until the slug is the tag; if it never is, it fails
+      # HOW the tag is created matters: every AutoBridge dry-run so far
+      # created the tag via the git/refs REST API, and `gh release create`
+      # minted an "untagged-<hex>" URL slug every single time — the poll
+      # passed, the tag was visible, and a 3-attempt retry loop with
+      # 15s+30s+30s sleeps still minted untagged slugs on all 3 attempts
+      # (run 45474906156). The slug is minted at creation and never
+      # rewritten, and the tag-based download URL 404s for such a release
+      # (run 45472163785, step 13), so the updater could never fetch it.
+      # The tag is therefore created via `git push` from the runner:
+      # v0.1.0/v0.1.1 tags arrived via git push and have proper slugs,
+      # so the releases service evidently indexes tags that arrive via
+      # push, not via the REST API. If the slug is still untagged after
+      # this, the git-push hypothesis is refuted and the step fails
       # loudly instead of shipping a release the updater cannot read.
       - name: Create the release (draft)
         run: |
@@ -220,9 +222,21 @@ jobs:
             Write-Host "Removing leftover tag $tag (was at $tagSha)."
             gh api "repos/$repo/git/refs/tags/$tag" --method DELETE
           }
-          Write-Host "Creating git tag $tag at $sha."
-          gh api "repos/$repo/git/refs" --method POST -f "ref=refs/tags/$tag" -f "sha=$sha" | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "failed to create git tag $tag at $sha" }
+          # Create the tag via git push, NOT via the git/refs REST API:
+          # API-created tags deterministically mint untagged slugs (see
+          # the comment above this step). actions/checkout persists the
+          # GITHUB_TOKEN in the local git config, so a plain push works;
+          # if it does not, retry once with the token in the remote URL.
+          Write-Host "Creating git tag $tag at $sha via git push."
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" tag $tag $sha
+          if ($LASTEXITCODE -ne 0) { throw "failed to create local git tag $tag at $sha" }
+          git push origin $tag
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Plain git push failed — retrying with the token in the remote URL."
+            git remote set-url origin "https://x-access-token:$env:GH_TOKEN@github.com/$repo.git"
+            git push origin $tag
+            if ($LASTEXITCODE -ne 0) { throw "failed to push git tag $tag" }
+          }
           $seen = $false
           for ($i = 0; $i -lt 30; $i++) {
             $visibleSha = gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>$null
@@ -231,42 +245,17 @@ jobs:
           }
           if (-not $seen) { throw "git tag $tag did not become visible within 60s — refusing to create an untagged draft" }
           Write-Host "Tag $tag visible at $sha."
-          # Create + retry: the releases service lags behind the git
-          # backend, so even with the tag visible `gh release create`
-          # can mint an "untagged-<hex>" URL slug (runs 45465421607,
-          # 45472163785). The slug is minted at creation and never
-          # rewritten, and the tag-based download URL 404s for such a
-          # release — the updater could never fetch it. Sleep before
-          # the first attempt, and on an untagged slug delete the bad
-          # draft and retry with a longer sleep, up to 3 attempts.
-          $created = $false
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            if ($attempt -eq 1) {
-              Write-Host "Attempt 1/3: sleeping 15s so the releases service can see the tag."
-              Start-Sleep -Seconds 15
-            } else {
-              Write-Host "Attempt $attempt/3: sleeping 30s before retrying."
-              Start-Sleep -Seconds 30
-            }
-            gh release create $tag --draft --title "$version" --target $sha
-            if ($LASTEXITCODE -ne 0) { throw "gh release create failed on attempt $attempt" }
-            $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
-            if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
-            if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
-            if ($check.url -match "untagged-") {
-              Write-Host "Attempt $attempt/3: release created with untagged URL slug ($($check.url)) — deleting it and retrying."
-              gh release delete $tag --yes
-              if ($LASTEXITCODE -ne 0) {
-                $bad = gh api "repos/$repo/releases?per_page=100" | ConvertFrom-Json | Where-Object { $_.draft -and [string]::IsNullOrEmpty($_.tag_name) -and $_.name -eq $version } | Select-Object -First 1
-                if ($null -ne $bad) { gh api "repos/$repo/releases/$($bad.id)" --method DELETE }
-              }
-              continue
-            }
-            $created = $true
-            Write-Host "Created tagged draft release $tag ($($check.url))."
-            break
-          }
-          if (-not $created) { throw "after 3 attempts the release still has an untagged URL slug — refusing to proceed; a release with an untagged slug would not update installed apps" }
+          # Single create (no retry loop: retrying was proven not to
+          # help — run 45474906156 minted untagged slugs on all 3
+          # attempts). If the slug is still untagged, the git-push
+          # hypothesis is refuted and this fails loudly.
+          gh release create $tag --draft --title "$version" --target $sha
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
+          if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
+          if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
+          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the git tag was not applied; the git-push hypothesis is refuted, a different creation mechanism is needed" }
+          Write-Host "Created tagged draft release $tag ($($check.url))."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
