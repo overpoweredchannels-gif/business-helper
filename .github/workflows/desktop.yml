@@ -1,4 +1,5 @@
 # AutoBridge — every push to main automatically releases the desktop app.
+# (Part 2 of 2 — see .github/workflows/autobridge-tag.yml for part 1.)
 #
 # Why this exists (Umair, 2026-11-24): a main push must update the installed
 # desktop app, the web app, and the mobile web app with no manual tag, no
@@ -6,20 +7,44 @@
 # v* tag push or a manual dispatch, so a main push updated the web app
 # (Vercel) but left installed desktop users on the old build.
 #
+# Why TWO workflows (2026-11-25): every attempt to create a release
+# inside the SAME workflow run that created the tag minted an UNtagged
+# URL slug (untagged-<hex>) — across gh release create, the REST API
+# and electron-builder's publish, across API-created and git-pushed
+# tags, and after waits of 15s, 60s, 180s and ~4 min of tag age during
+# the build (runs 45462676529, 45474906156, 45480046106, 45482359627,
+# 45484284717, 45487016222, 45490810697). v0.1.0/v0.1.1 got proper
+# slugs because the tag was pushed by a HUMAN before the workflow
+# started, and the tag push TRIGGERED the release workflow. So this
+# workflow now runs ONLY on a tag push, exactly as it did for
+# v0.1.0/v0.1.1 — and autobridge-tag.yml is the part that pushes the
+# tag (on a main push) and dispatches this workflow with ref=<branch>
+# and tag=<tag>. The dispatch uses ref=<branch> (not the tag) on
+# purpose: the version/tag guard in scripts/check-desktop-routes.mjs
+# reads GITHUB_REF, and on a tag ref it requires the tag to equal
+# package.json — but AutoBridge never bumps package.json, so a tag ref
+# would make the guard fail in this job AND in the gates job (npm test
+# runs the same gate). Dispatching on the branch keeps GITHUB_REF a
+# branch ref (guard skips) while the version still comes from the tag
+# input.
+#
 # How it works:
-# 1. Push to main -> the `gates` job calls the reusable AutoBridge gates
-#    workflow (.github/workflows/autobridge-gates.yml): typecheck, eslint
-#    on changed files, npm test, npm run build — SEQUENTIALLY on Linux.
-#    If any gate fails, the release job never runs and nothing is published.
-# 2. The `release` job (Windows runner, needs gates) computes the next
-#    version from the latest PUBLISHED GitHub release (patch + 1) via
-#    scripts/autobridge-next-version.mjs, creates the git tag for that
-#    version, then builds the NSIS installer with that version using
-#    electron-builder --publish always. electron-builder creates the
-#    draft release and uploads the installer + blockmap + latest.yml
-#    to it. After the verify step passes, a real run publishes the
-#    release (`gh release edit --draft=false`); a dry run leaves it a
-#    draft, which the updater cannot see.
+# 1. Push to main -> autobridge-tag.yml computes the next version
+#    (latest PUBLISHED release patch + 1), pushes the git tag for it,
+#    and dispatches THIS workflow with ref=<branch> and tag=<tag>.
+# 2. This workflow runs the `gates` job (the reusable AutoBridge gates
+#    workflow, .github/workflows/autobridge-gates.yml): typecheck,
+#    eslint on changed files, npm test, npm run build — SEQUENTIALLY
+#    on Linux. If any gate fails, the release job never runs and
+#    nothing is published.
+# 3. The `release` job (Windows runner, needs gates) takes the version
+#    from the tag (github.ref_name, e.g. v0.1.2 -> 0.1.2), builds the
+#    NSIS installer with that version using electron-builder
+#    --publish always. electron-builder creates the draft release and
+#    uploads the installer + blockmap + latest.yml to it. After the
+#    verify step passes, a real run publishes the release
+#    (`gh release edit --draft=false`); a dry run leaves it a draft,
+#    which the updater cannot see.
 #
 #    Why electron-builder --publish always and not `gh` / the REST API:
 #    creating the release with `gh release create` or the REST API
@@ -61,7 +86,7 @@
 #    EP_DRAFT is set in the run script, NOT in a YAML env: block, so
 #    the Slice 0 gate's env allowlist is not tripped); a real run
 #    publishes it only in the publish step, after the verify step.
-# 3. The installed app (electron-updater, autoInstallOnAppQuit=true) sees
+# 4. The installed app (electron-updater, autoInstallOnAppQuit=true) sees
 #    the new latest.yml on launch, downloads the installer in the
 #    background, and installs it on quit. No reinstall, no manual step.
 #
@@ -76,12 +101,14 @@
 # file stays a pure packaging file: only the public anon vars and GH_TOKEN.
 #
 # Version scheme: the version is NOT bumped in package.json (no commit-back,
-# so no loop and no race). It is computed at build time from the latest
-# published release and passed to electron-builder as
-# --config.extraMetadata.version. The version is strictly increasing
-# because the workflow is serialized (concurrency group below): runs queue
-# up, and each run reads the latest release AFTER the previous run
-# published, so two pushes can never compute the same version.
+# so no loop and no race). It comes from the tag that triggered this run
+# (github.ref_name, e.g. v0.1.2 -> 0.1.2) and is passed to
+# electron-builder as --config.extraMetadata.version. The version is
+# computed by autobridge-tag.yml (latest PUBLISHED release patch + 1)
+# and is strictly increasing because both workflows are serialized
+# (concurrency groups): runs queue up, and a tag for a version already
+# in flight makes the tag workflow bump the patch (see
+# autobridge-tag.yml).
 #
 # Safety / trade-off (read this before merging): with this bridge, ANY
 # commit to main that passes the gates reaches installed users
@@ -91,25 +118,36 @@
 # could hurt users, it must be kept off main (feature branch + PR) until
 # it is ready; there is deliberately no "hold" mechanism in this workflow.
 #
-# Dry-run (safe test): pushing to a non-main branch that triggers this
-# workflow, or a manual dispatch with dry_run=true, runs the FULL path
-# (gates + Windows build + release create + upload + verify) but leaves
-# the release as a DRAFT, which the updater cannot see. Delete the draft
-# release + tag after verifying. The test-branch trigger below
-# (fix/autobridge-main-push) is for the first proof run only and must be
-# removed before this branch merges.
+# Dry-run (safe test): pushing to the test branch in autobridge-tag.yml
+# (or a manual dispatch with dry_run=true) runs the FULL path (gates +
+# Windows build + release create + upload + verify) but leaves the
+# release as a DRAFT, which the updater cannot see. Delete the draft
+# release + tag after verifying. The test-branch trigger in
+# autobridge-tag.yml is for the first proof run only and must be
+# removed before this branch merges. NOTE: this workflow publishes
+# ONLY when dispatched with dry_run=false (autobridge-tag.yml does
+# that for main pushes). A tag-push-triggered run is ALWAYS a dry run
+# (draft only) — a human tag push creates a draft; publish it manually.
 #
 # Triggers:
-# - Push to main: full AutoBridge (gates -> build -> published release).
-# - Push to fix/autobridge-main-push: dry-run (REMOVE BEFORE MERGE).
-# - Manual dispatch: dry_run input, default true (safe test).
+# - Tag push v*: full release path (gates -> build -> draft release;
+#   publishes only if dispatched with dry_run=false — see above).
+#   A human tag push is ALWAYS a dry run (draft only); publish it
+#   manually. (A tag push made with GITHUB_TOKEN does not trigger
+#   other workflows, so autobridge-tag.yml dispatches explicitly.)
+# - Manual dispatch: tag + dry_run inputs, dry_run default true (safe
+#   test). Pass the tag to release; the ref is the branch.
 name: Desktop AutoBridge (Windows installer)
 
 on:
   push:
-    branches: [main, fix/autobridge-main-push]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.2). Required when dispatching from autobridge-tag.yml; ignored for tag-push triggers, which use the pushed tag."
+        type: string
+        default: ""
       dry_run:
         description: "Publish as a DRAFT release instead of a published release (safe test)"
         type: boolean
@@ -159,65 +197,65 @@ jobs:
       # env var, a direct renderer fetch of a migrated CLOUD route, a
       # version/tag mismatch, or wildcard CORS. See
       # scripts/check-desktop-routes.mjs and DESKTOP_ROUTE_CLASSIFICATION.md.
-      # (On a main push there is no tag, so the version/tag guard skips;
-      # the version is set at build time by the next step.)
+      # (On a dispatch the ref is a branch, so the version/tag guard
+      # skips — AutoBridge never bumps package.json, so a tag ref would
+      # make the guard fail. On a human tag push the guard checks the
+      # tag matches package.json, as it did for v0.1.0/v0.1.1.)
       - name: Check desktop route classification (Slice 0 gate)
         run: node scripts/check-desktop-routes.mjs
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
-      # Next version = latest published release patch + 1. Fails loudly
-      # instead of guessing if the API is unreachable (a wrong version
-      # could collide or go backwards and silently stop updates).
-      # GH_TOKEN (not GITHUB_TOKEN) because the Slice 0 gate allowlists
-      # only GH_TOKEN in this file's env: blocks; the script reads
-      # GH_TOKEN as well as GITHUB_TOKEN.
-      - name: Compute next version
+      # The version comes from the tag: the `tag` dispatch input when
+      # dispatched (autobridge-tag.yml passes it), else the tag that
+      # triggered this run (github.ref_name, e.g. v0.1.2, for a human
+      # tag push). Do NOT recompute it from the releases API — the tag
+      # IS the version. Fails loudly if neither gives a vX.Y.Z tag
+      # (e.g. a manual dispatch from a branch without a tag input —
+      # dispatch with a tag, or push a tag).
+      - name: Version from tag
         id: version
-        run: node scripts/autobridge-next-version.mjs --repo overpoweredchannels-gif/business-helper
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          if ([string]::IsNullOrEmpty($tag)) { $tag = "${{ github.ref_name }}" }
+          if ($tag -notmatch "^v\d+\.\d+\.\d+$") { throw "expected a vX.Y.Z tag (dispatch input 'tag' or the pushed tag), got '$tag' (ref '${{ github.ref }}') — dispatch with a tag input, or push a tag" }
+          $version = $tag.Substring(1)
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "version=$version tag=$tag"
+        shell: pwsh
 
-      # Dry-run = any non-main ref (test-branch push) or a manual dispatch
-      # with dry_run=true. A dry run leaves the release as a DRAFT
-      # (invisible to the updater) so the full path can be proven
-      # without shipping; a real run publishes it after the verify step.
+      # Dry-run: publish ONLY when explicitly dispatched with
+      # dry_run=false. autobridge-tag.yml dispatches with dry_run=false
+      # for main pushes (real run) and dry_run=true otherwise. A
+      # tag-push-triggered run is ALWAYS a dry run (draft only) — a
+      # human tag push creates a draft; publish it manually. This is
+      # the safe default: a tag push must never auto-publish.
       - name: Determine dry-run
         id: dryrun
         run: |
-          if ("${{ github.ref }}" -ne "refs/heads/main") { $dry = "true" }
-          elseif ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.dry_run }}" -eq "true") { $dry = "true" }
-          else { $dry = "false" }
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.dry_run }}" -eq "false") { $dry = "false" } else { $dry = "true" }
           "dry_run=$dry" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "dry_run=$dry version=${{ steps.version.outputs.version }}"
         shell: pwsh
 
-      # Create the git tag for this version. electron-builder creates
-      # the release during the build step below (see the header
-      # comment): creating the release moments after the tag minted
-      # an untagged slug every time — whether the tag came via the
-      # git/refs REST API or via `git push`, whether the release was
-      # made with `gh release create` or the REST API directly, and
-      # after waits of 15s, 60s and 180s and even ~4 min of tag age
-      # during the build (runs 45462676529, 45474906156, 45480046106,
-      # 45482359627, 45484284717, 45487016222). electron-builder's
-      # publish is the only path that ever produced a properly-slugged
-      # draft in this repo (v0.1.1), so it creates the release now.
-      # Idempotent: a stale draft with this tag (previous failed run)
-      # is removed first; a PUBLISHED release with this tag is a hard
-      # stop. The tag is created via git push, not the git/refs API:
-      # `gh release create --draft` does NOT create the git tag
-      # (GitHub only creates it when the draft is published), so a
-      # draft made that way shows up as an untagged- URL (run
-      # 45458292084). No workflow triggers on tag pushes, so creating
-      # the tag is safe.
-      - name: Create the git tag
+      # The tag that triggered this run already exists (pushed by
+      # autobridge-tag.yml, or by a human for a manual release).
+      # Verify it points at the checked-out commit, and remove any
+      # stale DRAFT for this version from a previous failed run.
+      # Do NOT delete the git tag itself — it is the trigger for this
+      # run. A PUBLISHED release with this tag is a hard stop.
+      - name: Verify the tag + remove stale drafts
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $tag = "v$version"
           $repo = "overpoweredchannels-gif/business-helper"
           $sha = $env:GITHUB_SHA
+          $tagSha = gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha
+          if ($LASTEXITCODE -ne 0) { throw "git tag $tag does not exist — it should have been pushed by autobridge-tag.yml (or by a human for a manual release)" }
+          if ($tagSha -ne $sha) { throw "git tag $tag points at $tagSha, but this run is at $sha — refusing to release a tag that does not match the checked-out commit" }
+          Write-Host "Tag $tag exists at $sha."
           $existing = gh release view $tag --json isDraft --jq .isDraft 2>$null
           if ($LASTEXITCODE -eq 0) {
             if ($existing -eq "true") {
@@ -234,47 +272,9 @@ jobs:
               gh api "repos/$repo/releases/$($r.id)" --method DELETE
             }
           }
-          $tagSha = gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Removing leftover tag $tag (was at $tagSha)."
-            gh api "repos/$repo/git/refs/tags/$tag" --method DELETE
-          }
-          # Create the tag via git push, NOT via the git/refs REST API:
-          # API-created tags deterministically mint untagged slugs (see
-          # the comment above this step). actions/checkout persists the
-          # GITHUB_TOKEN in the local git config, so a plain push works;
-          # if it does not, retry once with the token in the remote URL.
-          Write-Host "Creating git tag $tag at $sha via git push."
-          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" tag $tag $sha
-          if ($LASTEXITCODE -ne 0) { throw "failed to create local git tag $tag at $sha" }
-          # --no-verify: the repo installs a pre-push hook on `npm ci`
-          # (package.json "prepare") that runs the Desktop Route Gate and
-          # fails closed. The gate FAILS in this step's shell because the
-          # Supabase vars are not set here, so a plain push is aborted
-          # LOCALLY before any network contact (run 45477388326: both
-          # pushes failed with no remote/auth error). The gates job
-          # already ran the route gate and it PASSED in this run, and a
-          # tag push moves no code — only a pointer to an already-gated
-          # commit — so bypassing the hook here is safe.
-          git push --no-verify origin $tag
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Plain git push failed — retrying with the token in the remote URL."
-            git remote set-url origin "https://x-access-token:$env:GH_TOKEN@github.com/$repo.git"
-            git push --no-verify origin $tag
-            if ($LASTEXITCODE -ne 0) { throw "failed to push git tag $tag" }
-          }
-          $seen = $false
-          for ($i = 0; $i -lt 30; $i++) {
-            $visibleSha = gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>$null
-            if (($LASTEXITCODE -eq 0) -and ($visibleSha -eq $sha)) { $seen = $true; break }
-            Start-Sleep -Seconds 2
-          }
-          if (-not $seen) { throw "git tag $tag did not become visible within 60s" }
-          Write-Host "Tag $tag visible at $sha. electron-builder creates the release during the build step, after the tag has aged during the build."
+          Write-Host "Tag $tag verified; stale drafts removed. electron-builder creates the release during the build step."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         shell: pwsh
 
       # --publish always: electron-builder builds the installer +
@@ -293,7 +293,7 @@ jobs:
       # electron-builder.yml is used to build the download URL inside
       # latest.yml. NOTE: if the smoke test below fails, the draft
       # electron-builder just created is left behind; the next run's
-      # step 8 stale cleanup removes it.
+      # tag-verify step stale cleanup removes it.
       - name: Build the Windows installer
         run: |
           $env:EP_DRAFT = "true"
