@@ -71,6 +71,11 @@ concurrency:
 
 permissions:
   contents: write
+  # actions: write is needed to dispatch desktop.yml (workflow_dispatch)
+  # after pushing the tag — without it `gh workflow run` fails with
+  # 403 "Resource not accessible by integration" (run 45494930508:
+  # the tag push succeeded but the dispatch failed).
+  actions: write
 
 jobs:
   tag:
