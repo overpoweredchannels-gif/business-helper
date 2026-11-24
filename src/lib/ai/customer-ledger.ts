@@ -1,5 +1,9 @@
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import { excludeVoidedPayments } from "../payments/voided-payments";
+import {
+  computeCreditAllocationsByTransaction,
+  computeReturnedValueBySalesTransaction,
+} from "../sales/returns-offset";
 
 /**
  * Customer ledger — derived financial view over the raw business data.
@@ -25,6 +29,8 @@ export interface CustomerInvoice {
   transactionId: string;
   invoiceNumber: string;
   date: string;
+  /** Raw created_at — the tile engine sorts by it, not by sale date. */
+  createdAt: string;
   amount: number;
   paymentType: string | null;
   creditDueDate: string | null;
@@ -128,6 +134,7 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
       transactionId: String(tx.id),
       invoiceNumber: String(tx.invoice_number ?? ""),
       date: String(tx.sale_date ?? tx.created_at ?? ""),
+      createdAt: String(tx.created_at ?? ""),
       amount: items.reduce((sum, item) => sum + item.total, 0),
       paymentType: tx.payment_type ?? null,
       creditDueDate: tx.credit_due_date ?? null,
@@ -148,6 +155,53 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
     if (!customerId) continue;
     paymentsByCustomer.set(customerId, (paymentsByCustomer.get(customerId) ?? 0) + toNumber(payment.amount));
   }
+
+  // J1b — the SAME credit allocation engine the dashboard tile,
+  // Customer History and the alert generator run
+  // (computeCreditAllocationsByTransaction, page.tsx
+  // creditAllocationByTransaction). The old brain FIFO below ignored
+  // returns and explicit allocations. Inputs mirror page.tsx exactly:
+  // voided payments (and their allocation rows, which the void RPC
+  // keeps by design) count toward nothing; cancelled / unlinked
+  // returns offset nothing; the legacy pool is total non-voided
+  // payments minus explicit allocations.
+  const salesTxById = new Map(
+    (data.salesTransactions ?? []).map((tx) => [String(tx.id), tx])
+  );
+  const voidedCustomerPaymentIds = new Set(
+    (data.customerPayments ?? [])
+      .filter((payment) => payment.voided_at)
+      .map((payment) => String(payment.id))
+  );
+  const explicitBySalesTx: Record<string, number> = {};
+  const explicitByCustomer: Record<string, number> = {};
+  for (const allocation of data.customerPaymentAllocations ?? []) {
+    if (voidedCustomerPaymentIds.has(String(allocation.customer_payment_id ?? ""))) continue;
+    const txId = String(allocation.sales_transaction_id ?? "");
+    if (!txId) continue;
+    explicitBySalesTx[txId] =
+      (explicitBySalesTx[txId] ?? 0) + toNumber(allocation.amount);
+    const tx = salesTxById.get(txId);
+    if (!tx) continue;
+    const customerId = String(tx.customer_id ?? "");
+    if (!customerId) continue;
+    explicitByCustomer[customerId] =
+      (explicitByCustomer[customerId] ?? 0) + toNumber(allocation.amount);
+  }
+  const legacyPoolByCustomer: Record<string, number> = {};
+  for (const raw of data.customers ?? []) {
+    const customerId = String(raw.id ?? "");
+    if (!customerId) continue;
+    legacyPoolByCustomer[customerId] = Math.max(
+      0,
+      (paymentsByCustomer.get(customerId) ?? 0) -
+        (explicitByCustomer[customerId] ?? 0)
+    );
+  }
+  const returnedBySalesTx = computeReturnedValueBySalesTransaction(
+    data.salesReturns ?? [],
+    data.salesReturnItems ?? []
+  );
 
   const customers: CustomerLedgerEntry[] = [];
   const byId = new Map<string, CustomerLedgerEntry>();
@@ -185,9 +239,24 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
     const allowOverLimit = Boolean(raw.allow_over_limit);
     const allowOverdueSales = Boolean(raw.allow_overdue_sales);
 
-    // FIFO credit allocation (mirrors the app's creditAllocationByTransaction).
+    // J1b — shared engine over this customer's CREDIT invoices only
+    // (page.tsx runs computeCreditAllocationsByTransaction over credit
+    // invoices; cash/card invoices never draw on the pool). The pool is
+    // consumed oldest first, in the same order, so the brain and the
+    // tile can never disagree about what a customer still owes.
     const creditInvoices = invoices.filter((inv) => inv.paymentType === "credit");
-    let pool = paymentsByCustomer.get(customerId) ?? 0;
+    const allocations = computeCreditAllocationsByTransaction(
+      creditInvoices.map((inv) => ({
+        id: inv.transactionId,
+        customerId,
+        invoiceTotal: inv.amount,
+        returnedAmount: returnedBySalesTx[inv.transactionId] ?? 0,
+        explicitAllocatedAmount: explicitBySalesTx[inv.transactionId] ?? 0,
+        sortDate: dateOnly(inv.date) ?? "",
+        createdAt: inv.createdAt,
+      })),
+      legacyPoolByCustomer
+    );
     let outstandingBalance = 0;
     let overdueAmount = 0;
     let overdueInvoiceCount = 0;
@@ -195,9 +264,7 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
     let latestDueDate: string | null = null;
 
     for (const inv of creditInvoices) {
-      const allocated = Math.min(pool, inv.amount);
-      pool = Math.max(0, pool - allocated);
-      const remaining = Math.max(0, inv.amount - allocated);
+      const remaining = allocations[inv.transactionId]?.remainingUnpaidAmount ?? 0;
       outstandingBalance += remaining;
       if (inv.creditDueDate) {
         const dueDay = dateOnly(inv.creditDueDate);

@@ -571,6 +571,34 @@ export interface MemoryWriterRawData {
     voided_at?: string | null;
     created_at?: string;
   }>;
+  // J1b — returns + payment allocations (optional: absent = no returns /
+  // no explicit allocations, and the ledgers fall back to their old
+  // FIFO behaviour). Loaded by loadRawBusinessData; these are the exact
+  // inputs the dashboard tile's allocation engines consume, so the brain
+  // ledgers can run the SAME engine instead of their returns-blind FIFO.
+  purchaseReturns?: Array<{
+    id: string;
+    purchase_transaction_id?: string | null;
+    status?: string | null;
+  }>;
+  purchaseReturnItems?: Array<{
+    id: string;
+    purchase_return_id: string | number;
+    quantity?: number | string | null;
+    unit_price?: number | string | null;
+  }>;
+  salesReturns?: Array<{
+    id: string;
+    sales_transaction_id?: string | null;
+    status?: string | null;
+  }>;
+  salesReturnItems?: Array<{
+    id: string;
+    sales_return_id: string | number;
+    quantity?: number | string | null;
+    unit_price?: number | string | null;
+    discount?: number | string | null;
+  }>;
   // Cash vs credit (2026-11-25): explicit supplier-payment allocations.
   // The financial ledger needs them to ignore payments recorded against
   // paid-at-entry (cash/card) purchases — without them the brain's
@@ -581,6 +609,12 @@ export interface MemoryWriterRawData {
     id?: string | null;
     supplier_payment_id?: string | null;
     purchase_transaction_id?: string | null;
+    amount?: number | string | null;
+  }>;
+  customerPaymentAllocations?: Array<{
+    id?: string | null;
+    customer_payment_id?: string | null;
+    sales_transaction_id?: string | null;
     amount?: number | string | null;
   }>;
 }

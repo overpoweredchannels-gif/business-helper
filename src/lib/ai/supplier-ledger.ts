@@ -1,5 +1,9 @@
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import { excludeVoidedPayments } from "../payments/voided-payments";
+import {
+  computeReturnedValueByPurchaseTransaction,
+  netPurchaseInvoiceAllocation,
+} from "../purchases/returns-offset";
 
 /**
  * Supplier ledger — derived financial view over the raw business data.
@@ -26,6 +30,8 @@ export interface SupplierInvoice {
   transactionId: string;
   invoiceNumber: string;
   date: string;
+  /** Raw created_at — the tile engine sorts by it, not by purchase date. */
+  createdAt: string;
   amount: number;
   paymentType: string | null;
   creditDueDate: string | null;
@@ -142,6 +148,7 @@ export function buildSupplierLedger(data: MemoryWriterRawData, now: Date = new D
       transactionId: String(tx.id),
       invoiceNumber: String(tx.invoice_number ?? ""),
       date: String(tx.purchase_date ?? tx.created_at ?? ""),
+      createdAt: String(tx.created_at ?? ""),
       amount: items.reduce((sum, item) => sum + item.total, 0),
       paymentType: tx.payment_type ?? null,
       creditDueDate: null,
@@ -169,6 +176,57 @@ export function buildSupplierLedger(data: MemoryWriterRawData, now: Date = new D
     });
     paymentsBySupplier.set(supplierId, list);
   }
+
+  // J1b — the SAME allocation engine the dashboard tile, the alert
+  // generator and the AI-chat context run (page.tsx
+  // supplierPaymentAllocationByPurchaseTransaction). Per invoice:
+  //   remaining = max(0, total − confirmed returns − explicit allocations)
+  //               − min(legacy unallocated-payment pool, that)
+  // The old brain FIFO below ignored returns and explicit allocations.
+  // Inputs mirror page.tsx exactly: voided payments (and their
+  // allocation rows, which the void RPC keeps by design) count toward
+  // nothing; cancelled / unlinked returns offset nothing; the legacy
+  // pool is total non-voided payments minus explicit allocations.
+  const purchaseTxById = new Map(
+    (data.purchaseTransactions ?? []).map((tx) => [String(tx.id), tx])
+  );
+  const voidedSupplierPaymentIds = new Set(
+    (data.supplierPayments ?? [])
+      .filter((payment) => payment.voided_at)
+      .map((payment) => String(payment.id))
+  );
+  const explicitByPurchaseTx: Record<string, number> = {};
+  const explicitBySupplier: Record<string, number> = {};
+  for (const allocation of data.supplierPaymentAllocations ?? []) {
+    if (voidedSupplierPaymentIds.has(String(allocation.supplier_payment_id ?? ""))) continue;
+    const txId = String(allocation.purchase_transaction_id ?? "");
+    if (!txId) continue;
+    explicitByPurchaseTx[txId] =
+      (explicitByPurchaseTx[txId] ?? 0) + toNumber(allocation.amount);
+    const tx = purchaseTxById.get(txId);
+    if (!tx) continue;
+    const supplierId = String(tx.supplier_id ?? "");
+    if (!supplierId) continue;
+    explicitBySupplier[supplierId] =
+      (explicitBySupplier[supplierId] ?? 0) + toNumber(allocation.amount);
+  }
+  const legacyPoolBySupplier: Record<string, number> = {};
+  for (const raw of data.suppliers ?? []) {
+    const supplierId = String(raw.id ?? "");
+    if (!supplierId) continue;
+    const totalPayments = (paymentsBySupplier.get(supplierId) ?? []).reduce(
+      (sum, payment) => sum + payment.amount,
+      0
+    );
+    legacyPoolBySupplier[supplierId] = Math.max(
+      0,
+      totalPayments - (explicitBySupplier[supplierId] ?? 0)
+    );
+  }
+  const returnedByPurchaseTx = computeReturnedValueByPurchaseTransaction(
+    data.purchaseReturns ?? [],
+    data.purchaseReturnItems ?? []
+  );
 
   const suppliers: SupplierLedgerEntry[] = [];
   const byId = new Map<string, SupplierLedgerEntry>();
@@ -206,23 +264,47 @@ export function buildSupplierLedger(data: MemoryWriterRawData, now: Date = new D
     const allowOverLimit = Boolean(raw.allow_over_limit);
     const allowOverdueSales = Boolean(raw.allow_overdue_sales);
 
-    // FIFO credit allocation over credit purchase invoices (mirrors the
-    // customer ledger architecture; due date = purchase date + credit days).
+    // J1b — shared engine over ALL of this supplier's invoices
+    // (page.tsx sorts every purchase transaction by created_at, cash
+    // included — a cash invoice with no covering payment counts as
+    // payable until one lands). The legacy pool is consumed oldest
+    // first, in the same order, so the brain and the tile can never
+    // disagree about what is still owed.
+    const remainingByTx = new Map<string, number>();
+    {
+      let pool = legacyPoolBySupplier[supplierId] ?? 0;
+      const ordered = [...invoices].sort((a, b) => {
+        const aDate = dateOnly(a.createdAt) ?? "";
+        const bDate = dateOnly(b.createdAt) ?? "";
+        if (aDate !== bDate) return aDate.localeCompare(bDate);
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+      for (const inv of ordered) {
+        const net = netPurchaseInvoiceAllocation({
+          purchaseTotal: inv.amount,
+          returnedAmount: returnedByPurchaseTx[inv.transactionId] ?? 0,
+          explicitAllocatedAmount: explicitByPurchaseTx[inv.transactionId] ?? 0,
+          legacyPoolAvailable: pool,
+        });
+        pool = net.legacyPoolRemaining;
+        remainingByTx.set(inv.transactionId, net.remainingPayableAmount);
+      }
+    }
+
     const creditInvoices = invoices.filter((inv) => inv.paymentType === "credit");
     const payments = paymentsBySupplier.get(supplierId) ?? [];
-    let pool = payments.reduce((sum, payment) => sum + payment.amount, 0);
-    let paidAmount = pool;
+    const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
     let payableAmount = 0;
     let overdueAmount = 0;
     let overdueInvoiceCount = 0;
     let lastCreditPurchaseDate: string | null = null;
     let latestDueDate: string | null = null;
 
+    for (const inv of invoices) {
+      payableAmount += remainingByTx.get(inv.transactionId) ?? 0;
+    }
     for (const inv of creditInvoices) {
-      const allocated = Math.min(pool, inv.amount);
-      pool = Math.max(0, pool - allocated);
-      const remaining = Math.max(0, inv.amount - allocated);
-      payableAmount += remaining;
+      const remaining = remainingByTx.get(inv.transactionId) ?? 0;
       const dueDate = addDays(inv.date || now.toISOString(), creditDays ?? DEFAULT_CREDIT_DAYS);
       inv.creditDueDate = dueDate;
       const dueDay = dateOnly(dueDate);
