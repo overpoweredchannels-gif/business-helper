@@ -6,7 +6,7 @@ function fields(root: HTMLElement): Field[] {
     !field.disabled && !("readOnly" in field && field.readOnly) &&
     !(field instanceof HTMLInputElement && ["hidden", "checkbox", "radio", "file", "submit", "button"].includes(field.type)) && field.getClientRects().length > 0);
 }
-function advance(root: HTMLElement, target: Field, backwards = false) {
+function advance(root: HTMLElement, target: Field, backwards = false, allowAdd = true) {
   const all = fields(root);
   const index = all.indexOf(target);
   if (index < 0) return;
@@ -21,7 +21,7 @@ function advance(root: HTMLElement, target: Field, backwards = false) {
     if (next instanceof HTMLInputElement && ["text", "search", "tel"].includes(next.type)) next.select();
     return;
   }
-  if (!backwards) root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
+  if (!backwards && allowAdd) root.querySelector<HTMLButtonElement>("button[data-entry-add]")?.click();
 }
 export function focusNextEntryField(target: HTMLInputElement | HTMLTextAreaElement) {
   const root = target.closest<HTMLElement>("[data-entry-navigation], [data-invoice-line]");
@@ -30,9 +30,25 @@ export function focusNextEntryField(target: HTMLInputElement | HTMLTextAreaEleme
 export const entryNavigationHandlers = {
   "data-entry-navigation": true,
   onKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.defaultPrevented || event.key !== "Enter" || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    // Arrow keys (opt-in via data-entry-arrows on the container): Left/Right
+    // move between fields at the caret edge, mirroring the invoice line
+    // navigation. Date inputs and selects keep their native arrow behaviour
+    // (date segments, option changes). Arrows never add a line.
+    if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && event.currentTarget.hasAttribute("data-entry-arrows")) {
+      if (!(target instanceof HTMLInputElement) || !["text", "search", "tel"].includes(target.type)) return;
+      const atEdge = event.key === "ArrowLeft"
+        ? target.selectionStart === 0 && target.selectionEnd === 0
+        : target.selectionStart === target.value.length && target.selectionEnd === target.value.length;
+      if (!atEdge) return;
+      event.preventDefault();
+      event.stopPropagation();
+      advance(event.currentTarget, target, event.key === "ArrowLeft", false);
+      return;
+    }
+    if (event.key !== "Enter") return;
     if (target instanceof HTMLInputElement && ["checkbox", "radio", "file", "submit", "button"].includes(target.type)) return;
     event.preventDefault();
     event.stopPropagation();

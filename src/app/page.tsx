@@ -12637,6 +12637,16 @@ export default function Home() {
 
   // ── Sales Returns (Phase 4) ───────────────────────────────────────────────
 
+  // Sales return: add a blank return line (shared by the "+ Add Return Line"
+  // button and the line keyboard navigation, so Enter on the Add button and
+  // the navigation's add-line path do the same thing).
+  const handleAddSrLine = () => {
+    setSrLines([
+      ...srLines,
+      { product_id: null, quantity: "", selling_price: "", discount: "", batch_number: "", expiry_date: "" },
+    ]);
+  };
+
   const handleSalesInvoiceSelectionChange = (value: string) => {
     setSrSalesTransactionId(value);
     const transaction = salesTransactions.find((item) => item.id === value);
@@ -24649,7 +24659,7 @@ export default function Home() {
         <>
         <section className="workspace-section">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('sell.salesReturn')}</h2>
-          <div className="space-y-4">
+          <div className="space-y-4" data-entry-arrows {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.sourceInvoice')}</span>
@@ -24702,13 +24712,13 @@ export default function Home() {
                   {t('sell.noReturnLines')}
                 </p>
               ) : (
-                <div className="mb-4 space-y-3">
+                <InvoiceLineNavigation onAddLine={handleAddSrLine} addButtonSelector="[data-sr-add-line]" enableArrowKeys>
                   {srLines.map((line, index) => {
                     const lineProduct = line.product_id
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-3">
+                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -24862,17 +24872,14 @@ export default function Home() {
                     </div>
                     );
                   })}
-                </div>
+                </InvoiceLineNavigation>
               )}
 
               <button
                 type="button"
-                onClick={() =>
-                  setSrLines([
-                    ...srLines,
-                    { product_id: null, quantity: "", selling_price: "", discount: "", batch_number: "", expiry_date: "" },
-                  ])
-                }
+                data-entry-add
+                data-sr-add-line
+                onClick={handleAddSrLine}
                 className="mb-4 rounded border border-primary px-4 py-2 text-sm text-primary transition hover:bg-primary/5"
               >
                 {t('sell.addReturnLine')}
