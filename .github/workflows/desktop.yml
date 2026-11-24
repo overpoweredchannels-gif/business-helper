@@ -13,13 +13,21 @@
 #    If any gate fails, the release job never runs and nothing is published.
 # 2. The `release` job (Windows runner, needs gates) computes the next
 #    version from the latest PUBLISHED GitHub release (patch + 1) via
-#    scripts/autobridge-next-version.mjs, creates exactly ONE draft GitHub
-#    release for that version via the REST API, builds the NSIS
-#    installer with that version (electron-builder --publish never), and
-#    uploads the installer + blockmap + latest.yml to the release with
-#    `gh release upload`. After the verify step passes, a real run
-#    publishes the release (`gh release edit --draft=false`); a dry run
-#    leaves it a draft, which the updater cannot see.
+#    scripts/autobridge-next-version.mjs, creates the git tag for that
+#    version, builds the NSIS installer with that version
+#    (electron-builder --publish never), then creates exactly ONE draft
+#    GitHub release for that version via the REST API and uploads the
+#    installer + blockmap + latest.yml to it with `gh release upload`.
+#    The release is created AFTER the build on purpose: the tag ages
+#    ~5-6 min during the build + smoke test, which is what makes the
+#    releases service mint a properly-slugged (tagged) release URL.
+#    Creating the release moments after the tag minted an untagged
+#    slug every time — across `gh release create` and the REST API,
+#    across API-created and git-pushed tags, and after waits of 15s,
+#    60s and 180s (runs 45462676529, 45474906156, 45480046106,
+#    45482359627, 45484284717). After the verify step passes, a real
+#    run publishes the release (`gh release edit --draft=false`); a
+#    dry run leaves it a draft, which the updater cannot see.
 #
 #    Why `gh` and not electron-builder --publish always: electron-builder
 #    26.18.0 can create TWO GitHubPublisher instances for one build (the
@@ -167,45 +175,26 @@ jobs:
           Write-Host "dry_run=$dry version=${{ steps.version.outputs.version }}"
         shell: pwsh
 
-      # Create exactly ONE release for this version, as a DRAFT, before
-      # the build. Publishing is done with `gh` (not electron-builder):
-      # electron-builder 26.18.0 can create two publisher instances and
-      # two untagged draft releases (see the header comment). A draft is
-      # created in BOTH modes so a failed build never leaves an empty
-      # PUBLISHED release; a real run publishes it after the verify step.
-      # Idempotent: a stale draft with this tag (previous failed run) is
-      # removed first; a PUBLISHED release with this tag is a hard stop.
-      # The git tag is created explicitly first: `gh release create
-      # --draft` does NOT create the git tag (GitHub only creates it when
-      # the draft is published), so a draft made that way shows up as an
-      # untagged- URL (run 45458292084 produced untagged-2273e0d50df1b5225cf9).
-      # Creating the tag here makes the draft a real tagged draft. No
-      # workflow triggers on tag pushes, so creating the tag is safe.
-      # HOW the release is created matters: `gh release create` minted
-      # an "untagged-<hex>" URL slug on EVERY dry-run so far — whether
-      # the tag was created via the git/refs REST API (runs up to
-      # 45474906156, incl. a 3-attempt retry loop with 15s+30s+30s
-      # sleeps) or via `git push` from the runner (run 45480046106,
-      # tag pushed fine, poll passed, still untagged-254ae96aa5b6579f7c67).
-      # The slug is minted at creation and never rewritten, and the
-      # tag-based download URL 404s for such a release (run 45472163785,
-      # step 13), so the updater could never fetch it. The slug is
-      # therefore NOT caused by how the tag is delivered. The REST API
-      # directly (POST /repos/{owner}/{repo}/releases with an explicit
-      # tag_name) ALSO minted an untagged slug (run 45482359627,
-      # untagged-ff6e8e723daac200400a, after a 60s wait) — so the slug
-      # is not caused by the tag-delivery method, the creation tool,
-      # or a 60s propagation delay. Most likely remaining cause: the
-      # releases service needs a few MINUTES to index a newly-pushed
-      # tag — electron-builder's v0.1.1 flow worked because the tag
-      # existed 5-10 min (build time) before the release was created,
-      # while all our waits (15s/30s/60s/75s) were too short. This
-      # step now sleeps 180s (3 min) after the tag is visible before
-      # the REST API create. If the slug is still untagged after 3
-      # min, the lag is longer or not time-based and electron-builder's
-      # publish is next; the step fails loudly instead of shipping a
-      # release the updater cannot read.
-      - name: Create the release (draft)
+      # Create the git tag for this version. The release itself is
+      # created AFTER the build (see the step after the smoke test):
+      # creating the release moments after the tag minted an untagged
+      # slug every time — whether the tag came via the git/refs REST
+      # API or via `git push`, whether the release was made with
+      # `gh release create` or the REST API directly, and after waits
+      # of 15s, 60s and 180s (runs 45462676529, 45474906156,
+      # 45480046106, 45482359627, 45484284717). electron-builder's
+      # v0.1.1 flow worked because the tag existed 5-10 min (build
+      # time) before the release was created, so this job now ages
+      # the tag the same way: tag here, build + smoke test (~5-6
+      # min), release after. Idempotent: a stale draft with this tag
+      # (previous failed run) is removed first; a PUBLISHED release
+      # with this tag is a hard stop. The tag is created via git
+      # push, not the git/refs API: `gh release create --draft` does
+      # NOT create the git tag (GitHub only creates it when the draft
+      # is published), so a draft made that way shows up as an
+      # untagged- URL (run 45458292084). No workflow triggers on tag
+      # pushes, so creating the tag is safe.
+      - name: Create the git tag
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $tag = "v$version"
@@ -262,33 +251,8 @@ jobs:
             if (($LASTEXITCODE -eq 0) -and ($visibleSha -eq $sha)) { $seen = $true; break }
             Start-Sleep -Seconds 2
           }
-          if (-not $seen) { throw "git tag $tag did not become visible within 60s — refusing to create an untagged draft" }
-          Write-Host "Tag $tag visible at $sha."
-          # Create the release via the REST API directly, NOT via
-          # `gh release create`: the git-push hypothesis was REFUTED
-          # (run 45480046106 — tag pushed via git, `gh release create`
-          # still minted untagged-254ae96aa5b6579f7c67), so the slug is
-          # not caused by how the tag is delivered. The REST API also
-          # minted an untagged slug (run 45482359627, after a 60s
-          # wait), so the slug is not caused by the creation tool
-          # either. Sleep 180s (3 min) first: the releases service
-          # likely needs minutes, not seconds, to index a newly-pushed
-          # tag (electron-builder's v0.1.1 flow worked because the tag
-          # existed 5-10 min before the release was created). Single
-          # create (no retry loop: retrying was proven not to help —
-          # run 45474906156 minted untagged slugs on all 3 attempts).
-          # If the slug is still untagged after 3 min, this fails
-          # loudly; the lag is then longer or not time-based and
-          # electron-builder's publish is next.
-          Write-Host "Sleeping 180s so the releases service can see the tag before creating the release."
-          Start-Sleep -Seconds 180
-          gh api "repos/$repo/releases" --method POST -f "tag_name=$tag" -f "name=$version" -F "draft=true" -f "target_commitish=$sha" | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "REST API release create failed" }
-          $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
-          if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
-          if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
-          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the REST API also minted an untagged slug even after a 3-minute wait, so the lag is longer or not time-based; electron-builder's publish is needed next" }
-          Write-Host "Created tagged draft release $tag ($($check.url))."
+          if (-not $seen) { throw "git tag $tag did not become visible within 60s" }
+          Write-Host "Tag $tag visible at $sha. The release is created after the build, so the tag ages during the build + smoke test."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
@@ -314,6 +278,49 @@ jobs:
       # 500 on the missing key. Runs on the Windows runner with node.
       - name: Smoke-test packaged server (no service key)
         run: node scripts/check-desktop-routes.mjs --smoke --standalone dist-electron/win-unpacked/resources/standalone/server.js --port 3101
+
+      # Create exactly ONE draft release for this version, AFTER the
+      # build, via the REST API directly (POST
+      # /repos/{owner}/{repo}/releases with an explicit tag_name).
+      # Publishing is done with `gh` (not electron-builder):
+      # electron-builder 26.18.0 can create two publisher instances
+      # and two untagged draft releases (see the header comment). A
+      # draft is created in BOTH modes so a failed build never leaves
+      # an empty PUBLISHED release; a real run publishes it after the
+      # verify step. The tag was created ~5-6 min ago (build +
+      # smoke test), mimicking electron-builder's v0.1.1 flow, in
+      # which the tag existed 5-10 min before the release — every
+      # earlier attempt created the release moments after the tag
+      # and minted an untagged slug (15s/60s/180s waits all failed,
+      # runs 45462676529, 45480046106, 45482359627, 45484284717).
+      # Single create (no retry loop: retrying was proven not to
+      # help — run 45474906156 minted untagged slugs on all 3
+      # attempts). If the slug is still untagged, this fails loudly;
+      # electron-builder's publish is then next.
+      - name: Create the release (draft)
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          $repo = "overpoweredchannels-gif/business-helper"
+          $sha = $env:GITHUB_SHA
+          $existing = gh release view $tag --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ($existing -eq "true") {
+              throw "release $tag already exists as a draft — refusing to create a duplicate"
+            } else {
+              throw "release $tag already exists and is PUBLISHED — refusing to overwrite a shipped version"
+            }
+          }
+          gh api "repos/$repo/releases" --method POST -f "tag_name=$tag" -f "name=$version" -F "draft=true" -f "target_commitish=$sha" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "REST API release create failed" }
+          $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
+          if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
+          if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
+          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the REST API minted an untagged slug even though the tag aged ~5-6 min during the build, so the lag is longer or not time-based; electron-builder's publish is needed next" }
+          Write-Host "Created tagged draft release $tag ($($check.url))."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
 
       # Upload the built artifacts to the pre-created draft release.
       # electron-builder built with --publish never, so it created no
@@ -364,8 +371,9 @@ jobs:
       # latest.yml with the exact computed version, be the ONLY release
       # carrying the tag, and serve its uploaded assets from download
       # URLs containing /download/<tag>/ (the path electron-updater
-      # fetches by tag — the release URL slug itself is not checked,
-      # see step 8). A duplicate release, a missing latest.yml, a
+      # fetches by tag — the release URL slug itself is not checked
+      # here; the release-create step already failed loudly on an
+      # untagged slug). A duplicate release, a missing latest.yml, a
       # wrong version, or a tag-less download path fails the workflow
       # loudly instead of silently leaving users without an update.
       - name: Verify the release the updater will read
