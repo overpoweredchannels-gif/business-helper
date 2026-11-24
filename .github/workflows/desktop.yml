@@ -14,7 +14,7 @@
 # 2. The `release` job (Windows runner, needs gates) computes the next
 #    version from the latest PUBLISHED GitHub release (patch + 1) via
 #    scripts/autobridge-next-version.mjs, creates exactly ONE draft GitHub
-#    release for that version with `gh release create`, builds the NSIS
+#    release for that version via the REST API, builds the NSIS
 #    installer with that version (electron-builder --publish never), and
 #    uploads the installer + blockmap + latest.yml to the release with
 #    `gh release upload`. After the verify step passes, a real run
@@ -181,20 +181,24 @@ jobs:
       # untagged- URL (run 45458292084 produced untagged-2273e0d50df1b5225cf9).
       # Creating the tag here makes the draft a real tagged draft. No
       # workflow triggers on tag pushes, so creating the tag is safe.
-      # HOW the tag is created matters: every AutoBridge dry-run so far
-      # created the tag via the git/refs REST API, and `gh release create`
-      # minted an "untagged-<hex>" URL slug every single time — the poll
-      # passed, the tag was visible, and a 3-attempt retry loop with
-      # 15s+30s+30s sleeps still minted untagged slugs on all 3 attempts
-      # (run 45474906156). The slug is minted at creation and never
-      # rewritten, and the tag-based download URL 404s for such a release
-      # (run 45472163785, step 13), so the updater could never fetch it.
-      # The tag is therefore created via `git push` from the runner:
-      # v0.1.0/v0.1.1 tags arrived via git push and have proper slugs,
-      # so the releases service evidently indexes tags that arrive via
-      # push, not via the REST API. If the slug is still untagged after
-      # this, the git-push hypothesis is refuted and the step fails
-      # loudly instead of shipping a release the updater cannot read.
+      # HOW the release is created matters: `gh release create` minted
+      # an "untagged-<hex>" URL slug on EVERY dry-run so far — whether
+      # the tag was created via the git/refs REST API (runs up to
+      # 45474906156, incl. a 3-attempt retry loop with 15s+30s+30s
+      # sleeps) or via `git push` from the runner (run 45480046106,
+      # tag pushed fine, poll passed, still untagged-254ae96aa5b6579f7c67).
+      # The slug is minted at creation and never rewritten, and the
+      # tag-based download URL 404s for such a release (run 45472163785,
+      # step 13), so the updater could never fetch it. The slug is
+      # therefore NOT caused by how the tag is delivered. This step now
+      # creates the release via the REST API directly (POST
+      # /repos/{owner}/{repo}/releases with an explicit tag_name),
+      # which is untested and may mint a proper slug. It also sleeps
+      # 60s after the tag is visible, so the releases service has more
+      # time to see it. If the slug is still untagged after the REST
+      # API call, the step fails loudly instead of shipping a release
+      # the updater cannot read; the next step would be a much longer
+      # wait (3-5 min) or electron-builder's publish.
       - name: Create the release (draft)
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -254,16 +258,27 @@ jobs:
           }
           if (-not $seen) { throw "git tag $tag did not become visible within 60s — refusing to create an untagged draft" }
           Write-Host "Tag $tag visible at $sha."
+          # Create the release via the REST API directly, NOT via
+          # `gh release create`: the git-push hypothesis was REFUTED
+          # (run 45480046106 — tag pushed via git, `gh release create`
+          # still minted untagged-254ae96aa5b6579f7c67), so the slug is
+          # not caused by how the tag is delivered. The REST API with
+          # an explicit tag_name is untested and may mint a proper
+          # slug. Sleep 60s first (longer than the 15s used before)
+          # so the releases service has more time to see the tag.
           # Single create (no retry loop: retrying was proven not to
           # help — run 45474906156 minted untagged slugs on all 3
-          # attempts). If the slug is still untagged, the git-push
-          # hypothesis is refuted and this fails loudly.
-          gh release create $tag --draft --title "$version" --target $sha
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          # attempts). If the slug is still untagged after the REST
+          # API call, this fails loudly; the next step would be a
+          # much longer wait (3-5 min) or electron-builder's publish.
+          Write-Host "Sleeping 60s so the releases service can see the tag before creating the release."
+          Start-Sleep -Seconds 60
+          gh api "repos/$repo/releases" --method POST -f "tag_name=$tag" -f "name=$version" -F "draft=true" -f "target_commitish=$sha" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "REST API release create failed" }
           $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
           if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
           if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
-          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the git tag was not applied; the git-push hypothesis is refuted, a different creation mechanism is needed" }
+          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the REST API also minted an untagged slug, so the issue is not gh-specific; a much longer wait or electron-builder's publish is needed next" }
           Write-Host "Created tagged draft release $tag ($($check.url))."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
