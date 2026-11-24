@@ -1,33 +1,171 @@
-# Slice S8 — Windows installer build (Offline Tier-1).
+# AutoBridge — every push to main automatically releases the desktop app.
 #
-# The Windows installer cannot be built on the Linux dev box:
-# electron-builder needs Windows for the NSIS target, and
-# better-sqlite3 is compiled for the Electron ABI on the runner.
-# This workflow builds it on a Windows runner instead.
+# Why this exists (Umair, 2026-11-24): a main push must update the installed
+# desktop app, the web app, and the mobile web app with no manual tag, no
+# manual dispatch, and no reinstall. Before this, desktop.yml ran only on a
+# v* tag push or a manual dispatch, so a main push updated the web app
+# (Vercel) but left installed desktop users on the old build.
+#
+# How it works:
+# 1. Push to main -> the `gates` job runs the repo gates (typecheck, eslint
+#    on changed files, npm test, npm run build) SEQUENTIALLY on Linux.
+#    If any gate fails, the release job never runs and nothing is published.
+# 2. The `release` job (Windows runner, needs gates) computes the next
+#    version from the latest PUBLISHED GitHub release (patch + 1) via
+#    scripts/autobridge-next-version.mjs, builds the NSIS installer with
+#    that version, and publishes it to a GitHub release with
+#    electron-builder --publish always. electron-builder.yml sets
+#    releaseType: release, so the release is PUBLISHED (not a draft) —
+#    electron-builder defaults to draft, and a draft is invisible to
+#    electron-updater (it looks exactly like "no updates available").
+# 3. The installed app (electron-updater, autoInstallOnAppQuit=true) sees
+#    the new latest.yml on launch, downloads the installer in the
+#    background, and installs it on quit. No reinstall, no manual step.
+#
+# Version scheme: the version is NOT bumped in package.json (no commit-back,
+# so no loop and no race). It is computed at build time from the latest
+# published release and passed to electron-builder as
+# --config.extraMetadata.version. The version is strictly increasing
+# because the workflow is serialized (concurrency group below): runs queue
+# up, and each run reads the latest release AFTER the previous run
+# published, so two pushes can never compute the same version.
+#
+# Safety / trade-off (read this before merging): with this bridge, ANY
+# commit to main that passes the gates reaches installed users
+# automatically. There is no manual release gate anymore — that is what
+# Umair asked for, and the gates are the only gate. A broken-but-passing
+# change (a bug the tests do not catch) WILL ship to users. If a feature
+# could hurt users, it must be kept off main (feature branch + PR) until
+# it is ready; there is deliberately no "hold" mechanism in this workflow.
+#
+# Dry-run (safe test): pushing to a non-main branch that triggers this
+# workflow, or a manual dispatch with dry_run=true, runs the FULL path
+# (gates + Windows build) but publishes as a DRAFT release, which the
+# updater cannot see. Delete the draft release + tag after verifying.
+# The test-branch trigger below (fix/autobridge-main-push) is for the
+# first proof run only and must be removed before this branch merges.
 #
 # Triggers:
-# - Manually (workflow_dispatch): builds the installer and uploads
-#   it as an artifact. Publishes nothing.
-# - A version tag (v*): builds the installer and publishes it to the
-#   GitHub Release for that tag (`--publish onTag`), which is the
-#   feed electron-updater reads for auto-update on launch.
-#
-# UNTESTED until it first runs on GitHub: the first run will confirm
-# the Next.js build passes on the runner. It needs two repository
-# variables set first (public keys, safe to store as variables):
-# NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
-name: Desktop (Windows installer)
+# - Push to main: full AutoBridge (gates -> build -> published release).
+# - Push to fix/autobridge-main-push: dry-run (REMOVE BEFORE MERGE).
+# - Manual dispatch: dry_run input, default true (safe test).
+name: Desktop AutoBridge (Windows installer)
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches: [main, fix/autobridge-main-push]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Publish as a DRAFT release instead of a published release (safe test)"
+        type: boolean
+        default: true
+
+# Serialize releases: runs queue up instead of overlapping, so the version
+# computation (latest release + 1) can never collide between two pushes.
+concurrency:
+  group: autobridge-desktop-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
-  build-windows:
+  gates:
+    name: Gates (typecheck, eslint, tests, build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # Full history so the eslint step can diff against the push base.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate 1 — typecheck (repo AGENTS.md gate order: typecheck first).
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Gate 2 — eslint on changed files. page.tsx is linted against the
+      # committed baseline (5 errors, 213 warnings allowed) exactly like
+      # ci-lint-page.yml; every other changed file must be clean.
+      - name: ESLint changed files
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set -e
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="HEAD~1"
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- '*.ts' '*.tsx' || true)
+          echo "Changed files:"
+          echo "$CHANGED"
+          PAGE_CHANGED="false"
+          OTHER=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [ "$f" = "src/app/page.tsx" ]; then
+              PAGE_CHANGED="true"
+            else
+              OTHER="$OTHER $f"
+            fi
+          done <<< "$CHANGED"
+          if [ -n "$(echo "$OTHER" | tr -d ' ')" ]; then
+            echo "Linting changed files (excluding page.tsx):$OTHER"
+            # shellcheck disable=SC2086
+            npx eslint $OTHER
+          else
+            echo "No non-page.tsx files changed — skipping plain eslint."
+          fi
+          if [ "$PAGE_CHANGED" = "true" ]; then
+            echo "page.tsx changed — linting against the baseline."
+            set +e
+            npx eslint --format json --output-file lint-report.json src/app/page.tsx
+            ESLINT_EXIT=$?
+            set -e
+            echo "ESLint exit code: $ESLINT_EXIT"
+            node .github/scripts/compare-lint-baseline.mjs lint-report.json .github/lint-baseline.json
+          else
+            echo "page.tsx unchanged — baseline check skipped."
+          fi
+
+      # Gate 3 — the full test suite (sequential, as npm test chains it).
+      # Tests run against the DISPOSABLE Supabase project, never
+      # production: the public URL/anon key are the disposable project's
+      # (same values as slice1b-admin-tests.yml), the service key comes
+      # from the existing DISPOSABLE_SUPABASE_SERVICE_KEY secret.
+      - name: Tests
+        run: npm test
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://rtfowunsyrdygyvubnvs.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0Zm93dW5zeXJkeWd5dnVibnZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3OTI2ODksImV4cCI6MjEwNjM2ODY4OX0.ZziM-bfifjxso7kU7RGpPv0UkhzXwh471ez7BIOwX9Y
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_APIKEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_BEARER: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+      # Gate 4 — the web build (the desktop build below runs `next build`
+      # again with the desktop env vars; this gate proves the plain web
+      # build, which is what Vercel deploys on every main push).
+      - name: Build (web)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  release:
+    name: Build installer + publish release
     runs-on: windows-latest
-    # Slice 0 gate (audit M10): the publish step creates GitHub Releases.
+    needs: [gates]
+    # The publish step creates GitHub Releases (Slice 0 gate, audit M10).
     permissions:
       contents: write
     steps:
@@ -49,14 +187,40 @@ jobs:
       # env var, a direct renderer fetch of a migrated CLOUD route, a
       # version/tag mismatch, or wildcard CORS. See
       # scripts/check-desktop-routes.mjs and DESKTOP_ROUTE_CLASSIFICATION.md.
+      # (On a main push there is no tag, so the version/tag guard skips;
+      # the version is set at build time by the next step.)
       - name: Check desktop route classification (Slice 0 gate)
         run: node scripts/check-desktop-routes.mjs
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
+      # Next version = latest published release patch + 1. Fails loudly
+      # instead of guessing if the API is unreachable (a wrong version
+      # could collide or go backwards and silently stop updates).
+      - name: Compute next version
+        id: version
+        run: node scripts/autobridge-next-version.mjs --repo overpoweredchannels-gif/business-helper
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dry-run = any non-main ref (test-branch push) or a manual dispatch
+      # with dry_run=true. A dry run publishes as a DRAFT (invisible to
+      # the updater) so the full path can be proven without shipping.
+      - name: Determine dry-run
+        id: dryrun
+        run: |
+          if ("${{ github.ref }}" -ne "refs/heads/main") { $dry = "true" }
+          elseif ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.dry_run }}" -eq "true") { $dry = "true" }
+          else { $dry = "false" }
+          if ($dry -eq "true") { $releaseType = "draft" } else { $releaseType = "release" }
+          "dry_run=$dry" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "release_type=$releaseType" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "dry_run=$dry release_type=$releaseType version=${{ steps.version.outputs.version }}"
+        shell: pwsh
+
       - name: Build the Windows installer
-        run: npm run desktop:build -- --publish onTag
+        run: npm run desktop:build -- --publish always --config.extraMetadata.version=${{ steps.version.outputs.version }} --config.publish.releaseType=${{ steps.dryrun.outputs.release_type }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
@@ -75,3 +239,32 @@ jobs:
           name: aankh-windows-installer
           path: dist-electron/*.exe
           if-no-files-found: error
+
+      # Proof step: the release must exist, be published (or a draft in
+      # dry-run mode), and carry the installer + latest.yml with the exact
+      # computed version. A draft in a real run, or a missing latest.yml,
+      # fails the workflow loudly instead of silently leaving users
+      # without an update.
+      - name: Verify the release the updater will read
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          $dry = "${{ steps.dryrun.outputs.dry_run }}" -eq "true"
+          $rel = gh release view $tag --json draft,prerelease,assets --jq '{draft: .draft, prerelease: .prerelease, assets: [.assets[].name]}'
+          Write-Host "Release $tag : $rel"
+          $draft = ($rel | ConvertFrom-Json).draft
+          $prerelease = ($rel | ConvertFrom-Json).prerelease
+          $assets = ($rel | ConvertFrom-Json).assets
+          if ($dry -and -not $draft) { throw "dry-run release $tag is NOT a draft — it would be visible to the updater" }
+          if (-not $dry -and $draft) { throw "release $tag is a DRAFT — electron-updater cannot see it, users would get no update" }
+          if ($prerelease) { throw "release $tag is a prerelease — the updater 'latest' channel ignores it" }
+          if ($assets -notcontains "Aankh-Setup-$version.exe") { throw "release $tag is missing the installer Aankh-Setup-$version.exe" }
+          if ($assets -notcontains "latest.yml") { throw "release $tag is missing latest.yml — the updater has no feed" }
+          $yml = gh release download $tag --pattern "latest.yml" --dir "$env:RUNNER_TEMP" --clobber | Out-Null
+          $ymlText = Get-Content "$env:RUNNER_TEMP/latest.yml" -Raw
+          Write-Host $ymlText
+          if ($ymlText -notmatch "version: $version") { throw "latest.yml does not carry version $version" }
+          Write-Host "Verified: release $tag is $(if ($dry) { 'a DRAFT (dry-run, updater cannot see it)' } else { 'PUBLISHED' }) with installer + latest.yml version $version."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh

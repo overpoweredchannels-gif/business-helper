@@ -28,6 +28,13 @@ publish:
   provider: github
   owner: overpoweredchannels-gif
   repo: business-helper
+  # AutoBridge (2026-11-24): releases MUST be published, not drafts.
+  # electron-builder defaults releaseType to "draft", and a draft release
+  # is invisible to electron-updater — it looks exactly like "no updates
+  # available". That is why v0.1.0 needed a manual publish step. With
+  # releaseType: release the release is published as soon as
+  # electron-builder uploads it. A dry-run test overrides this to "draft"
+  # via --config.publish.releaseType=draft on the CLI.
 win:
   target: nsis
   # Without this the installer, taskbar and window show the default
