@@ -175,10 +175,18 @@ jobs:
       # PUBLISHED release; a real run publishes it after the verify step.
       # Idempotent: a stale draft with this tag (previous failed run) is
       # removed first; a PUBLISHED release with this tag is a hard stop.
+      # The git tag is created explicitly first: `gh release create
+      # --draft` does NOT create the git tag (GitHub only creates it when
+      # the draft is published), so a draft made that way shows up as an
+      # untagged- URL (run 45458292084 produced untagged-2273e0d50df1b5225cf9).
+      # Creating the tag here makes the draft a real tagged draft. No
+      # workflow triggers on tag pushes, so creating the tag is safe.
       - name: Create the release (draft)
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $tag = "v$version"
+          $repo = "overpoweredchannels-gif/business-helper"
+          $sha = $env:GITHUB_SHA
           $existing = gh release view $tag --json isDraft --jq .isDraft 2>$null
           if ($LASTEXITCODE -eq 0) {
             if ($existing -eq "true") {
@@ -188,8 +196,27 @@ jobs:
               throw "release $tag already exists and is PUBLISHED — refusing to overwrite a shipped version"
             }
           }
+          $all = gh api "repos/$repo/releases?per_page=100" | ConvertFrom-Json
+          foreach ($r in @($all)) {
+            if ($r.draft -and [string]::IsNullOrEmpty($r.tag_name) -and $r.name -eq $version) {
+              Write-Host "Removing stale untagged draft titled $version (id $($r.id))."
+              gh api "repos/$repo/releases/$($r.id)" --method DELETE
+            }
+          }
+          $tagSha = gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Removing leftover tag $tag (was at $tagSha)."
+            gh api "repos/$repo/git/refs/tags/$tag" --method DELETE
+          }
+          Write-Host "Creating git tag $tag at $sha."
+          gh api "repos/$repo/git/refs" --method POST -f "ref=refs/tags/$tag" -f "sha=$sha" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "failed to create git tag $tag at $sha" }
           gh release create $tag --draft --title "$version"
-          Write-Host "Created draft release $tag."
+          $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
+          if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
+          if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
+          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — the git tag was not applied" }
+          Write-Host "Created tagged draft release $tag ($($check.url))."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
@@ -218,18 +245,33 @@ jobs:
       # electron-builder built with --publish never, so it created no
       # release; this single `gh release upload` puts all three files
       # on exactly the one release (no duplicate-release race).
+      # Filename: electron-builder names the local installer with SPACES
+      # ("Aankh Setup <version>.exe", no artifactName is set) but writes
+      # latest.yml with the HYPHENATED name ("Aankh-Setup-<version>.exe"),
+      # which is the name the updater downloads (run 45458292084 failed
+      # here by searching for the hyphenated local file). Find the real
+      # local file, stage hyphenated copies, and upload those so the
+      # release assets match latest.yml.
       - name: Upload artifacts to the release
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $tag = "v$version"
-          $exe = Get-ChildItem -Path dist-electron -Filter "Aankh-Setup-$version.exe" | Select-Object -First 1
-          if ($null -eq $exe) { throw "installer Aankh-Setup-$version.exe not found in dist-electron" }
+          Write-Host "dist-electron contents:"
+          Get-ChildItem -Path dist-electron | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+          $exe = Get-ChildItem -Path dist-electron -Filter "Aankh Setup $version.exe" | Select-Object -First 1
+          if ($null -eq $exe) { throw "installer 'Aankh Setup $version.exe' not found in dist-electron — see the listing above" }
           $blockmap = "$($exe.FullName).blockmap"
           $yml = "dist-electron/latest.yml"
           foreach ($f in @($exe.FullName, $blockmap, $yml)) {
-            if (-not (Test-Path $f)) { throw "expected build artifact missing: $f" }
+            if (-not (Test-Path $f)) { throw "expected build artifact missing: $f — see the listing above" }
           }
-          gh release upload $tag $exe.FullName $blockmap $yml --clobber
+          $stage = Join-Path $env:RUNNER_TEMP "autobridge-stage"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $stagedExe = Join-Path $stage "Aankh-Setup-$version.exe"
+          $stagedBlockmap = "$stagedExe.blockmap"
+          Copy-Item $exe.FullName $stagedExe
+          Copy-Item $blockmap $stagedBlockmap
+          gh release upload $tag $stagedExe $stagedBlockmap $yml --clobber
           Write-Host "Uploaded installer + blockmap + latest.yml to $tag."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
