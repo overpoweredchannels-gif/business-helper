@@ -13,12 +13,28 @@
 #    If any gate fails, the release job never runs and nothing is published.
 # 2. The `release` job (Windows runner, needs gates) computes the next
 #    version from the latest PUBLISHED GitHub release (patch + 1) via
-#    scripts/autobridge-next-version.mjs, builds the NSIS installer with
-#    that version, and publishes it to a GitHub release with
-#    electron-builder --publish always. electron-builder.yml sets
-#    releaseType: release, so the release is PUBLISHED (not a draft) —
-#    electron-builder defaults to draft, and a draft is invisible to
-#    electron-updater (it looks exactly like "no updates available").
+#    scripts/autobridge-next-version.mjs, creates exactly ONE draft GitHub
+#    release for that version with `gh release create`, builds the NSIS
+#    installer with that version (electron-builder --publish never), and
+#    uploads the installer + blockmap + latest.yml to the release with
+#    `gh release upload`. After the verify step passes, a real run
+#    publishes the release (`gh release edit --draft=false`); a dry run
+#    leaves it a draft, which the updater cannot see.
+#
+#    Why `gh` and not electron-builder --publish always: electron-builder
+#    26.18.0 can create TWO GitHubPublisher instances for one build (the
+#    artifact-upload path and the update-info path resolve different
+#    publishConfig JSON, so the publisher cache misses), and each
+#    instance's getOrCreateRelease() lists releases and creates a new
+#    draft when it does not see the other's just-created draft (drafts
+#    have no git tag, and the list lags). The first dry-run (2026-11-24,
+#    run 45453282258) produced TWO untagged draft releases titled
+#    "0.1.2" with the assets split between them. Publishing via `gh` is
+#    deterministic: one `gh release create`, one `gh release upload`
+#    for all three files. electron-builder still writes latest.yml
+#    locally (--publish never does not stop that), and its `publish`
+#    block in electron-builder.yml is still used to build the download
+#    URL inside latest.yml.
 # 3. The installed app (electron-updater, autoInstallOnAppQuit=true) sees
 #    the new latest.yml on launch, downloads the installer in the
 #    background, and installs it on quit. No reinstall, no manual step.
@@ -51,10 +67,11 @@
 #
 # Dry-run (safe test): pushing to a non-main branch that triggers this
 # workflow, or a manual dispatch with dry_run=true, runs the FULL path
-# (gates + Windows build) but publishes as a DRAFT release, which the
-# updater cannot see. Delete the draft release + tag after verifying.
-# The test-branch trigger below (fix/autobridge-main-push) is for the
-# first proof run only and must be removed before this branch merges.
+# (gates + Windows build + release create + upload + verify) but leaves
+# the release as a DRAFT, which the updater cannot see. Delete the draft
+# release + tag after verifying. The test-branch trigger below
+# (fix/autobridge-main-push) is for the first proof run only and must be
+# removed before this branch merges.
 #
 # Triggers:
 # - Push to main: full AutoBridge (gates -> build -> published release).
@@ -137,22 +154,54 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Dry-run = any non-main ref (test-branch push) or a manual dispatch
-      # with dry_run=true. A dry run publishes as a DRAFT (invisible to
-      # the updater) so the full path can be proven without shipping.
+      # with dry_run=true. A dry run leaves the release as a DRAFT
+      # (invisible to the updater) so the full path can be proven
+      # without shipping; a real run publishes it after the verify step.
       - name: Determine dry-run
         id: dryrun
         run: |
           if ("${{ github.ref }}" -ne "refs/heads/main") { $dry = "true" }
           elseif ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.dry_run }}" -eq "true") { $dry = "true" }
           else { $dry = "false" }
-          if ($dry -eq "true") { $releaseType = "draft" } else { $releaseType = "release" }
           "dry_run=$dry" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "release_type=$releaseType" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "dry_run=$dry release_type=$releaseType version=${{ steps.version.outputs.version }}"
+          Write-Host "dry_run=$dry version=${{ steps.version.outputs.version }}"
         shell: pwsh
 
+      # Create exactly ONE release for this version, as a DRAFT, before
+      # the build. Publishing is done with `gh` (not electron-builder):
+      # electron-builder 26.18.0 can create two publisher instances and
+      # two untagged draft releases (see the header comment). A draft is
+      # created in BOTH modes so a failed build never leaves an empty
+      # PUBLISHED release; a real run publishes it after the verify step.
+      # Idempotent: a stale draft with this tag (previous failed run) is
+      # removed first; a PUBLISHED release with this tag is a hard stop.
+      - name: Create the release (draft)
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          $existing = gh release view $tag --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ($existing -eq "true") {
+              Write-Host "Removing stale draft $tag from a previous run."
+              gh release delete $tag --yes
+            } else {
+              throw "release $tag already exists and is PUBLISHED — refusing to overwrite a shipped version"
+            }
+          }
+          gh release create $tag --draft --title "$version"
+          Write-Host "Created draft release $tag."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+
+      # --publish never: electron-builder builds the installer + blockmap
+      # and writes latest.yml locally, but does NOT create or upload to
+      # any release. Uploading is done with `gh release upload` below
+      # (deterministic — see the header comment). The publish block in
+      # electron-builder.yml is still used to build the download URL
+      # inside latest.yml.
       - name: Build the Windows installer
-        run: npm run desktop:build -- --publish always --config.extraMetadata.version=${{ steps.version.outputs.version }} --config.publish.releaseType=${{ steps.dryrun.outputs.release_type }}
+        run: npm run desktop:build -- --publish never --config.extraMetadata.version=${{ steps.version.outputs.version }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
@@ -165,6 +214,27 @@ jobs:
       - name: Smoke-test packaged server (no service key)
         run: node scripts/check-desktop-routes.mjs --smoke --standalone dist-electron/win-unpacked/resources/standalone/server.js --port 3101
 
+      # Upload the built artifacts to the pre-created draft release.
+      # electron-builder built with --publish never, so it created no
+      # release; this single `gh release upload` puts all three files
+      # on exactly the one release (no duplicate-release race).
+      - name: Upload artifacts to the release
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          $exe = Get-ChildItem -Path dist-electron -Filter "Aankh-Setup-$version.exe" | Select-Object -First 1
+          if ($null -eq $exe) { throw "installer Aankh-Setup-$version.exe not found in dist-electron" }
+          $blockmap = "$($exe.FullName).blockmap"
+          $yml = "dist-electron/latest.yml"
+          foreach ($f in @($exe.FullName, $blockmap, $yml)) {
+            if (-not (Test-Path $f)) { throw "expected build artifact missing: $f" }
+          }
+          gh release upload $tag $exe.FullName $blockmap $yml --clobber
+          Write-Host "Uploaded installer + blockmap + latest.yml to $tag."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:
@@ -172,23 +242,26 @@ jobs:
           path: dist-electron/*.exe
           if-no-files-found: error
 
-      # Proof step: the release must exist, be published (or a draft in
-      # dry-run mode), and carry the installer + latest.yml with the exact
-      # computed version. A draft in a real run, or a missing latest.yml,
-      # fails the workflow loudly instead of silently leaving users
-      # without an update.
+      # Proof step: the release must exist, be a DRAFT at this point (it
+      # is created as a draft in BOTH modes; a real run publishes it in
+      # the next step, after this check passes), carry the installer +
+      # latest.yml with the exact computed version, and be the ONLY
+      # release carrying the tag. A duplicate release, a missing
+      # latest.yml, or a wrong version fails the workflow loudly instead
+      # of silently leaving users without an update.
       - name: Verify the release the updater will read
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $tag = "v$version"
-          $dry = "${{ steps.dryrun.outputs.dry_run }}" -eq "true"
-          $rel = gh release view $tag --json draft,prerelease,assets --jq '{draft: .draft, prerelease: .prerelease, assets: [.assets[].name]}'
+          $list = gh release list --json tagName | ConvertFrom-Json
+          $count = @($list | Where-Object { $_.tagName -eq $tag }).Count
+          if ($count -ne 1) { throw "expected exactly 1 release tagged $tag, found $count — duplicate releases exist" }
+          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name]}'
           Write-Host "Release $tag : $rel"
           $draft = ($rel | ConvertFrom-Json).draft
           $prerelease = ($rel | ConvertFrom-Json).prerelease
           $assets = ($rel | ConvertFrom-Json).assets
-          if ($dry -and -not $draft) { throw "dry-run release $tag is NOT a draft — it would be visible to the updater" }
-          if (-not $dry -and $draft) { throw "release $tag is a DRAFT — electron-updater cannot see it, users would get no update" }
+          if (-not $draft) { throw "release $tag is NOT a draft at verify time — it should be a draft until the publish step" }
           if ($prerelease) { throw "release $tag is a prerelease — the updater 'latest' channel ignores it" }
           if ($assets -notcontains "Aankh-Setup-$version.exe") { throw "release $tag is missing the installer Aankh-Setup-$version.exe" }
           if ($assets -notcontains "latest.yml") { throw "release $tag is missing latest.yml — the updater has no feed" }
@@ -196,7 +269,24 @@ jobs:
           $ymlText = Get-Content "$env:RUNNER_TEMP/latest.yml" -Raw
           Write-Host $ymlText
           if ($ymlText -notmatch "version: $version") { throw "latest.yml does not carry version $version" }
-          Write-Host "Verified: release $tag is $(if ($dry) { 'a DRAFT (dry-run, updater cannot see it)' } else { 'PUBLISHED' }) with installer + latest.yml version $version."
+          Write-Host "Verified: release $tag is a DRAFT with installer + latest.yml version $version."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+
+      # Real runs only: publish the release AFTER the verify step passed,
+      # so a bad build never ships. A dry run leaves the release as a
+      # draft (invisible to the updater). The re-check fails loudly if
+      # the release is still a draft after the edit.
+      - name: Publish the release (real runs only)
+        if: ${{ steps.dryrun.outputs.dry_run != 'true' }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          gh release edit $tag --draft=false
+          $isDraft = gh release view $tag --json isDraft --jq .isDraft
+          if ($isDraft -ne "false") { throw "release $tag is still a draft after publishing" }
+          Write-Host "Published release $tag — the updater can now see version $version."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
