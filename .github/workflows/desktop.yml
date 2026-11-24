@@ -181,6 +181,11 @@ jobs:
       # untagged- URL (run 45458292084 produced untagged-2273e0d50df1b5225cf9).
       # Creating the tag here makes the draft a real tagged draft. No
       # workflow triggers on tag pushes, so creating the tag is safe.
+      # After creating the tag, POLL until it is visible before `gh
+      # release create`: the releases service may not see a just-created
+      # tag yet, and then `gh release create` mints an untagged draft
+      # (run 45462676529: tag created fine, `gh release create` exited 0
+      # with an untagged- URL, and the step's own URL check caught it).
       - name: Create the release (draft)
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -211,7 +216,15 @@ jobs:
           Write-Host "Creating git tag $tag at $sha."
           gh api "repos/$repo/git/refs" --method POST -f "ref=refs/tags/$tag" -f "sha=$sha" | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "failed to create git tag $tag at $sha" }
-          gh release create $tag --draft --title "$version"
+          $seen = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            $visibleSha = gh api "repos/$repo/git/ref/tags/$tag" --jq .object.sha 2>$null
+            if (($LASTEXITCODE -eq 0) -and ($visibleSha -eq $sha)) { $seen = $true; break }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $seen) { throw "git tag $tag did not become visible within 60s — refusing to create an untagged draft" }
+          Write-Host "Tag $tag visible at $sha."
+          gh release create $tag --draft --title "$version" --target $sha
           $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
           if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
           if (-not $check.isDraft) { throw "release $tag is NOT a draft after creation" }
