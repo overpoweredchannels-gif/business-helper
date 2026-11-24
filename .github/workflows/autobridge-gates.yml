@@ -1,0 +1,121 @@
+# AutoBridge gates — the repo gates that must pass before any desktop release.
+#
+# Why this is a SEPARATE file from .github/workflows/desktop.yml:
+# the Slice 0 desktop route gate (scripts/check-desktop-routes.mjs, checks
+# [3] and [4]) forbids the service-key name SUPABASE_SERVICE_ROLE_KEY from
+# appearing anywhere in desktop.yml, and restricts desktop.yml's env:
+# blocks to NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and
+# GH_TOKEN. The npm-test gate needs the (disposable) service key, so the
+# gates CANNOT live in desktop.yml — putting them there trips the route
+# gate and fails `npm test` (test:desktop-route-gate). This file is the
+# only place the service key is used in the AutoBridge, and the route gate
+# does not scan it (same pattern as slice1b-admin-tests.yml, which sets
+# SUPABASE_SERVICE_ROLE_KEY from the same secret and passes the gate).
+#
+# How it is used: desktop.yml calls this as a reusable workflow
+# (jobs.gates uses: ./.github/workflows/autobridge-gates.yml, with
+# secrets: inherit) and its release job needs: [gates], so a release is
+# published ONLY when every gate below passes. It also runs standalone
+# via workflow_dispatch for a gates-only check.
+#
+# Gates (repo AGENTS.md order, sequential, never parallel):
+#   1. typecheck
+#   2. eslint on changed files (page.tsx against the committed baseline)
+#   3. npm test (full suite, disposable Supabase — never production)
+#   4. npm run build (the plain web build Vercel deploys on every push)
+name: AutoBridge gates
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  gates:
+    name: Gates (typecheck, eslint, tests, build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # Full history so the eslint step can diff against the push base.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate 1 — typecheck (repo AGENTS.md gate order: typecheck first).
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Gate 2 — eslint on changed files. page.tsx is linted against the
+      # committed baseline (5 errors, 213 warnings allowed) exactly like
+      # ci-lint-page.yml; every other changed file must be clean.
+      - name: ESLint changed files
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set -e
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="HEAD~1"
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- '*.ts' '*.tsx' || true)
+          echo "Changed files:"
+          echo "$CHANGED"
+          PAGE_CHANGED="false"
+          OTHER=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [ "$f" = "src/app/page.tsx" ]; then
+              PAGE_CHANGED="true"
+            else
+              OTHER="$OTHER $f"
+            fi
+          done <<< "$CHANGED"
+          if [ -n "$(echo "$OTHER" | tr -d ' ')" ]; then
+            echo "Linting changed files (excluding page.tsx):$OTHER"
+            # shellcheck disable=SC2086
+            npx eslint $OTHER
+          else
+            echo "No non-page.tsx files changed — skipping plain eslint."
+          fi
+          if [ "$PAGE_CHANGED" = "true" ]; then
+            echo "page.tsx changed — linting against the baseline."
+            set +e
+            npx eslint --format json --output-file lint-report.json src/app/page.tsx
+            ESLINT_EXIT=$?
+            set -e
+            echo "ESLint exit code: $ESLINT_EXIT"
+            node .github/scripts/compare-lint-baseline.mjs lint-report.json .github/lint-baseline.json
+          else
+            echo "page.tsx unchanged — baseline check skipped."
+          fi
+
+      # Gate 3 — the full test suite (sequential, as npm test chains it).
+      # Tests run against the DISPOSABLE Supabase project, never
+      # production: the public URL/anon key are the disposable project's
+      # (same values as slice1b-admin-tests.yml), the service key comes
+      # from the existing DISPOSABLE_SUPABASE_SERVICE_KEY secret.
+      - name: Tests
+        run: npm test
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://rtfowunsyrdygyvubnvs.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0Zm93dW5zeXJkeWd5dnVibnZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3OTI2ODksImV4cCI6MjEwNjM2ODY4OX0.ZziM-bfifjxso7kU7RGpPv0UkhzXwh471ez7BIOwX9Y
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_APIKEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY_BEARER: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_KEY }}
+
+      # Gate 4 — the web build (the desktop build below runs `next build`
+      # again with the desktop env vars; this gate proves the plain web
+      # build, which is what Vercel deploys on every main push).
+      - name: Build (web)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
