@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { ProductMemory } from "../brain/contracts/memory";
+import { formatAiMoney } from "./ai-money";
 
 export type InventoryQueryIntent =
   | "quantity_lookup"
@@ -44,7 +45,7 @@ export function processInventoryQuery(
     case "overstocked":
       return handleOverstocked(allProducts, inventory);
     case "inventory_value":
-      return handleInventoryValue(allProducts, inventory);
+      return handleInventoryValue(allProducts, inventory, store.meta.currency);
     case "category_summary":
       return handleCategorySummary(allProducts);
     case "brand_summary":
@@ -162,14 +163,14 @@ function handleOverstocked(allProducts: ProductMemory[], inventory: { overstocke
   };
 }
 
-function handleInventoryValue(allProducts: ProductMemory[], inventory: { totalStockValue: number; totalStockCost: number }): InventoryQueryResult {
+function handleInventoryValue(allProducts: ProductMemory[], inventory: { totalStockValue: number; totalStockCost: number }, currency: unknown = "PKR"): InventoryQueryResult {
   const value = inventory.totalStockValue;
   const cost = inventory.totalStockCost;
   const unique = allProducts.length;
   const totalUnits = allProducts.reduce((sum, p) => sum + p.currentStock, 0);
-  const parts: string[] = [`Your total inventory value is Rs ${value.toLocaleString("en-PK")}.`];
+  const parts: string[] = [`Your total inventory value is ${formatAiMoney(value, currency)}.`];
   if (cost > 0) {
-    parts.push(`Cost basis: Rs ${cost.toLocaleString("en-PK")}.`);
+    parts.push(`Cost basis: ${formatAiMoney(cost, currency)}.`);
   }
   parts.push(`${unique} unique products in stock.`);
   parts.push(`Total units in stock: ${totalUnits}.`);

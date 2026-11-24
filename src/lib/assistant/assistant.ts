@@ -19,6 +19,7 @@ import type {
   EntityRef,
 } from "./types";
 import type { CurrentLocationView } from "../location/types";
+import { formatAiMoney } from "../ai/ai-money";
 
 const YES_PATTERN = /^\s*(yes|yeah|yep|yup|ok|okay|okay sir|haan|han|ji haan|theek hai|sahi hai|confirm|confirm karo|confirmed|done|pakka|pakki)\b/i;
 const NO_PATTERN = /^\s*(no|nhi|nahi|nope|theek nahi|na)\b/i;
@@ -1293,7 +1294,7 @@ export class UnifiedAssistant {
         return `${value} units`;
       case "selling_price":
       case "purchase_price":
-        return `Rs ${value}`;
+        return formatAiMoney(Number(value) || 0, this.store.store.meta.currency);
       case "payment_type":
         return value === "cash" ? "Cash" : "Credit";
       default:

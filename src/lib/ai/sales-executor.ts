@@ -3,6 +3,7 @@ import { normalizeSkipPhrase } from "./confirmation-content";
 import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
 import { isNetworkError } from "@/lib/offline/identity-cache";
 import { messages } from "@/lib/regional/messages";
+import { formatAiMoney } from "./ai-money";
 
 type SaleInput = {
   customer_id: string;
@@ -25,7 +26,8 @@ type SaleResult = {
 
 export async function executeSaleDraft(
   collectedData: Record<string, unknown>,
-  organizationId: string
+  organizationId: string,
+  currency: unknown = "PKR"
 ): Promise<SaleResult> {
   const errors: string[] = [];
 
@@ -87,7 +89,7 @@ export async function executeSaleDraft(
       ok: true,
       saleId: result.saleId,
       invoiceNumber: result.invoiceNumber,
-      message: formatSaleSuccessMessage(result),
+      message: formatSaleSuccessMessage(result, currency),
     };
   } catch (err) {
     return {
@@ -102,7 +104,7 @@ export async function executeSaleDraft(
   }
 }
 
-function formatSaleSuccessMessage(result: { invoiceNumber?: string; customerName?: string; productName?: string; quantity?: number; total?: number }): string {
+export function formatSaleSuccessMessage(result: { invoiceNumber?: string; customerName?: string; productName?: string; quantity?: number; total?: number }, currency: unknown = "PKR"): string {
   const customer = result.customerName || "";
   const product = result.productName || "";
   const qty = result.quantity || 0;
@@ -113,7 +115,7 @@ function formatSaleSuccessMessage(result: { invoiceNumber?: string; customerName
   if (customer) parts.push(`Customer: ${customer}.`);
   if (product) parts.push(`Product: ${product}.`);
   if (qty) parts.push(`Quantity: ${qty}.`);
-  if (total) parts.push(`Total: PKR ${total.toLocaleString("en-PK")}.`);
+  if (total) parts.push(`Total: ${formatAiMoney(total, currency)}.`);
   if (inv) parts.push(`Invoice number: ${inv}.`);
 
   return parts.join(" ");

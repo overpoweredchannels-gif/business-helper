@@ -1,4 +1,5 @@
 import { MemoryStore } from "../memory/business-memory";
+import { formatAiMoney } from "../../ai/ai-money";
 
 export interface ContextBundle {
   businessSummary: string;
@@ -96,8 +97,8 @@ export class ContextRetriever {
       ctx.businessSummary,
       "",
       `Health Score: ${ctx.healthScore.score}/100 (${ctx.healthScore.label})`,
-      `Period Revenue: PKR ${ctx.currentPeriod.revenue.toLocaleString("en-PK")}`,
-      `Period Profit: PKR ${ctx.currentPeriod.profit.toLocaleString("en-PK")}`,
+      `Period Revenue: ${formatAiMoney(ctx.currentPeriod.revenue, this.store.meta.currency)}`,
+      `Period Profit: ${formatAiMoney(ctx.currentPeriod.profit, this.store.meta.currency)}`,
       `Invoices: ${ctx.currentPeriod.invoiceCount}`,
       `Expense Ratio: ${ctx.currentPeriod.expenseRatio}`,
     ];

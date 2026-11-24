@@ -1,6 +1,7 @@
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import { detectQueryLanguage } from "@/lib/ai/business-intelligence";
+import { formatAiMoney } from "./ai-money";
 
 export type ExecutiveReportType = "morning" | "daily" | "weekly" | "monthly";
 
@@ -117,7 +118,7 @@ export function generateExecutiveReport(
       priorityActions: generatePriorityActions(payload),
     },
     detailedReports: {
-      morningBriefing: generateMorningBriefing(payload, language),
+      morningBriefing: generateMorningBriefing(payload, language, data.currency),
       dailySummary: generateDailySummary(payload, language),
       weeklyInsights: generateWeeklyInsights(payload, language),
       monthlyForecast: generateMonthlyForecast(payload, language),
@@ -291,10 +292,10 @@ export function explainKPI(
 
     case "revenue":
       explanation = language === "urdu"
-        ? `آج کی متوقع فروخت ${formatRs(value)} ہے، جو گزشتہ دورانیہ سے ${trend === "up" ? "زیادہ" : trend === "down" ? "کم" : "برابر"} ہے۔`
+        ? `آج کی متوقع فروخت ${formatRs(value, data.currency)} ہے، جو گزشتہ دورانیہ سے ${trend === "up" ? "زیادہ" : trend === "down" ? "کم" : "برابر"} ہے۔`
         : language === "roman_urdu"
-          ? `Tomorrow's expected sales are ${formatRs(value)}, which is ${trend === "up" ? "more" : trend === "down" ? "less" : "same as"} than previous period.`
-          : `Tomorrow's expected sales are ${formatRs(value)}, which is ${trend === "up" ? "more" : trend === "down" ? "less" : "the same as"} than previous period.`;
+          ? `Tomorrow's expected sales are ${formatRs(value, data.currency)}, which is ${trend === "up" ? "more" : trend === "down" ? "less" : "same as"} than previous period.`
+          : `Tomorrow's expected sales are ${formatRs(value, data.currency)}, which is ${trend === "up" ? "more" : trend === "down" ? "less" : "the same as"} than previous period.`;
       recommendations = language === "urdu"
         ? ["بلند منافع والے مصنوعات کے لیے فروخت کی حکمت عملی میں ترمیم کریں۔", "سب سے زیادہ فروخت والے مصنوعات کے لیے فروخت کے بعد کی خدمات کو بہتر بنائیں۔", "کھڑے ہونے والی نقد رقم میں اضافہ کے لیے کسٹمر کریڈٹ کی حدود کی تشخیص کریں۔"]
         : language === "roman_urdu"
@@ -504,24 +505,25 @@ function generatePriorityActions(payload: any): string[] {
 
 function generateMorningBriefing(
   payload: any,
-  language: "english" | "urdu" | "roman_urdu"
+  language: "english" | "urdu" | "roman_urdu",
+  currency: unknown = "PKR"
 ): string {
   if (language === "urdu") {
     return `صبحانہ بریفنگ:\n` +
       `- صحت کا اسکور: ${payload.businessHealth.score}\n` +
-      `- آج کی متوقع فروخت: ${formatRs(payload.salesForecasting.tomorrow)}\n` +
+      `- آج کی متوقع فروخت: ${formatRs(payload.salesForecasting.tomorrow, currency)}\n` +
       `- کلیدی انتباہات: ${generateExecutiveAlerts({} as MemoryWriterRawData).join(", ")}\n` +
       `- فوری کاروائی: ${generatePriorityActions(payload).join(", ")}`;
   } else if (language === "roman_urdu") {
     return `Morning briefing:\n` +
       `- Health score: ${payload.businessHealth.score}\n` +
-      `- Today's expected sales: ${formatRs(payload.salesForecasting.tomorrow)}\n` +
+      `- Today's expected sales: ${formatRs(payload.salesForecasting.tomorrow, currency)}\n` +
       `- Key alerts: ${generateExecutiveAlerts({} as MemoryWriterRawData).join(", ")}\n` +
       `- Immediate actions: ${generatePriorityActions(payload).join(", ")}`;
   } else {
     return `Morning Briefing:\n` +
       `- Health Score: ${payload.businessHealth.score}\n` +
-      `- Today's Expected Sales: ${formatRs(payload.salesForecasting.tomorrow)}\n` +
+      `- Today's Expected Sales: ${formatRs(payload.salesForecasting.tomorrow, currency)}\n` +
       `- Key Alerts: ${generateExecutiveAlerts({} as MemoryWriterRawData).join(", ")}\n` +
       `- Immediate Actions: ${generatePriorityActions(payload).join(", ")}`;
   }
@@ -597,6 +599,6 @@ function calculatePreviousInventoryTurnover(data: MemoryWriterRawData): number {
   return Math.max(0, calculateInventoryTurnover(data) - 1);
 }
 
-function formatRs(amount: number): string {
-  return `Rs ${Math.round(amount).toLocaleString("en-PK")}`;
+function formatRs(amount: number, currency: unknown = "PKR"): string {
+  return formatAiMoney(amount, currency);
 }

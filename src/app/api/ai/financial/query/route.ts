@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ledger = buildFinancialLedger(rawData, new Date());
-    const result = processFinancialQuery(intent.queryType as FinancialQueryKind, ledger, intent, message);
+    const result = processFinancialQuery(intent.queryType as FinancialQueryKind, ledger, intent, message, rawData.currency);
 
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.message }, { status: 500 });

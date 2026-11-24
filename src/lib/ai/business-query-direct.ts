@@ -55,6 +55,7 @@
  */
 
 import type { ActionType } from "./conversation-engine";
+import { resolveAiCurrency } from "./ai-money";
 
 export type BusinessQueryLanguage = "auto" | "english" | "urdu" | "roman_urdu";
 
@@ -94,17 +95,19 @@ export function businessQueryLanguageLine(language: BusinessQueryLanguage): stri
  * `fallbackToChat` (conversation-runtime.ts) already uses for unknown
  * intents, plus the detected-language line.
  */
+
 export function buildBusinessQueryDirectPrompt(input: {
   question: string;
   language: BusinessQueryLanguage;
   businessContext: string;
   history: string;
+  currency?: unknown;
 }): string {
   return [
     `You are the AI assistant for a Pakistani retail/wholesale business called Aankh.`,
     `Answer the user's question concisely using the business context below.`,
     `If the user greets you, greet back and ask how you can help.`,
-    `Use PKR currency formatting.`,
+    `Use ${resolveAiCurrency(input.currency)} currency formatting.`,
     businessQueryLanguageLine(input.language),
     ``,
     `BUSINESS CONTEXT:`,

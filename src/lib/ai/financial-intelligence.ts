@@ -1,5 +1,6 @@
 import type { FinancialLedger, FinancialPeriod, FinancialRankItem } from "./financial-ledger";
 import type { AssistantIntent } from "../assistant/types";
+import { formatAiMoney } from "./ai-money";
 
 export type FinancialQueryKind =
   | "cash_balance"
@@ -21,8 +22,8 @@ export interface FinancialInsight {
   detail: string;
 }
 
-function formatRs(amount: number): string {
-  return `Rs ${amount.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+function formatRs(amount: number, currency: unknown = "PKR"): string {
+  return formatAiMoney(amount, currency);
 }
 
 function formatPercentage(value: number | null): string {
@@ -60,37 +61,38 @@ export function processFinancialQuery(
   queryType: FinancialQueryKind,
   ledger: FinancialLedger,
   intent: AssistantIntent,
-  message: string // Original message for context
+  message: string, // Original message for context
+  currency: unknown = "PKR"
 ): { ok: boolean; message: string; insights?: FinancialInsight[] } {
   let response = "";
 
   switch (queryType) {
     case "cash_balance": {
       const cash = ledger.cash;
-      response += `Your current cash balance is ${formatRs(cash.balance)}.\n`;
+      response += `Your current cash balance is ${formatRs(cash.balance, currency)}.\n`;
       if (!cash.bankTracked) {
         response += `Bank balance is not tracked in the system.\n`;
       }
-      response += `Cash inflows today: ${formatRs(ledger.periods.today.cashRevenue)} (from sales and customer payments).\n`;
-      response += `Cash outflows today: ${formatRs(ledger.periods.today.expenses + ledger.periods.today.cashRevenue - ledger.periods.today.grossProfit)} (from expenses, purchases, supplier payments).`; // Simplified cash out for today
+      response += `Cash inflows today: ${formatRs(ledger.periods.today.cashRevenue, currency)} (from sales and customer payments).\n`;
+      response += `Cash outflows today: ${formatRs(ledger.periods.today.expenses + ledger.periods.today.cashRevenue - ledger.periods.today.grossProfit, currency)} (from expenses, purchases, supplier payments).`; // Simplified cash out for today
       break;
     }
     case "receivables": {
       const receivables = ledger.receivables;
-      response += `Total outstanding receivables: ${formatRs(receivables.total)} from ${receivables.count} customer(s).\n`;
-      response += `${formatRs(receivables.overdue)} is overdue.\n`;
+      response += `Total outstanding receivables: ${formatRs(receivables.total, currency)} from ${receivables.count} customer(s).\n`;
+      response += `${formatRs(receivables.overdue, currency)} is overdue.\n`;
       break;
     }
     case "payables": {
       const payables = ledger.payables;
-      response += `Total outstanding payables: ${formatRs(payables.total)} to ${payables.count} supplier(s).\n`;
-      response += `${formatRs(payables.overdue)} is overdue.\n`;
+      response += `Total outstanding payables: ${formatRs(payables.total, currency)} to ${payables.count} supplier(s).\n`;
+      response += `${formatRs(payables.overdue, currency)} is overdue.\n`;
       break;
     }
     case "profit_overview": {
       const thisMonth = ledger.periods.thisMonth;
       const lastMonth = ledger.periods.lastMonth;
-      response += `This month's gross profit: ${formatRs(thisMonth.grossProfit)}, net profit: ${formatRs(thisMonth.netProfit)}.\n`;
+      response += `This month's gross profit: ${formatRs(thisMonth.grossProfit, currency)}, net profit: ${formatRs(thisMonth.netProfit, currency)}.\n`;
       response += `Compared to last month, gross profit is ${getPeriodComparison(ledger, "thisMonth", "lastMonth", "grossProfit")}.\n`;
       response += `Compared to last month, net profit is ${getPeriodComparison(ledger, "thisMonth", "lastMonth", "netProfit")}.`;
       break;
@@ -98,14 +100,14 @@ export function processFinancialQuery(
     case "expenses_overview": {
       const thisMonth = ledger.periods.thisMonth;
       const lastMonth = ledger.periods.lastMonth;
-      response += `This month's total expenses: ${formatRs(thisMonth.expenses)}.\n`;
+      response += `This month's total expenses: ${formatRs(thisMonth.expenses, currency)}.\n`;
       response += `Compared to last month, expenses are ${getPeriodComparison(ledger, "thisMonth", "lastMonth", "expenses")}.\n`;
       // TODO: Add top expense categories if available
       break;
     }
     case "inventory_value": {
       const inventory = ledger.inventory;
-      response += `Your total inventory value is ${formatRs(inventory.value)} across ${inventory.productCount} product(s).\n`;
+      response += `Your total inventory value is ${formatRs(inventory.value, currency)} across ${inventory.productCount} product(s).\n`;
       response += `Total units in stock: ${inventory.units}.`;
       break;
     }
@@ -119,19 +121,19 @@ export function processFinancialQuery(
       if (byCategory.length > 0) {
         analyticsText += `\nTop 3 categories by revenue:\n`;
         byCategory.slice(0, 3).forEach((item, i) => {
-          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.revenue)} (${formatPercentage(item.marginPct)} profit margin)\n`;
+          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.revenue, currency)} (${formatPercentage(item.marginPct)} profit margin)\n`;
         });
       }
       if (byBrand.length > 0) {
         analyticsText += `\nTop 3 brands by revenue:\n`;
         byBrand.slice(0, 3).forEach((item, i) => {
-          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.revenue)} (${formatPercentage(item.marginPct)} profit margin)\n`;
+          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.revenue, currency)} (${formatPercentage(item.marginPct)} profit margin)\n`;
         });
       }
       if (byProduct.length > 0) {
         analyticsText += `\nTop 3 products by revenue:\n`;
         byProduct.slice(0, 3).forEach((item, i) => {
-          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.revenue)} (${formatPercentage(item.marginPct)} profit margin)\n`;
+          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.revenue, currency)} (${formatPercentage(item.marginPct)} profit margin)\n`;
         });
       }
       response += analyticsText.trim() || "No revenue analytics available.";
@@ -146,19 +148,19 @@ export function processFinancialQuery(
       if (byCategory.length > 0) {
         analyticsText += `\nTop 3 categories by profit:\n`;
         byCategory.slice(0, 3).forEach((item, i) => {
-          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.profit)} (${formatPercentage(item.marginPct)} profit margin)\n`;
+          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.profit, currency)} (${formatPercentage(item.marginPct)} profit margin)\n`;
         });
       }
       if (byBrand.length > 0) {
         analyticsText += `\nTop 3 brands by profit:\n`;
         byBrand.slice(0, 3).forEach((item, i) => {
-          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.profit)} (${formatPercentage(item.marginPct)} profit margin)\n`;
+          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.profit, currency)} (${formatPercentage(item.marginPct)} profit margin)\n`;
         });
       }
       if (byProduct.length > 0) {
         analyticsText += `\nTop 3 products by profit:\n`;
         byProduct.slice(0, 3).forEach((item, i) => {
-          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.profit)} (${formatPercentage(item.marginPct)} profit margin)\n`;
+          analyticsText += `${i + 1}. ${item.name}: ${formatRs(item.profit, currency)} (${formatPercentage(item.marginPct)} profit margin)\n`;
         });
       }
       response += analyticsText.trim() || "No profit analytics available.";
@@ -174,18 +176,18 @@ export function processFinancialQuery(
     case "financial_summary": {
       const thisMonth = ledger.periods.thisMonth;
       response += `Financial Summary (${formatPeriod("thisMonth")}):\n`;
-      response += `- Revenue: ${formatRs(thisMonth.revenue)} (Cash: ${formatRs(thisMonth.cashRevenue)}, Credit: ${formatRs(thisMonth.creditRevenue)})\n`;
-      response += `- Gross Profit: ${formatRs(thisMonth.grossProfit)}\n`;
-      response += `- Expenses: ${formatRs(thisMonth.expenses)}\n`;
-      response += `- Net Profit: ${formatRs(thisMonth.netProfit)}\n`;
-      response += `- Cash Balance: ${formatRs(ledger.cash.balance)}\n`;
-      response += `- Receivables: ${formatRs(ledger.receivables.total)} (${ledger.receivables.count} customers owing, ${formatRs(ledger.receivables.overdue)} overdue)\n`;
-      response += `- Payables: ${formatRs(ledger.payables.total)} (${ledger.payables.count} suppliers owing, ${formatRs(ledger.payables.overdue)} overdue)\n`;
-      response += `- Inventory Value: ${formatRs(ledger.inventory.value)} (${ledger.inventory.units} units)\n`;
+      response += `- Revenue: ${formatRs(thisMonth.revenue, currency)} (Cash: ${formatRs(thisMonth.cashRevenue, currency)}, Credit: ${formatRs(thisMonth.creditRevenue, currency)})\n`;
+      response += `- Gross Profit: ${formatRs(thisMonth.grossProfit, currency)}\n`;
+      response += `- Expenses: ${formatRs(thisMonth.expenses, currency)}\n`;
+      response += `- Net Profit: ${formatRs(thisMonth.netProfit, currency)}\n`;
+      response += `- Cash Balance: ${formatRs(ledger.cash.balance, currency)}\n`;
+      response += `- Receivables: ${formatRs(ledger.receivables.total, currency)} (${ledger.receivables.count} customers owing, ${formatRs(ledger.receivables.overdue, currency)} overdue)\n`;
+      response += `- Payables: ${formatRs(ledger.payables.total, currency)} (${ledger.payables.count} suppliers owing, ${formatRs(ledger.payables.overdue, currency)} overdue)\n`;
+      response += `- Inventory Value: ${formatRs(ledger.inventory.value, currency)} (${ledger.inventory.units} units)\n`;
       break;
     }
     case "financial_insights": {
-        const insights = generateFinancialInsights(ledger);
+        const insights = generateFinancialInsights(ledger, currency);
         if (insights.length > 0) {
             response += `Here are some financial insights:\n`;
             insights.forEach((insight, i) => {
@@ -203,7 +205,7 @@ export function processFinancialQuery(
   return { ok: true, message: response.trim() };
 }
 
-export function generateFinancialInsights(ledger: FinancialLedger): FinancialInsight[] {
+export function generateFinancialInsights(ledger: FinancialLedger, currency: unknown = "PKR"): FinancialInsight[] {
   const insights: FinancialInsight[] = [];
   const thisMonth = ledger.periods.thisMonth;
   const lastMonth = ledger.periods.lastMonth;
@@ -232,7 +234,7 @@ export function generateFinancialInsights(ledger: FinancialLedger): FinancialIns
             type: "inventory_over_investment",
             severity: "info", // Can be warning depending on context
             title: "High Inventory Value Detected",
-            detail: `Your current inventory value (${formatRs(ledger.inventory.value)}) is high compared to last 30 days revenue (${formatRs(last30Days.revenue)}). Consider optimizing stock levels to free up cash.`,
+            detail: `Your current inventory value (${formatRs(ledger.inventory.value, currency)}) is high compared to last 30 days revenue (${formatRs(last30Days.revenue, currency)}). Consider optimizing stock levels to free up cash.`,
         });
     }
   }
@@ -256,7 +258,7 @@ export function generateFinancialInsights(ledger: FinancialLedger): FinancialIns
       type: "supplier_payable_overdue",
       severity: "critical",
       title: "Overdue Supplier Payments",
-      detail: `You have ${formatRs(ledger.payables.overdue)} in overdue payments to ${ledger.payables.count} supplier(s). Prioritize these payments to maintain good relationships.`,
+      detail: `You have ${formatRs(ledger.payables.overdue, currency)} in overdue payments to ${ledger.payables.count} supplier(s). Prioritize these payments to maintain good relationships.`,
     });
   }
 
@@ -266,7 +268,7 @@ export function generateFinancialInsights(ledger: FinancialLedger): FinancialIns
       type: "customer_credit_risk",
       severity: "warning",
       title: "Increasing Customer Credit Risk",
-      detail: `A significant portion (${formatPercentage((ledger.receivables.overdue / ledger.receivables.total) * 100)}) of your receivables (${formatRs(ledger.receivables.overdue)}) are overdue. Review credit policies and follow up with customers.`,
+      detail: `A significant portion (${formatPercentage((ledger.receivables.overdue / ledger.receivables.total) * 100)}) of your receivables (${formatRs(ledger.receivables.overdue, currency)}) are overdue. Review credit policies and follow up with customers.`,
     });
   }
 
@@ -277,7 +279,7 @@ export function generateFinancialInsights(ledger: FinancialLedger): FinancialIns
       type: "top_profit_category",
       severity: "info",
       title: `Highest Profit Category: ${sortedCategories[0].name}`,
-      detail: `${sortedCategories[0].name} generated ${formatRs(sortedCategories[0].profit)} profit this period. Consider focusing marketing efforts here.`,
+      detail: `${sortedCategories[0].name} generated ${formatRs(sortedCategories[0].profit, currency)} profit this period. Consider focusing marketing efforts here.`,
     });
     if (sortedCategories.length > 1) {
         const lowestProfitCategory = sortedCategories[sortedCategories.length - 1];
@@ -285,7 +287,7 @@ export function generateFinancialInsights(ledger: FinancialLedger): FinancialIns
             type: "lowest_profit_category",
             severity: "info",
             title: `Lowest Profit Category: ${lowestProfitCategory.name}`,
-            detail: `${lowestProfitCategory.name} generated only ${formatRs(lowestProfitCategory.profit)} profit this period. Evaluate product mix or pricing.`,
+            detail: `${lowestProfitCategory.name} generated only ${formatRs(lowestProfitCategory.profit, currency)} profit this period. Evaluate product mix or pricing.`,
         });
     }
   }
@@ -307,7 +309,7 @@ export function generateFinancialInsights(ledger: FinancialLedger): FinancialIns
             type: "inventory_carrying_cost",
             severity: "info",
             title: "High Inventory Carrying Cost",
-            detail: `Your inventory value (${formatRs(ledger.inventory.value)}) is high relative to your monthly expenses (${formatRs(thisMonth.expenses)}). Excessive inventory can incur significant carrying costs.`,
+            detail: `Your inventory value (${formatRs(ledger.inventory.value, currency)}) is high relative to your monthly expenses (${formatRs(thisMonth.expenses, currency)}). Excessive inventory can incur significant carrying costs.`,
         });
     }
   }

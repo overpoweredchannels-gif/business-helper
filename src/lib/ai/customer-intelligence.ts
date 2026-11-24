@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { CustomerLedger, CustomerLedgerEntry } from "./customer-ledger";
+import { formatAiMoney } from "./ai-money";
 
 /**
  * Customer Intelligence query processor — the customer counterpart of
@@ -45,8 +46,8 @@ export interface CustomerQueryContext {
 
 const MAX_LIST = 5;
 
-function formatMoney(value: number): string {
-  return `Rs ${Math.round(value).toLocaleString("en-PK")}`;
+function formatMoney(value: number, currency: unknown = "PKR"): string {
+  return formatAiMoney(value, currency);
 }
 
 function stripBareDate(value: string | null): string {
@@ -141,20 +142,20 @@ function detectPeriodDays(message: string | null | undefined): number | null {
   return null;
 }
 
-function balanceMessage(entry: CustomerLedgerEntry): string {
+function balanceMessage(entry: CustomerLedgerEntry, currency: unknown = "PKR"): string {
   const parts: string[] = [];
   if (entry.outstandingBalance > 0) {
-    parts.push(`${entry.customerName} currently owes ${formatMoney(entry.outstandingBalance)}.`);
+    parts.push(`${entry.customerName} currently owes ${formatMoney(entry.outstandingBalance, currency)}.`);
   } else {
     parts.push(`${entry.customerName} has no outstanding balance.`);
   }
   if (entry.creditLimit !== null && entry.creditLimit > 0) {
     const used = entry.creditUtilizationPct !== null ? ` (${Math.round(entry.creditUtilizationPct)}% used)` : "";
-    parts.push(`Credit limit is ${formatMoney(entry.creditLimit)}${used}.`);
+    parts.push(`Credit limit is ${formatMoney(entry.creditLimit, currency)}${used}.`);
   }
   if (entry.overdueAmount > 0) {
     const days = entry.overdueDays ? `, ${entry.overdueDays} day(s) overdue` : "";
-    parts.push(`Overdue ${formatMoney(entry.overdueAmount)} (${entry.overdueInvoiceCount} invoice(s))${days}.`);
+    parts.push(`Overdue ${formatMoney(entry.overdueAmount, currency)} (${entry.overdueInvoiceCount} invoice(s))${days}.`);
   }
   if (entry.creditDaysRemaining !== null) {
     if (entry.creditDaysRemaining >= 0) {
@@ -177,6 +178,7 @@ export function processCustomerQuery(
   context: CustomerQueryContext = {}
 ): CustomerQueryResult {
   const normalized = (customerName ?? "").toLowerCase().trim();
+  const currency = store.meta.currency;
 
   switch (queryType ?? "summary") {
     case "search": {
@@ -263,7 +265,7 @@ export function processCustomerQuery(
     case "all_outstanding": {
       const entry = findCustomerEntry(ledger, store, customerName);
       if (entry) {
-        return { ok: true, queryType, message: balanceMessage(entry) };
+        return { ok: true, queryType, message: balanceMessage(entry, currency) };
       }
       const owing = ledger.customers
         .filter((candidate) => candidate.outstandingBalance > 0)
@@ -276,10 +278,10 @@ export function processCustomerQuery(
         ok: true,
         queryType,
         message: `${owing.length} customer(s) owe you money:\n${listMessage(
-          owing.map((candidate) => `${candidate.customerName} ${formatMoney(candidate.outstandingBalance)}`),
+          owing.map((candidate) => `${candidate.customerName} ${formatMoney(candidate.outstandingBalance, currency)}`),
           owing.length,
           "customer"
-        )}\nTotal outstanding: ${formatMoney(total)}.`,
+        )}\nTotal outstanding: ${formatMoney(total, currency)}.`,
       };
     }
 
@@ -297,11 +299,11 @@ export function processCustomerQuery(
         message: `${overdue.length} overdue customer(s):\n${listMessage(
           overdue.map(
             (entry) =>
-              `${entry.customerName} ${formatMoney(entry.overdueAmount)} (${entry.overdueDays ?? 0} day(s) overdue)`
+              `${entry.customerName} ${formatMoney(entry.overdueAmount, currency)} (${entry.overdueDays ?? 0} day(s) overdue)`
           ),
           overdue.length,
           "customer"
-        )}\nTotal overdue: ${formatMoney(total)}.`,
+        )}\nTotal overdue: ${formatMoney(total, currency)}.`,
       };
     }
 
@@ -318,7 +320,7 @@ export function processCustomerQuery(
         message: `${near.length} customer(s) near their credit limit:\n${listMessage(
           near.map(
             (entry) =>
-              `${entry.customerName} ${Math.round(entry.creditUtilizationPct ?? 0)}% of ${formatMoney(entry.creditLimit ?? 0)} used`
+              `${entry.customerName} ${Math.round(entry.creditUtilizationPct ?? 0)}% of ${formatMoney(entry.creditLimit ?? 0, currency)} used`
           ),
           near.length,
           "customer"
@@ -333,12 +335,12 @@ export function processCustomerQuery(
           return { ok: true, queryType, message: `${entry.customerName} has no credit limit set.` };
         }
         if (entry.creditUtilizationPct === null) {
-          return { ok: true, queryType, message: `${entry.customerName}'s credit limit is ${formatMoney(entry.creditLimit)}.` };
+          return { ok: true, queryType, message: `${entry.customerName}'s credit limit is ${formatMoney(entry.creditLimit, currency)}.` };
         }
         return {
           ok: true,
           queryType,
-          message: `${entry.customerName}'s credit limit is ${formatMoney(entry.creditLimit)} (${Math.round(entry.creditUtilizationPct)}% used).`,
+          message: `${entry.customerName}'s credit limit is ${formatMoney(entry.creditLimit, currency)} (${Math.round(entry.creditUtilizationPct)}% used).`,
         };
       }
       const withLimits = ledger.customers.filter((entry) => entry.creditLimit !== null && entry.creditLimit > 0);
@@ -349,7 +351,7 @@ export function processCustomerQuery(
         ok: true,
         queryType,
         message: `Credit limits:\n${listMessage(
-          withLimits.map((entry) => `${entry.customerName}: ${formatMoney(entry.creditLimit ?? 0)}`),
+          withLimits.map((entry) => `${entry.customerName}: ${formatMoney(entry.creditLimit ?? 0, currency)}`),
           withLimits.length,
           "customer"
         )}`,
@@ -422,7 +424,7 @@ export function processCustomerQuery(
         }
         const rows = [...entry.invoices].reverse().map(
           (inv) =>
-            `${stripBareDate(inv.date)} Invoice ${inv.invoiceNumber} ${formatMoney(inv.amount)}${productSummary(inv)}`
+            `${stripBareDate(inv.date)} Invoice ${inv.invoiceNumber} ${formatMoney(inv.amount, currency)}${productSummary(inv)}`
         );
         return {
           ok: true,
@@ -441,7 +443,7 @@ export function processCustomerQuery(
         ok: true,
         queryType,
         message: `Recent sales:\n${listMessage(
-          recent.map((inv) => `${inv.customerName}: ${stripBareDate(inv.date)} ${formatMoney(inv.amount)}`),
+          recent.map((inv) => `${inv.customerName}: ${stripBareDate(inv.date)} ${formatMoney(inv.amount, currency)}`),
           recent.length,
           "sale"
         )}`,
@@ -460,7 +462,7 @@ export function processCustomerQuery(
       return {
         ok: true,
         queryType,
-        message: `${candidate.customerName}'s last transaction: ${stripBareDate(inv.date)}, Invoice ${inv.invoiceNumber}, ${formatMoney(inv.amount)}${productSummary(inv)}.`,
+        message: `${candidate.customerName}'s last transaction: ${stripBareDate(inv.date)}, Invoice ${inv.invoiceNumber}, ${formatMoney(inv.amount, currency)}${productSummary(inv)}.`,
       };
     }
 
@@ -500,7 +502,7 @@ export function processCustomerQuery(
         return {
           ok: true,
           queryType,
-          message: `${entry.customerName}'s average order is ${formatMoney(entry.averageOrderValue)} across ${entry.invoiceCount} invoice(s).`,
+          message: `${entry.customerName}'s average order is ${formatMoney(entry.averageOrderValue, currency)} across ${entry.invoiceCount} invoice(s).`,
         };
       }
       const total = ledger.totals;
@@ -508,7 +510,7 @@ export function processCustomerQuery(
       return {
         ok: true,
         queryType,
-        message: `Average order across all customers is ${formatMoney(overall)} (${total.totalInvoices} invoices).`,
+        message: `Average order across all customers is ${formatMoney(overall, currency)} (${total.totalInvoices} invoices).`,
       };
     }
 
@@ -521,7 +523,7 @@ export function processCustomerQuery(
         ok: true,
         queryType,
         message: `Top customers by sales:\n${listMessage(
-          top.map((entry) => `${entry.customerName} ${formatMoney(entry.totalSales)} (${entry.invoiceCount} invoice(s))`),
+          top.map((entry) => `${entry.customerName} ${formatMoney(entry.totalSales, currency)} (${entry.invoiceCount} invoice(s))`),
           top.length,
           "customer"
         )}`,
@@ -562,7 +564,7 @@ export function processCustomerQuery(
         ok: true,
         queryType,
         message: `Customer(s) with the highest outstanding:\n${listMessage(
-          owing.map((entry) => `${entry.customerName} ${formatMoney(entry.outstandingBalance)}`),
+          owing.map((entry) => `${entry.customerName} ${formatMoney(entry.outstandingBalance, currency)}`),
           owing.length,
           "customer"
         )}`,
@@ -583,7 +585,7 @@ export function processCustomerQuery(
         message: `Most profitable customers:\n${listMessage(
           profitable.map(
             (entry) =>
-              `${entry.customerName} ${formatMoney(entry.totalProfit)} profit on ${formatMoney(entry.totalSales)} sales`
+              `${entry.customerName} ${formatMoney(entry.totalProfit, currency)} profit on ${formatMoney(entry.totalSales, currency)} sales`
           ),
           profitable.length,
           "customer"
@@ -644,8 +646,8 @@ export function processCustomerQuery(
       const total = ledger.totals;
       const parts: string[] = [
         `You have ${ledger.customers.length} customer(s).`,
-        `Total sales: ${formatMoney(total.totalSales)} (${total.totalInvoices} invoice(s)).`,
-        `Total outstanding: ${formatMoney(total.totalOutstanding)}${total.totalOverdue > 0 ? `, of which ${formatMoney(total.totalOverdue)} is overdue` : ""}.`,
+        `Total sales: ${formatMoney(total.totalSales, currency)} (${total.totalInvoices} invoice(s)).`,
+        `Total outstanding: ${formatMoney(total.totalOutstanding, currency)}${total.totalOverdue > 0 ? `, of which ${formatMoney(total.totalOverdue, currency)} is overdue` : ""}.`,
       ];
       if (total.customersOwing > 0) parts.push(`${total.customersOwing} customer(s) owe money.`);
       const blocked = ledger.customers.filter((entry) => entry.isBlocked).length;

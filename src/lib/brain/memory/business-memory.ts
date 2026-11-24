@@ -19,6 +19,7 @@ import {
   FuzzyMatchResult,
 } from "../contracts/memory";
 import { EntityIndex } from "./entity-index";
+import { formatAiMoney } from "../../ai/ai-money";
 
 export class MemoryStore {
   private _sections: MemorySections;
@@ -208,7 +209,7 @@ export class MemoryStore {
       `Owner: ${m.ownerName}`,
       `Date: ${m.currentDate}`,
       `Products: ${inv.totalProducts} (${inv.lowStockCount} low stock, ${inv.outOfStockCount} out of stock)`,
-      `Sales (30d): PKR ${sales30.revenue.toLocaleString("en-PK")} (${sales30.invoiceCount} invoices)`,
+      `Sales (30d): ${formatAiMoney(sales30.revenue, m.currency)} (${sales30.invoiceCount} invoices)`,
       `Customers: ${cust.size}`,
       `Suppliers: ${supp.size}`,
     ].join(" | ");

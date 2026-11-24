@@ -343,7 +343,6 @@ async function main() {
       ["src/lib/tradeos/formatters.ts", "the definition itself (formatPKR + formatCurrency alias) and the books-wrapper docs"],
       ["src/lib/books/format.ts", "doc comment contrasting the books formatter with formatPKR — no call"],
       ["src/components/regional/FxRatesPanel.tsx", "doc comment only — the panel edits FX rates for the EUR-invoicing/display legacy"],
-      ["src/lib/ai/business-intelligence.ts", "AI lane (parked): formatRs wraps formatPKR for /api/ai routes only; server-side formatter state is not org-resolved"],
     ]);
     const migratedFiles = [
       "src/app/page.tsx",

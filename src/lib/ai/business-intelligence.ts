@@ -21,9 +21,9 @@ export interface BusinessIntelligenceResult {
 }
 
 // Helper to format money in the app-wide active currency (see tradeos/formatters)
-import { formatPKR } from "../tradeos/formatters";
-export function formatRs(amount: number): string {
-  return formatPKR(amount);
+import { formatAiMoney } from "./ai-money";
+export function formatRs(amount: number, currency: unknown = "PKR"): string {
+  return formatAiMoney(amount, currency);
 }
 
 // Helper to detect language from query string
@@ -56,19 +56,19 @@ export function processBusinessIntelligenceQuery(
       const forecast = payload.salesForecasting;
       if (language === "urdu") {
         response = `سیلز کی پیشن گوئی:\n` +
-          `- کل کی متوقع فروخت: ${formatRs(forecast.tomorrow)}\n` +
-          `- ہفتہ وار متوقع فروخت: ${formatRs(forecast.weekly)}\n` +
-          `- ماہانہ متوقع فروخت: ${formatRs(forecast.monthly)}`;
+          `- کل کی متوقع فروخت: ${formatRs(forecast.tomorrow, data.currency)}\n` +
+          `- ہفتہ وار متوقع فروخت: ${formatRs(forecast.weekly, data.currency)}\n` +
+          `- ماہانہ متوقع فروخت: ${formatRs(forecast.monthly, data.currency)}`;
       } else if (language === "roman_urdu") {
         response = `Sales ki forecast:\n` +
-          `- Kal ki expected sales: ${formatRs(forecast.tomorrow)}\n` +
-          `- Weekly expected sales: ${formatRs(forecast.weekly)}\n` +
-          `- Monthly expected sales: ${formatRs(forecast.monthly)}`;
+          `- Kal ki expected sales: ${formatRs(forecast.tomorrow, data.currency)}\n` +
+          `- Weekly expected sales: ${formatRs(forecast.weekly, data.currency)}\n` +
+          `- Monthly expected sales: ${formatRs(forecast.monthly, data.currency)}`;
       } else {
         response = `Sales Forecasting:\n` +
-          `- Tomorrow predicted sales: ${formatRs(forecast.tomorrow)}\n` +
-          `- Weekly predicted sales: ${formatRs(forecast.weekly)}\n` +
-          `- Monthly predicted sales: ${formatRs(forecast.monthly)}`;
+          `- Tomorrow predicted sales: ${formatRs(forecast.tomorrow, data.currency)}\n` +
+          `- Weekly predicted sales: ${formatRs(forecast.weekly, data.currency)}\n` +
+          `- Monthly predicted sales: ${formatRs(forecast.monthly, data.currency)}`;
       }
       break;
     }
@@ -500,7 +500,7 @@ export function calculateBusinessIntelligence(store: MemoryStore, data: MemoryWr
       id: `rec-followup-${c.customerId}`,
       priority: c.overdueAmount > 1000 ? "high" : "medium",
       title: `Follow up with ${c.customerName}`,
-      description: `Customer has an overdue balance of ${formatRs(c.overdueAmount)}.`,
+      description: `Customer has an overdue balance of ${formatRs(c.overdueAmount, data.currency)}.`,
       expectedImpact: "Improves cash flow and reduces outstanding receivables."
     });
   }
@@ -512,7 +512,7 @@ export function calculateBusinessIntelligence(store: MemoryStore, data: MemoryWr
       id: `rec-pay-supplier-${s.supplierId}`,
       priority: "high",
       title: `Pay Supplier ${s.supplierName}`,
-      description: `Clear outstanding supplier balance of ${formatRs(s.overdueAmount)} before Friday.`,
+      description: `Clear outstanding supplier balance of ${formatRs(s.overdueAmount, data.currency)} before Friday.`,
       expectedImpact: "Maintains good supplier relationship and credit reputation."
     });
   }

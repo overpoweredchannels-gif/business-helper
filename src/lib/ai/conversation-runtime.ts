@@ -23,6 +23,7 @@ import {
   canTransition,
 } from "./conversation-engine";
 import { executeSaleDraft } from "./sales-executor";
+import { formatAiMoney } from "./ai-money";
 import { executePurchaseDraft } from "./purchase-executor";
 import { processInventoryQuery } from "./inventory-intelligence";
 import type { InventoryQueryIntent } from "./inventory-intelligence";
@@ -525,6 +526,7 @@ export class ConversationRuntime {
         language: resolveBusinessQueryLanguage(language),
         businessContext: ctx,
         history,
+        currency: this.orgCurrency(),
       }),
       temperature: 0.3,
     });
@@ -1045,7 +1047,7 @@ export class ConversationRuntime {
       if (customer && customer.creditLimit !== null && customer.creditLimit > 0) {
         const newBalance = (customer.outstandingBalance || 0) + total;
         if (newBalance > customer.creditLimit) {
-          return `Customer ${customer.name}'s credit limit (PKR ${customer.creditLimit.toLocaleString("en-PK")}) would be exceeded. New balance would be PKR ${newBalance.toLocaleString("en-PK")}.`;
+          return `Customer ${customer.name}'s credit limit (${formatAiMoney(customer.creditLimit, this.orgCurrency())}) would be exceeded. New balance would be ${formatAiMoney(newBalance, this.orgCurrency())}.`;
         }
       }
     }
@@ -1059,7 +1061,7 @@ export class ConversationRuntime {
       if (supplier) {
         const newPayable = (supplier.payableAmount || 0) + total;
         if (newPayable > 500000) {
-          return `Warning: Supplier ${supplier.name}'s payable amount would be PKR ${newPayable.toLocaleString("en-PK")}.`;
+          return `Warning: Supplier ${supplier.name}'s payable amount would be ${formatAiMoney(newPayable, this.orgCurrency())}.`;
         }
       }
     }
@@ -1082,7 +1084,7 @@ export class ConversationRuntime {
 
     if (context.actionType === "create_sale") {
       try {
-        const result = await executeSaleDraft(context.collectedData, context.organizationId);
+        const result = await executeSaleDraft(context.collectedData, context.organizationId, this.orgCurrency());
         if (result.ok) {
           context = updateConversationState(context, "completed");
           context = addConversationMessage(context, "assistant", "result", result.message);
@@ -1108,7 +1110,7 @@ export class ConversationRuntime {
 
     if (context.actionType === "create_purchase") {
       try {
-        const result = await executePurchaseDraft(context.collectedData, context.organizationId);
+        const result = await executePurchaseDraft(context.collectedData, context.organizationId, this.orgCurrency());
         if (result.ok) {
           context = updateConversationState(context, "completed");
           context = addConversationMessage(context, "assistant", "result", result.message);

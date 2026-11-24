@@ -1,6 +1,7 @@
 import { SkillResult, SkillContext, RecommendationOutput } from "../contracts/skills";
 import { SkillWarning } from "../contracts/common";
 import { MemoryStore } from "../memory/business-memory";
+import { formatAiMoney } from "../../ai/ai-money";
 
 const VERSION = "1.0";
 const SKILL_ID = "recommendation_engine";
@@ -41,11 +42,11 @@ export function execute(input: { categories?: typeof CATEGORIES[number][] }, con
     const overdue = customers.filter((c) => c.overdueAmount > 0);
     if (overdue.length > 0) {
       const totalOverdue = overdue.reduce((s, c) => s + c.overdueAmount, 0);
-      allRecs.push({ id: `rec_cust_1_${Date.now()}`, type: "follow_up", category: "customers", priority: "high", title: `${overdue.length} customers overdue (PKR ${totalOverdue.toLocaleString("en-PK")})`, description: "Follow up on overdue payments to improve cash flow.", expectedImpact: "Cash flow improvement", actionLink: "/customers?filter=overdue", sourceSkill: SKILL_ID });
+      allRecs.push({ id: `rec_cust_1_${Date.now()}`, type: "follow_up", category: "customers", priority: "high", title: `${overdue.length} customers overdue (${formatAiMoney(totalOverdue, mem.meta.currency)})`, description: "Follow up on overdue payments to improve cash flow.", expectedImpact: "Cash flow improvement", actionLink: "/customers?filter=overdue", sourceSkill: SKILL_ID });
     }
     const topCustomer = [...customers].sort((a, b) => b.totalSales30d - a.totalSales30d)[0];
     if (topCustomer && topCustomer.totalSales30d > 0) {
-      allRecs.push({ id: `rec_cust_2_${Date.now()}`, type: "follow_up", category: "customers", priority: "low", title: `Top customer: ${topCustomer.name}`, description: `Revenue PKR ${topCustomer.totalSales30d.toLocaleString("en-PK")}. Consider loyalty program.`, expectedImpact: "Customer retention", actionLink: "/customers", sourceSkill: SKILL_ID });
+      allRecs.push({ id: `rec_cust_2_${Date.now()}`, type: "follow_up", category: "customers", priority: "low", title: `Top customer: ${topCustomer.name}`, description: `Revenue ${formatAiMoney(topCustomer.totalSales30d, mem.meta.currency)}. Consider loyalty program.`, expectedImpact: "Customer retention", actionLink: "/customers", sourceSkill: SKILL_ID });
     }
   }
 

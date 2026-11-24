@@ -1,5 +1,6 @@
 import type { MemoryStore } from "../brain/memory/business-memory";
 import { buildSupplierLedger, SupplierLedger, SupplierLedgerEntry } from "./supplier-ledger";
+import { formatAiMoney } from "./ai-money";
 
 /**
  * AI Supplier Intelligence — natural-language query engine over the derived
@@ -44,8 +45,8 @@ export interface SupplierQueryContext {
 
 const MAX_LIST = 5;
 
-function formatMoney(value: number): string {
-  return `Rs ${Math.round(value).toLocaleString("en-PK")}`;
+function formatMoney(value: number, currency: unknown = "PKR"): string {
+  return formatAiMoney(value, currency);
 }
 
 function stripBareDate(value: string | null): string {
@@ -137,20 +138,20 @@ function detectPeriodDays(message: string | null | undefined): number | null {
   return null;
 }
 
-function balanceMessage(entry: SupplierLedgerEntry): string {
+function balanceMessage(entry: SupplierLedgerEntry, currency: unknown = "PKR"): string {
   const parts: string[] = [];
   if (entry.payableAmount > 0) {
-    parts.push(`We owe ${entry.supplierName} ${formatMoney(entry.payableAmount)}.`);
+    parts.push(`We owe ${entry.supplierName} ${formatMoney(entry.payableAmount, currency)}.`);
   } else {
     parts.push(`We don't owe ${entry.supplierName} anything.`);
   }
   if (entry.creditLimit !== null && entry.creditLimit > 0) {
     const used = entry.creditUtilizationPct !== null ? ` (${Math.round(entry.creditUtilizationPct)}% used)` : "";
-    parts.push(`Credit limit is ${formatMoney(entry.creditLimit)}${used}.`);
+    parts.push(`Credit limit is ${formatMoney(entry.creditLimit, currency)}${used}.`);
   }
   if (entry.overdueAmount > 0) {
     const days = entry.overdueDays ? `, ${entry.overdueDays} day(s) overdue` : "";
-    parts.push(`Overdue ${formatMoney(entry.overdueAmount)} (${entry.overdueInvoiceCount} invoice(s))${days}.`);
+    parts.push(`Overdue ${formatMoney(entry.overdueAmount, currency)} (${entry.overdueInvoiceCount} invoice(s))${days}.`);
   }
   if (entry.creditDaysRemaining !== null) {
     if (entry.creditDaysRemaining >= 0) {
@@ -173,6 +174,7 @@ export function processSupplierQuery(
   context: SupplierQueryContext = {}
 ): SupplierQueryResult {
   const normalized = (supplierName ?? "").toLowerCase().trim();
+  const currency = store.meta.currency;
 
   switch (queryType ?? "summary") {
     case "search": {
@@ -232,7 +234,7 @@ export function processSupplierQuery(
     case "all_outstanding": {
       const entry = findSupplierEntry(ledger, store, supplierName);
       if (entry) {
-        return { ok: true, queryType, message: balanceMessage(entry) };
+        return { ok: true, queryType, message: balanceMessage(entry, currency) };
       }
       const owing = ledger.suppliers
         .filter((candidate) => candidate.payableAmount > 0)
@@ -245,10 +247,10 @@ export function processSupplierQuery(
         ok: true,
         queryType,
         message: `We owe ${owing.length} supplier(s):\n${listMessage(
-          owing.map((candidate) => `${candidate.supplierName} ${formatMoney(candidate.payableAmount)}`),
+          owing.map((candidate) => `${candidate.supplierName} ${formatMoney(candidate.payableAmount, currency)}`),
           owing.length,
           "supplier"
-        )}\nTotal payable: ${formatMoney(total)}.`,
+        )}\nTotal payable: ${formatMoney(total, currency)}.`,
       };
     }
 
@@ -266,11 +268,11 @@ export function processSupplierQuery(
         message: `${overdue.length} overdue supplier payment(s):\n${listMessage(
           overdue.map(
             (entry) =>
-              `${entry.supplierName} ${formatMoney(entry.overdueAmount)} (${entry.overdueDays ?? 0} day(s) overdue)`
+              `${entry.supplierName} ${formatMoney(entry.overdueAmount, currency)} (${entry.overdueDays ?? 0} day(s) overdue)`
           ),
           overdue.length,
           "supplier"
-        )}\nTotal overdue: ${formatMoney(total)}.`,
+        )}\nTotal overdue: ${formatMoney(total, currency)}.`,
       };
     }
 
@@ -287,7 +289,7 @@ export function processSupplierQuery(
         message: `${near.length} supplier(s) near their credit limit:\n${listMessage(
           near.map(
             (entry) =>
-              `${entry.supplierName} ${Math.round(entry.creditUtilizationPct ?? 0)}% of ${formatMoney(entry.creditLimit ?? 0)} used`
+              `${entry.supplierName} ${Math.round(entry.creditUtilizationPct ?? 0)}% of ${formatMoney(entry.creditLimit ?? 0, currency)} used`
           ),
           near.length,
           "supplier"
@@ -302,12 +304,12 @@ export function processSupplierQuery(
           return { ok: true, queryType, message: `${entry.supplierName} has no credit limit set.` };
         }
         if (entry.creditUtilizationPct === null) {
-          return { ok: true, queryType, message: `${entry.supplierName}'s credit limit is ${formatMoney(entry.creditLimit)}.` };
+          return { ok: true, queryType, message: `${entry.supplierName}'s credit limit is ${formatMoney(entry.creditLimit, currency)}.` };
         }
         return {
           ok: true,
           queryType,
-          message: `${entry.supplierName}'s credit limit is ${formatMoney(entry.creditLimit)} (${Math.round(entry.creditUtilizationPct)}% used).`,
+          message: `${entry.supplierName}'s credit limit is ${formatMoney(entry.creditLimit, currency)} (${Math.round(entry.creditUtilizationPct)}% used).`,
         };
       }
       const withLimits = ledger.suppliers.filter((entry) => entry.creditLimit !== null && entry.creditLimit > 0);
@@ -318,7 +320,7 @@ export function processSupplierQuery(
         ok: true,
         queryType,
         message: `Credit limits:\n${listMessage(
-          withLimits.map((entry) => `${entry.supplierName}: ${formatMoney(entry.creditLimit ?? 0)}`),
+          withLimits.map((entry) => `${entry.supplierName}: ${formatMoney(entry.creditLimit ?? 0, currency)}`),
           withLimits.length,
           "supplier"
         )}`,
@@ -391,7 +393,7 @@ export function processSupplierQuery(
         }
         const rows = [...entry.invoices].reverse().map(
           (inv) =>
-            `${stripBareDate(inv.date)} Invoice ${inv.invoiceNumber} ${formatMoney(inv.amount)}${productSummary(inv)}`
+            `${stripBareDate(inv.date)} Invoice ${inv.invoiceNumber} ${formatMoney(inv.amount, currency)}${productSummary(inv)}`
         );
         return {
           ok: true,
@@ -410,7 +412,7 @@ export function processSupplierQuery(
         ok: true,
         queryType,
         message: `Recent purchases:\n${listMessage(
-          recent.map((inv) => `${inv.supplierName}: ${stripBareDate(inv.date)} ${formatMoney(inv.amount)}`),
+          recent.map((inv) => `${inv.supplierName}: ${stripBareDate(inv.date)} ${formatMoney(inv.amount, currency)}`),
           recent.length,
           "purchase"
         )}`,
@@ -425,7 +427,7 @@ export function processSupplierQuery(
         }
         const rows = [...entry.payments]
           .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
-          .map((payment) => `${stripBareDate(payment.date)} ${formatMoney(payment.amount)}`);
+          .map((payment) => `${stripBareDate(payment.date)} ${formatMoney(payment.amount, currency)}`);
         return {
           ok: true,
           queryType,
@@ -443,7 +445,7 @@ export function processSupplierQuery(
         ok: true,
         queryType,
         message: `Recent supplier payments:\n${listMessage(
-          recent.map((payment) => `${payment.supplierName}: ${stripBareDate(payment.date)} ${formatMoney(payment.amount)}`),
+          recent.map((payment) => `${payment.supplierName}: ${stripBareDate(payment.date)} ${formatMoney(payment.amount, currency)}`),
           recent.length,
           "payment"
         )}`,
@@ -462,7 +464,7 @@ export function processSupplierQuery(
       return {
         ok: true,
         queryType,
-        message: `${candidate.supplierName}'s last purchase: ${stripBareDate(inv.date)}, Invoice ${inv.invoiceNumber}, ${formatMoney(inv.amount)}${productSummary(inv)}.`,
+        message: `${candidate.supplierName}'s last purchase: ${stripBareDate(inv.date)}, Invoice ${inv.invoiceNumber}, ${formatMoney(inv.amount, currency)}${productSummary(inv)}.`,
       };
     }
 
@@ -502,7 +504,7 @@ export function processSupplierQuery(
         return {
           ok: true,
           queryType,
-          message: `${entry.supplierName}'s average purchase is ${formatMoney(entry.averageOrderValue)} across ${entry.invoiceCount} order(s).`,
+          message: `${entry.supplierName}'s average purchase is ${formatMoney(entry.averageOrderValue, currency)} across ${entry.invoiceCount} order(s).`,
         };
       }
       const total = ledger.totals;
@@ -510,7 +512,7 @@ export function processSupplierQuery(
       return {
         ok: true,
         queryType,
-        message: `Average purchase across all suppliers is ${formatMoney(overall)} (${total.totalInvoices} orders).`,
+        message: `Average purchase across all suppliers is ${formatMoney(overall, currency)} (${total.totalInvoices} orders).`,
       };
     }
 
@@ -523,7 +525,7 @@ export function processSupplierQuery(
         ok: true,
         queryType,
         message: `Top suppliers by purchases:\n${listMessage(
-          top.map((entry) => `${entry.supplierName} ${formatMoney(entry.totalPurchases)} (${entry.invoiceCount} order(s))`),
+          top.map((entry) => `${entry.supplierName} ${formatMoney(entry.totalPurchases, currency)} (${entry.invoiceCount} order(s))`),
           top.length,
           "supplier"
         )}`,
@@ -564,7 +566,7 @@ export function processSupplierQuery(
         ok: true,
         queryType,
         message: `Supplier(s) with the highest payable:\n${listMessage(
-          owing.map((entry) => `${entry.supplierName} ${formatMoney(entry.payableAmount)}`),
+          owing.map((entry) => `${entry.supplierName} ${formatMoney(entry.payableAmount, currency)}`),
           owing.length,
           "supplier"
         )}`,
@@ -585,7 +587,7 @@ export function processSupplierQuery(
         message: `Most profitable suppliers:\n${listMessage(
           profitable.map(
             (entry) =>
-              `${entry.supplierName} ${formatMoney(entry.totalProfit)} margin on ${formatMoney(entry.totalPurchases)} purchases`
+              `${entry.supplierName} ${formatMoney(entry.totalProfit, currency)} margin on ${formatMoney(entry.totalPurchases, currency)} purchases`
           ),
           profitable.length,
           "supplier"
@@ -644,8 +646,8 @@ export function processSupplierQuery(
       const total = ledger.totals;
       const parts: string[] = [
         `You have ${ledger.suppliers.length} supplier(s).`,
-        `Total purchases: ${formatMoney(total.totalPurchases)} (${total.totalInvoices} order(s)).`,
-        `Total payable: ${formatMoney(total.totalPayable)}${total.totalOverdue > 0 ? `, of which ${formatMoney(total.totalOverdue)} is overdue` : ""}.`,
+        `Total purchases: ${formatMoney(total.totalPurchases, currency)} (${total.totalInvoices} order(s)).`,
+        `Total payable: ${formatMoney(total.totalPayable, currency)}${total.totalOverdue > 0 ? `, of which ${formatMoney(total.totalOverdue, currency)} is overdue` : ""}.`,
       ];
       if (total.suppliersOwing > 0) parts.push(`We owe ${total.suppliersOwing} supplier(s).`);
       const blocked = ledger.suppliers.filter((entry) => entry.isBlocked).length;

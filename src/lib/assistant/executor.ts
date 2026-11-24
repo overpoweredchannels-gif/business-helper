@@ -14,6 +14,7 @@ import type { BusinessIntelligenceQueryKind } from "../ai/business-intelligence"
 import { extractCustomerNameFragment, extractSupplierNameFragment } from "./intent-router";
 import { getStaffAssignments, assignEmployee, reassignEmployee, removeEmployee } from "../ai/staff-executor";
 import { executeSaleDraft } from "../ai/sales-executor";
+import { formatAiMoney } from "../ai/ai-money";
 import { executePurchaseDraft } from "../ai/purchase-executor";
 import type { CurrentLocationView } from "../location/types";
 import type {
@@ -161,7 +162,7 @@ export class ModuleExecutor {
         }
         const ledger = buildFinancialLedger(data, new Date());
         const queryType = (intent.queryType as FinancialQueryKind) ?? "financial_summary";
-        const result = processFinancialQuery(queryType, ledger, intent, intent.raw);
+        const result = processFinancialQuery(queryType, ledger, intent, intent.raw, data?.currency);
         return result.ok ? result.message : `I couldn't answer that: ${result.message}`;
       }
       case "business-intelligence": {
@@ -237,7 +238,7 @@ export class ModuleExecutor {
     if (this.context.actionExecutor?.createSale) {
       return this.context.actionExecutor.createSale(payload, this.context.organizationId);
     }
-    const result = await executeSaleDraft(payload, this.context.organizationId);
+    const result = await executeSaleDraft(payload, this.context.organizationId, this.context.data?.currency);
     return {
       ok: result.ok,
       message: result.message,
@@ -251,7 +252,7 @@ export class ModuleExecutor {
     if (this.context.actionExecutor?.createPurchase) {
       return this.context.actionExecutor.createPurchase(payload, this.context.organizationId);
     }
-    const result = await executePurchaseDraft(payload, this.context.organizationId);
+    const result = await executePurchaseDraft(payload, this.context.organizationId, this.context.data?.currency);
     return {
       ok: result.ok,
       message: result.message,
@@ -526,15 +527,15 @@ export class ModuleExecutor {
       const today = store.sales.today;
       const month = store.sales.thisMonth;
       return (
-        `Sales today: ${today.invoiceCount} invoice(s), revenue Rs ${today.revenue.toFixed(2)}, profit Rs ${today.profit.toFixed(2)}. ` +
-        `This month: ${month.invoiceCount} invoice(s), revenue Rs ${month.revenue.toFixed(2)}, profit Rs ${month.profit.toFixed(2)}.`
+        `Sales today: ${today.invoiceCount} invoice(s), revenue ${formatAiMoney(today.revenue, store.meta.currency)}, profit ${formatAiMoney(today.profit, store.meta.currency)}. ` +
+        `This month: ${month.invoiceCount} invoice(s), revenue ${formatAiMoney(month.revenue, store.meta.currency)}, profit ${formatAiMoney(month.profit, store.meta.currency)}.`
       );
     }
     const today = store.purchases.today;
     const month = store.purchases.thisMonth;
     return (
-      `Purchases today: ${today.invoiceCount} invoice(s), total Rs ${today.totalAmount.toFixed(2)}. ` +
-      `This month: ${month.invoiceCount} invoice(s), total Rs ${month.totalAmount.toFixed(2)}.`
+      `Purchases today: ${today.invoiceCount} invoice(s), total ${formatAiMoney(today.totalAmount, store.meta.currency)}. ` +
+      `This month: ${month.invoiceCount} invoice(s), total ${formatAiMoney(month.totalAmount, store.meta.currency)}.`
     );
   }
 }

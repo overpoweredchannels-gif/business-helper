@@ -1,12 +1,13 @@
 import { SkillResult, SkillContext, KpiOutput } from "../contracts/skills";
 import { SkillWarning } from "../contracts/common";
 import { MemoryStore } from "../memory/business-memory";
+import { formatAiMoney } from "../../ai/ai-money";
 
 const VERSION = "1.0";
 const SKILL_ID = "kpi";
 
-function fmt(v: number, u: string): string {
-  if (u === "currency") return `PKR ${v.toLocaleString("en-PK")}`;
+function fmt(v: number, u: string, currency: unknown = "PKR"): string {
+  if (u === "currency") return formatAiMoney(v, currency);
   if (u === "percentage") return `${Math.round(v * 100) / 100}%`;
   if (u === "count" || u === "rate") return String(Math.round(v));
   return String(v);
@@ -60,7 +61,7 @@ export function execute(_input: Record<string, unknown>, context: SkillContext):
 
   const kpis = kpiDefs.map((k) => ({
     key: k.key, label: k.label, category: k.category, value: k.value, unit: k.unit,
-    formatted: fmt(k.value, k.unit),
+    formatted: fmt(k.value, k.unit, mem.meta.currency),
     change: Math.round(k.change * 100) / 100,
     changeLabel: (k.change > 0 ? "up" : k.change < 0 ? "down" : "flat") as "up" | "down" | "flat",
     confidence: "high" as const,

@@ -9,6 +9,7 @@ import {
   HealthScoreResult,
 } from "../contracts/memory";
 import { PreferenceStore } from "../learning/preference-store";
+import { formatAiMoney } from "../../ai/ai-money";
 
 export class MemoryWriter {
   private store: MemoryStore;
@@ -675,11 +676,11 @@ export class MemoryWriter {
 
     // KPIs
     const kpis: KpiItem[] = [
-      { key: "monthly_revenue", label: "Monthly Revenue", category: "revenue", value: sales.thisMonth.revenue, unit: "currency", formatted: `PKR ${sales.thisMonth.revenue.toLocaleString("en-PK")}`, change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "last30Days", confidence: "high" },
-      { key: "monthly_profit", label: "Monthly Profit", category: "profitability", value: sales.thisMonth.profit, unit: "currency", formatted: `PKR ${sales.thisMonth.profit.toLocaleString("en-PK")}`, change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "last30Days", confidence: sales.hasProfitData ? "high" : "low" },
+      { key: "monthly_revenue", label: "Monthly Revenue", category: "revenue", value: sales.thisMonth.revenue, unit: "currency", formatted: formatAiMoney(sales.thisMonth.revenue, this.store.meta.currency), change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "last30Days", confidence: "high" },
+      { key: "monthly_profit", label: "Monthly Profit", category: "profitability", value: sales.thisMonth.profit, unit: "currency", formatted: formatAiMoney(sales.thisMonth.profit, this.store.meta.currency), change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "last30Days", confidence: sales.hasProfitData ? "high" : "low" },
       { key: "profit_margin", label: "Profit Margin", category: "profitability", value: Math.round(profitMargin * 100) / 100, unit: "percentage", formatted: `${Math.round(profitMargin * 100) / 100}%`, change: null, changeLabel: "flat", isPercentage: true, comparisonPeriod: "last30Days", confidence: sales.hasProfitData ? "high" : "low" },
-      { key: "total_revenue", label: "Total Revenue (All Time)", category: "revenue", value: totalRevenue, unit: "currency", formatted: `PKR ${totalRevenue.toLocaleString("en-PK")}`, change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "allTime", confidence: "high" },
-      { key: "avg_sale_value", label: "Average Sale Value", category: "efficiency", value: Math.round(avgSaleValue * 100) / 100, unit: "currency", formatted: `PKR ${Math.round(avgSaleValue * 100) / 100}`, change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "allTime", confidence: "high" },
+      { key: "total_revenue", label: "Total Revenue (All Time)", category: "revenue", value: totalRevenue, unit: "currency", formatted: formatAiMoney(totalRevenue, this.store.meta.currency), change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "allTime", confidence: "high" },
+      { key: "avg_sale_value", label: "Average Sale Value", category: "efficiency", value: Math.round(avgSaleValue * 100) / 100, unit: "currency", formatted: formatAiMoney(Math.round(avgSaleValue * 100) / 100, this.store.meta.currency), change: null, changeLabel: "flat", isPercentage: false, comparisonPeriod: "allTime", confidence: "high" },
     ];
     analytics.kpis = kpis;
 

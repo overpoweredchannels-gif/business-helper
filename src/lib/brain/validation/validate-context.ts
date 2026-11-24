@@ -18,7 +18,8 @@ export function validateContext() {
       assert(ctx !== null, "Full context returned");
       assert(ctx.businessSummary.length > 0, "Business summary present");
       assert(ctx.businessSummary.includes("Test Business"), "Org name in summary");
-      assert(ctx.businessSummary.includes("PKR"), "Currency format in summary");
+      // J1a: the books formatter renders PKR as "Rs" (Intl en-PK symbol).
+      assert(ctx.businessSummary.includes("PKR") || ctx.businessSummary.includes("Rs"), "Currency format in summary");
     }),
 
     test("Full context contains health score", () => {
@@ -84,7 +85,8 @@ export function validateContext() {
       const ctx = retriever.getBusinessContext();
       assert(ctx.length > 0, "Business context is non-empty");
       assert(ctx.includes("Health Score"), "Contains health score");
-      assert(ctx.includes("PKR"), "Contains currency amounts");
+      // J1a: the books formatter renders PKR as "Rs" (Intl en-PK symbol).
+      assert(ctx.includes("PKR") || ctx.includes("Rs"), "Contains currency amounts");
     }),
 
     test("Business context respects org boundaries (single org test)", () => {
