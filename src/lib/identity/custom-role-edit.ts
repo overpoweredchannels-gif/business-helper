@@ -1,38 +1,7 @@
 import type { ModulePermission } from "./types";
+import { ALL_PERMISSIONS } from "./roles";
 
-// Custom roles edit/delete slice.
-//
-// The roles API accepts these 23 permissions (mirror of
-// ALL_MODULE_PERMISSIONS in src/app/api/identity/roles/route.ts). The
-// roles UI used to offer only 20 of them — field_sales, draft_approval
-// and import_export could never be assigned from the app — so this list
-// is the single source of truth for both the create/edit form and the
-// server-side filter.
-export const CUSTOM_ROLE_PERMISSIONS: ModulePermission[] = [
-  "sales_view",
-  "sales_create",
-  "sales_manage",
-  "purchases_view",
-  "purchases_create",
-  "inventory_view",
-  "inventory_manage",
-  "customers_view",
-  "customers_manage",
-  "suppliers_view",
-  "suppliers_manage",
-  "reports_view",
-  "profit_view",
-  "payments_manage",
-  "expenses_manage",
-  "tasks_manage",
-  "location_view",
-  "ai_assistant",
-  "administration",
-  "settings_manage",
-  "field_sales",
-  "draft_approval",
-  "import_export",
-];
+export const CUSTOM_ROLE_PERMISSIONS = ALL_PERMISSIONS;
 
 const BUILT_IN_ROLE_NAMES = [
   "owner",

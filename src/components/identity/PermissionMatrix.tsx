@@ -3,37 +3,15 @@
 import { useState, useEffect } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { useRegional } from "@/components/regional/RegionalProvider";
+import { ALL_PERMISSIONS } from "@/lib/identity/roles";
 
 interface MatrixRole {
   id: string;
   name: string;
-  isBuiltIn: boolean;
+  permissions: string[];
 }
 
-const ALL_PERMISSIONS = [
-  "sales_view",
-  "sales_create",
-  "sales_manage",
-  "purchases_view",
-  "purchases_create",
-  "inventory_view",
-  "inventory_manage",
-  "customers_view",
-  "customers_manage",
-  "suppliers_view",
-  "suppliers_manage",
-  "reports_view",
-  "profit_view",
-  "payments_manage",
-  "expenses_manage",
-  "tasks_manage",
-  "location_view",
-  "ai_assistant",
-  "administration",
-  "settings_manage",
-];
-
-export default function PermissionMatrix() {
+export default function PermissionMatrix({ rolesVersion }: { rolesVersion: number }) {
   const { t } = useRegional();
   const permissionLabel = (p: string) => {
     const labels: Record<string, string> = {
@@ -57,50 +35,55 @@ export default function PermissionMatrix() {
       ai_assistant: t('identity.roles.perm.aiAssistant'),
       administration: t('identity.roles.perm.administration'),
       settings_manage: t('identity.roles.perm.settingsManage'),
+      field_sales: t('identity.roles.perm.fieldSales'),
+      draft_approval: t('identity.roles.perm.draftApproval'),
+      import_export: t('identity.roles.perm.importExport'),
     };
     return labels[p] ?? p;
   };
   const [roles, setRoles] = useState<MatrixRole[]>([]);
-  const [matrix, setMatrix] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
-        const res = await authorizedFetch("/api/identity/roles");
+        const res = await authorizedFetch("/api/identity/roles", { cache: "no-store" });
         const data = await res.json();
-        if (data.ok) {
-          const builtIn = (data.roles as MatrixRole[]).filter((r) => r.isBuiltIn);
-          setRoles(builtIn);
-          setMatrix(data.permissionMatrix || {});
+        if (!active) return;
+        if (res.ok && data.ok) {
+          setRoles(data.roles as MatrixRole[]);
+          setError(null);
         } else {
-          setError(data.error || t('identity.matrix.loadFailed'));
+          setError(typeof data.error === "string" ? data.error : "");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : t('tracking.networkError'));
+        if (active) setError(err instanceof Error ? err.message : "");
       }
     })();
-  }, []);
+    return () => { active = false; };
+  }, [rolesVersion]);
 
-  if (error) {
-    return <p style={{ padding: "1.5rem", color: "#dc2626", fontSize: "0.875rem" }}>{error}</p>;
+  if (error !== null) {
+    return <p className="p-6 text-sm text-destructive" role="alert">{error || t('identity.matrix.loadFailed')}</p>;
   }
 
   return (
-    <div style={{ padding: "1.5rem", overflowX: "auto" }}>
-      <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0 0 1rem" }}>
+    <div className="overflow-x-auto p-6">
+      <h2 className="mb-4 text-xl font-semibold">
         {t('identity.matrix.title')}
       </h2>
-      <table style={{ borderCollapse: "collapse", fontSize: "0.8125rem", minWidth: "100%" }}>
+      <table className="min-w-full border-collapse text-sm">
         <thead>
           <tr>
-            <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", borderBottom: "2px solid #e5e7eb" }}>
+            <th scope="col" className="border-b-2 border-border px-3 py-2 text-start">
               {t('identity.matrix.permission')}
             </th>
             {roles.map((role) => (
               <th
                 key={role.id}
-                style={{ padding: "0.5rem 0.75rem", borderBottom: "2px solid #e5e7eb", textAlign: "center" }}
+                scope="col"
+                className="border-b-2 border-border px-3 py-2 text-center"
               >
                 {role.name}
               </th>
@@ -110,23 +93,18 @@ export default function PermissionMatrix() {
         <tbody>
           {ALL_PERMISSIONS.map((permission) => (
             <tr key={permission}>
-              <td style={{ padding: "0.375rem 0.75rem", borderBottom: "1px solid #f3f4f6" }}>
+              <th scope="row" className="border-b border-border px-3 py-2 text-start font-medium">
                 {permissionLabel(permission)}
-              </td>
+              </th>
               {roles.map((role) => {
-                const has = (matrix[role.id] || []).includes(permission);
+                const has = role.permissions.includes(permission);
                 return (
                   <td
                     key={role.id}
-                    style={{
-                      padding: "0.375rem 0.75rem",
-                      borderBottom: "1px solid #f3f4f6",
-                      textAlign: "center",
-                      background: has ? "#dcfce7" : "transparent",
-                      color: has ? "#166534" : "#d1d5db",
-                    }}
+                    className={`border-b border-border px-3 py-2 text-center ${has ? "bg-success/10 text-success" : "text-muted-foreground"}`}
                   >
-                    {has ? "✓" : "—"}
+                    <span aria-hidden="true">{has ? "✓" : "—"}</span>
+                    <span className="sr-only">{t(has ? 'common.yes' : 'common.no')}</span>
                   </td>
                 );
               })}

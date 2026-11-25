@@ -1,37 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/identity/authorization";
-import { getRoleDefinitions, buildPermissionMatrix, validateRoleName } from "@/lib/identity/roles";
+import { ALL_PERMISSIONS, getRoleDefinitions, validateRoleName } from "@/lib/identity/roles";
+import { filterAllowedPermissions } from "@/lib/identity/custom-role-edit";
 import { RoleRepository } from "@/lib/identity/repositories/role-repository";
 import { logAuditEvent } from "@/lib/identity/audit";
 import { ModulePermission } from "@/lib/identity/types";
 
 export const runtime = "nodejs";
-
-const ALL_MODULE_PERMISSIONS: ModulePermission[] = [
-  "sales_view",
-  "sales_create",
-  "sales_manage",
-  "purchases_view",
-  "purchases_create",
-  "inventory_view",
-  "inventory_manage",
-  "customers_view",
-  "customers_manage",
-  "suppliers_view",
-  "suppliers_manage",
-  "reports_view",
-  "profit_view",
-  "payments_manage",
-  "expenses_manage",
-  "tasks_manage",
-  "location_view",
-  "ai_assistant",
-  "administration",
-  "settings_manage",
-  "field_sales",
-  "draft_approval",
-  "import_export",
-];
 
 export async function GET(request: NextRequest) {
   const permission = await requireOwner(request);
@@ -41,7 +16,7 @@ export async function GET(request: NextRequest) {
   const builtIn = getRoleDefinitions().filter((r) => r.isBuiltIn);
   const custom = await new RoleRepository().listForOrganization(permission.actor.organizationId);
   const roles = [...builtIn, ...custom];
-  const matrix = buildPermissionMatrix(builtIn.map((r) => r.id));
+  const matrix = Object.fromEntries(roles.map((role) => [role.id, role.permissions]));
   return NextResponse.json({
     ok: true,
     roles: roles.map((r) => ({
@@ -53,7 +28,7 @@ export async function GET(request: NextRequest) {
       createdAt: r.createdAt,
     })),
     permissionMatrix: matrix,
-    allPermissions: ALL_MODULE_PERMISSIONS,
+    allPermissions: ALL_PERMISSIONS,
   });
 }
 
@@ -75,8 +50,7 @@ export async function POST(request: NextRequest) {
   if (nameError) {
     return NextResponse.json({ ok: false, error: nameError }, { status: 400 });
   }
-  const allowed = new Set<ModulePermission>(ALL_MODULE_PERMISSIONS);
-  const permissions = (Array.isArray(body.permissions) ? body.permissions : []).filter((item) => allowed.has(item));
+  const permissions = filterAllowedPermissions(body.permissions);
   const result = await new RoleRepository().create(actor.organizationId, {
     name: body.name ?? "",
     description: body.description,

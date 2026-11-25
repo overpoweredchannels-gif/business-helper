@@ -962,6 +962,7 @@ export default function Home() {
   // so a custom role can be assigned to a staff member. Until the fetch
   // lands the dropdown falls back to built-in roles only.
   const [assignableCustomRoles, setAssignableCustomRoles] = useState<CustomRoleInput[]>([]);
+  const [rolesVersion, setRolesVersion] = useState(0);
   // Tombstone for custom roles deleted in this session (mirrors the one
   // in RoleManagement): the post-delete refetch can return a stale list
   // that still contains the deleted role, so deleted ids are filtered
@@ -31477,6 +31478,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             <RoleManagement
               onRequestConfirm={setConfirmDialog}
               onRolesChanged={(deletedRoleId?: string) => {
+                setRolesVersion((version) => version + 1);
                 // A role was created, edited or deleted in Role
                 // Management — refetch the assignable list at once so
                 // the Staff & Permissions dropdown is current when the
@@ -31503,7 +31505,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
             <LoginLockoutPanel />
           </div>
           <div className="rounded border border-border bg-card">
-            <PermissionMatrix />
+            <PermissionMatrix rolesVersion={rolesVersion} />
           </div>
           <div className="rounded border border-border bg-card lg:col-span-2">
             <AuditLogPanel />

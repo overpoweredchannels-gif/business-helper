@@ -1,6 +1,6 @@
 import { BuiltInRole, ModulePermission, RoleDefinition, RoleType } from "./types";
 
-const ALL_PERMISSIONS: ModulePermission[] = [
+export const ALL_PERMISSIONS: ModulePermission[] = [
   "sales_view",
   "sales_create",
   "sales_manage",
