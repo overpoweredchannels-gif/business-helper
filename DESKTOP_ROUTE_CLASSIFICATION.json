@@ -412,7 +412,7 @@
       "notes": "Staff onboarding = admin power (claim write); Vercel only."
     },
     "/api/identity/staff/invite": {
-      "methods": "POST",
+      "methods": "DELETE, POST",
       "classification": "CLOUD",
       "called_from_desktop": "yes",
       "access_today": "StaffOnboardingService (service)",

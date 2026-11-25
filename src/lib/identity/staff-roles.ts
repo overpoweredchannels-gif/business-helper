@@ -2,19 +2,15 @@ import type { EmployeeDesignation } from "@/lib/tradeos/types";
 
 export const DEFAULT_STAFF_DESIGNATION: EmployeeDesignation = "salesman";
 
-const PROFILE_ROLE_BY_DESIGNATION: Record<EmployeeDesignation, string> = {
-  salesman: "salesman",
-  delivery_rider: "delivery_rider",
-  field_officer: "field_officer",
-  collection_officer: "collection_officer",
-  supervisor: "supervisor",
-  manager: "manager",
-  owner: "owner",
-};
+export const EMPLOYEE_DESIGNATIONS: readonly EmployeeDesignation[] = [
+  "salesman", "delivery_rider", "field_officer", "collection_officer",
+  "supervisor", "manager", "owner", "purchase_officer", "warehouse_staff", "viewer",
+];
+
+export function isEmployeeDesignation(value: string): value is EmployeeDesignation {
+  return EMPLOYEE_DESIGNATIONS.some((designation) => designation === value);
+}
 
 export function getStaffProfileRole(designation?: string | null): string {
-  if (!designation) return DEFAULT_STAFF_DESIGNATION;
-  return Object.hasOwn(PROFILE_ROLE_BY_DESIGNATION, designation)
-    ? PROFILE_ROLE_BY_DESIGNATION[designation as EmployeeDesignation]
-    : DEFAULT_STAFF_DESIGNATION;
+  return designation && isEmployeeDesignation(designation) ? designation : DEFAULT_STAFF_DESIGNATION;
 }

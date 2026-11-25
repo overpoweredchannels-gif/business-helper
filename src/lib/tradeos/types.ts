@@ -693,7 +693,10 @@ export type EmployeeDesignation =
   | "collection_officer"
   | "supervisor"
   | "manager"
-  | "owner";
+  | "owner"
+  | "purchase_officer"
+  | "warehouse_staff"
+  | "viewer";
 
 export interface Employee {
   id: string;
@@ -704,7 +707,7 @@ export interface Employee {
   phone: string | null;
   cnic: string | null;
   email: string | null;
-  designation: EmployeeDesignation;
+  designation: string;
   department: string | null;
   joining_date: string | null;
   status: "active" | "inactive" | "archived";

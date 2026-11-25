@@ -1,24 +1,14 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
+import { Customer, Employee, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
 import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { readJsonBody } from "@/lib/tradeos/safe-json";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { buildWhatsAppUrl, buildWhatsAppInviteMessage } from "@/lib/identity/staff-invitation";
-import { DEFAULT_STAFF_DESIGNATION } from "@/lib/identity/staff-roles";
+import { DEFAULT_STAFF_DESIGNATION, EMPLOYEE_DESIGNATIONS } from "@/lib/identity/staff-roles";
 import { useRegional } from "@/components/regional/RegionalProvider";
-
-const DESIGNATIONS: EmployeeDesignation[] = [
-  "salesman",
-  "delivery_rider",
-  "field_officer",
-  "collection_officer",
-  "supervisor",
-  "manager",
-  "owner",
-];
 
 const inputStyle: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
@@ -78,6 +68,7 @@ type EmployeeSummary = Employee & {
 
 export default function EmployeeManagement() {
   const { t, language } = useRegional();
+  const [customRoles, setCustomRoles] = useState<Array<{ id: string; name: string }>>([]);
   const designationDisplay = (d: string) => {
     const labels: Record<string, string> = {
       salesman: t('fsm.employees.designation.salesman'),
@@ -87,8 +78,11 @@ export default function EmployeeManagement() {
       supervisor: t('fsm.employees.designation.supervisor'),
       manager: t('fsm.employees.designation.manager'),
       owner: t('fsm.employees.designation.owner'),
+      purchase_officer: t('fsm.employees.designation.purchaseOfficer'),
+      warehouse_staff: t('fsm.employees.designation.warehouseStaff'),
+      viewer: t('fsm.employees.designation.viewer'),
     };
-    return labels[d] ?? d;
+    return customRoles.find((role) => role.id === d)?.name ?? labels[d] ?? d;
   };
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [form, setForm] = useState<Record<string, string>>({ ...emptyForm });
@@ -119,6 +113,17 @@ export default function EmployeeManagement() {
       if (data?.organization?.name) setOrganizationName(data.organization.name);
     } catch {
       // best-effort; fall back to generic label
+    }
+  };
+
+  const loadCustomRoles = async () => {
+    try {
+      const response = await cloudFetch("/api/identity/roles", { cache: "no-store" });
+      if (!response.ok) return;
+      const roles = (await readJsonBody(response))?.roles as Array<{ id: string; name: string; isBuiltIn: boolean }> | undefined;
+      setCustomRoles((roles ?? []).filter((role) => !role.isBuiltIn));
+    } catch {
+      // Built-in designations remain available.
     }
   };
 
@@ -158,6 +163,7 @@ export default function EmployeeManagement() {
 
   useEffect(() => {
     load();
+    void loadCustomRoles();
   }, []);
 
   const setField = (key: string, value: string) => {
@@ -261,6 +267,28 @@ export default function EmployeeManagement() {
       return { error: data?.error || "Invite generation failed" };
     } catch (err) {
       return { error: err instanceof Error ? err.message : t('tracking.networkError') };
+    }
+  };
+
+  const revokeInvite = async (emp: Employee) => {
+    setInvitingId(emp.id);
+    setMessage(null);
+    try {
+      const response = await cloudFetch("/api/identity/staff/invite", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: emp.id }),
+      });
+      const result = await readJsonBody(response);
+      if (!response.ok || !result?.ok) throw new Error(result?.error || t('fsm.employees.revokeInviteFailed'));
+      setEmployees((previous) => previous.map((employee) =>
+        employee.id === emp.id ? { ...employee, invite_status: "revoked" } : employee
+      ));
+      setMessage({ type: "ok", text: t('fsm.employees.inviteRevoked') });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : t('fsm.employees.revokeInviteFailed') });
+    } finally {
+      setInvitingId(null);
     }
   };
 
@@ -386,13 +414,18 @@ export default function EmployeeManagement() {
             <input style={inputStyle} value={form.full_name} onChange={(e) => setField("full_name", e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "#374151" }}>{t('fsm.employees.designation')}</label>
-            <select style={inputStyle} value={form.designation} onChange={(e) => setField("designation", e.target.value)}>
-              {DESIGNATIONS.map((d) => (
+            <label htmlFor="employee-designation" className="text-xs text-foreground">{t('fsm.employees.designation')}</label>
+            <select id="employee-designation" className="min-h-11 rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring" value={form.designation} onChange={(e) => setField("designation", e.target.value)}>
+              {EMPLOYEE_DESIGNATIONS.map((d) => (
                 <option key={d} value={d}>
                   {designationDisplay(d)}
                 </option>
               ))}
+              {customRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+              {form.designation && !EMPLOYEE_DESIGNATIONS.some((designation) => designation === form.designation) &&
+                !customRoles.some((role) => role.id === form.designation) && (
+                  <option value={form.designation}>{designationDisplay(form.designation)}</option>
+                )}
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -544,6 +577,16 @@ export default function EmployeeManagement() {
               </div>
               {isOwner && (
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {emp.invite_status === "pending" && (
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-md border border-destructive px-3 py-2 text-sm text-destructive focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      onClick={() => revokeInvite(emp)}
+                      disabled={invitingId === emp.id}
+                    >
+                      {t('fsm.employees.revokeInvite')}
+                    </button>
+                  )}
                   {emp.invite_status !== "accepted" && (
                     <>
                       <button

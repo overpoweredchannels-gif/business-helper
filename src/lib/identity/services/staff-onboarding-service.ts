@@ -1,6 +1,7 @@
 import { createSupabaseService } from "@/lib/supabase/server";
 import { randomBytes } from "crypto";
 import { EmployeeRepository } from "../repositories/employee-repository";
+import { RoleRepository } from "../repositories/role-repository";
 import {
   buildBaseLoginId,
   makeUniqueLoginId,
@@ -13,7 +14,7 @@ import { buildLegacyPermissionRow } from "../legacy";
 import { logAuditEvent } from "../audit";
 import type { ActorContext } from "../types";
 import type { Employee } from "@/lib/tradeos/types";
-import { getStaffProfileRole } from "../staff-roles";
+import { getStaffProfileRole, isEmployeeDesignation } from "../staff-roles";
 import {
   buildLockoutMessage,
   checkLoginAllowed,
@@ -107,16 +108,21 @@ export class StaffOnboardingService {
     const supabase = this.createClient();
 
     // If already invited (pending), return existing invite data instead of creating duplicates.
-    if (employee.invite_status === "pending" && employee.login_id && employee.hidden_email && employee.invite_code) {
+    if (
+      (employee.invite_status === "pending" || employee.invite_status === "revoked") &&
+      employee.profile_id && employee.login_id && employee.hidden_email && employee.invite_code
+    ) {
       const isExpired = Boolean(employee.invite_expires_at && new Date(employee.invite_expires_at).getTime() <= Date.now());
-      if (isExpired) {
+      if (isExpired || employee.invite_status === "revoked") {
         const inviteCode = generateInviteCode();
         const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000).toISOString();
         const { data: refreshed, error: refreshError } = await supabase.from("employees").update({
           invite_code: inviteCode,
+          invite_status: "pending",
           invite_expires_at: expiresAt,
           updated_at: new Date().toISOString(),
-        }).eq("id", employee.id).eq("organization_id", actor.organizationId).select("*").single();
+        }).eq("id", employee.id).eq("organization_id", actor.organizationId)
+          .eq("invite_status", employee.invite_status).eq("invite_code", employee.invite_code).select("*").single();
         if (refreshError) return { ok: false, error: `Failed to renew invitation: ${refreshError.message}` };
         return { ok: true, employee: refreshed as Employee, loginId: employee.login_id, code: inviteCode, expiresAt };
       }
@@ -172,7 +178,12 @@ export class StaffOnboardingService {
       expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000);
     }
 
-    const defaultRole = getStaffProfileRole(employee.designation);
+    const designation = employee.designation;
+    const roleIsCustom = Boolean(designation && !isEmployeeDesignation(designation));
+    if (roleIsCustom && !await new RoleRepository().find(actor.organizationId, designation)) {
+      return { ok: false, error: "Choose a designation from this organization's roles before inviting this employee." };
+    }
+    const defaultRole = roleIsCustom ? designation : getStaffProfileRole(designation);
     const displayName = employee.full_name?.trim() ?? "Staff";
 
     // The owner wants visibility in Staff & Permissions immediately and
@@ -298,10 +309,25 @@ export class StaffOnboardingService {
     };
   }
 
+  async revokeInvite(actor: ActorContext, employeeId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!actor.isOwner || !actor.organizationId) {
+      return { ok: false, error: "Only the store owner can revoke invitations." };
+    }
+    const { data, error } = await this.createClient().from("employees")
+      .update({ invite_status: "revoked", updated_at: new Date().toISOString() })
+      .eq("id", employeeId)
+      .eq("organization_id", actor.organizationId)
+      .eq("invite_status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error || !data) return { ok: false, error: "No pending invitation could be revoked for this employee." };
+    return { ok: true };
+  }
+
   /** Public lookup for the accept page (no auth). */
   async getInviteInfo(code: string): Promise<StaffInviteInfo> {
     const normalized = code.trim().toUpperCase();
-    const supabase = createSupabaseService();
+    const supabase = this.createClient();
     const { data, error } = await supabase
       .from("employees")
       .select(
@@ -320,11 +346,12 @@ export class StaffOnboardingService {
       return { ok: false, error: "This invitation has been revoked." };
     }
     if (
-      data.invite_expires_at &&
-      new Date(data.invite_expires_at).getTime() < Date.now()
+      data.invite_status === "expired" ||
+      (data.invite_expires_at && new Date(data.invite_expires_at).getTime() < Date.now())
     ) {
       return { ok: false, error: "This invitation has expired. Ask your manager for a new one." };
     }
+    if (data.invite_status !== "pending") return { ok: false, error: "Invitation not found." };
 
     const { data: org } = await supabase
       .from("organizations")
@@ -357,7 +384,7 @@ export class StaffOnboardingService {
     }
 
     const normalized = code.trim().toUpperCase();
-    const supabase = createSupabaseService();
+    const supabase = this.createClient();
 
     const { data: employee, error: employeeError } = await supabase
       .from("employees")
@@ -377,41 +404,39 @@ export class StaffOnboardingService {
       employee.hidden_email ??
       buildHiddenEmail(employee.login_id ?? "staff", employee.organization_id);
 
+    // Claim this exact pending invitation before setting a usable
+    // password. Revocation and acceptance cannot both claim the row.
+    const claimedAt = new Date().toISOString();
+    const { data: claimed, error: claimError } = await supabase.from("employees")
+      .update({ invite_status: "accepted", updated_at: claimedAt })
+      .eq("id", employee.id).eq("organization_id", employee.organization_id)
+      .eq("invite_code", normalized).eq("invite_status", "pending")
+      .select("id").maybeSingle();
+    if (claimError) return { ok: false, error: "Invitation could not be accepted." };
+    if (!claimed) {
+      const latest = await this.getInviteInfo(normalized);
+      return { ok: false, error: latest.error ?? "Invitation could not be accepted." };
+    }
+
     try {
-      // Set the employee's real password; the account was already created on invite.
       const { error: updateError } = await supabase.auth.admin.updateUserById(userId, { password });
-      if (updateError) {
-        if (updateError.message && updateError.message.toLowerCase().includes("used before")) {
-          return { ok: false, error: "This account has already been activated. Please sign in." };
-        }
-        return { ok: false, error: `Password setup failed: ${updateError.message}` };
-      }
+      if (updateError) throw new Error(`Password setup failed: ${updateError.message}`);
+
+      const { data: profile, error: profileError } = await supabase.from("profiles")
+        .update({ is_active: true }).eq("id", userId).eq("organization_id", employee.organization_id)
+        .select("id").maybeSingle();
+      if (profileError || !profile) throw new Error("Profile activation failed. Try again.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Password setup failed.";
-      if (/used before|already been/i.test(message)) {
-        return { ok: false, error: "This account has already been activated. Please sign in." };
+      const { error: releaseError } = await supabase.from("employees")
+        .update({ invite_status: "pending", updated_at: new Date().toISOString() })
+        .eq("id", employee.id).eq("organization_id", employee.organization_id)
+        .eq("invite_code", normalized).eq("invite_status", "accepted").eq("updated_at", claimedAt);
+      if (releaseError) {
+        console.error("Could not release the invitation claim after activation failed:", releaseError);
+        return { ok: false, error: "Invitation activation failed. Contact your manager." };
       }
-      return { ok: false, error: message };
-    }
-
-    // Activate the pre-provisioned profile.
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ is_active: true })
-      .eq("id", userId);
-    if (profileError) {
-      return { ok: false, error: `Profile activation failed: ${profileError.message}` };
-    }
-
-    const { error: acceptError } = await supabase
-      .from("employees")
-      .update({
-        invite_status: "accepted",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", employee.id);
-    if (acceptError) {
-      return { ok: false, error: `Invitation acceptance failed: ${acceptError.message}` };
+      const message = err instanceof Error ? err.message : "Invitation activation failed.";
+      return { ok: false, error: /used before/i.test(message) ? "Choose a different password and try again." : message };
     }
 
     await logAuditEvent({

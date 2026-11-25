@@ -2,6 +2,7 @@ import { EmployeeRepository, EmployeeInput, isEmployeeDesignation } from "../rep
 import type { ActorContext } from "../types";
 import { Employee } from "@/lib/tradeos/types";
 import { DEFAULT_STAFF_DESIGNATION } from "../staff-roles";
+import { RoleRepository } from "../repositories/role-repository";
 
 export type EmployeeResult = { employee?: Employee; error?: string };
 
@@ -36,10 +37,8 @@ export class EmployeeService {
     if (fullName.trim().length > 200) {
       return "Employee name must be 200 characters or fewer.";
     }
-
-    const designation = (input.designation as string) ?? "";
-    if (designation && !isEmployeeDesignation(designation)) {
-      return `Unknown designation "${designation}". Allowed: salesman, delivery_rider, field_officer, collection_officer, supervisor, manager, owner.`;
+    if (input.designation != null && typeof input.designation !== "string") {
+      return "Choose a designation from this organization's roles.";
     }
 
     if (input.phone && String(input.phone).length > 30) {
@@ -83,7 +82,7 @@ export class EmployeeService {
       phone: toNullableString(input.phone),
       cnic: toNullableString(input.cnic),
       email: toNullableString(input.email),
-      designation: ((input.designation as string) || DEFAULT_STAFF_DESIGNATION) as EmployeeInput["designation"],
+      designation: toNullableString(input.designation) ?? DEFAULT_STAFF_DESIGNATION,
       department: toNullableString(input.department),
       joining_date: toNullableString(input.joining_date),
       status: (input.status as EmployeeInput["status"]) ?? "active",
@@ -96,6 +95,9 @@ export class EmployeeService {
     };
 
     try {
+      if (!await this.isOrganizationDesignation(actor.organizationId, payload.designation)) {
+        return { error: "Choose a designation from this organization's roles." };
+      }
       const employee = await this.repository.create(payload);
       return { employee };
     } catch (error) {
@@ -123,7 +125,7 @@ export class EmployeeService {
       "assigned_territory_id", "assigned_route_id", "photo_url",
     ];
     const directFields: (keyof Employee)[] = [
-      "designation", "status", "emergency_contact", "is_active",
+      "status", "emergency_contact", "is_active",
     ];
     for (const field of stringFields) {
       if (updates[field] !== undefined) {
@@ -137,11 +139,21 @@ export class EmployeeService {
     }
 
     try {
+      if (updates.designation !== undefined) {
+        payload.designation = toNullableString(updates.designation) ?? DEFAULT_STAFF_DESIGNATION;
+        if (!await this.isOrganizationDesignation(actor.organizationId, payload.designation)) {
+          return { error: "Choose a designation from this organization's roles." };
+        }
+      }
       const employee = await this.repository.update(employeeId, payload, actor.organizationId);
       return { employee };
     } catch (error) {
       return { error: error instanceof Error ? error.message : "Failed to update employee" };
     }
+  }
+
+  private async isOrganizationDesignation(orgId: string, designation: string = DEFAULT_STAFF_DESIGNATION): Promise<boolean> {
+    return isEmployeeDesignation(designation) || Boolean(await new RoleRepository().find(orgId, designation));
   }
 
   async removeEmployee(actor: ActorContext, employeeId: string): Promise<{ success: boolean; error?: string }> {

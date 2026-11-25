@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 import { requireOwner } from "@/lib/identity/authorization";
 import { getRoleDefinitions, buildPermissionMatrix, validateRoleName } from "@/lib/identity/roles";
 import { RoleRepository } from "@/lib/identity/repositories/role-repository";
@@ -33,7 +34,7 @@ const ALL_MODULE_PERMISSIONS: ModulePermission[] = [
   "import_export",
 ];
 
-export async function GET(request: NextRequest) {
+async function runGET(request: NextRequest) {
   const permission = await requireOwner(request);
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ ok: false, error: permission.reason ?? "Forbidden" }, { status: 403 });
@@ -55,6 +56,20 @@ export async function GET(request: NextRequest) {
     permissionMatrix: matrix,
     allPermissions: ALL_MODULE_PERMISSIONS,
   });
+}
+
+export function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "GET");
+}
+
+export async function GET(request: NextRequest) {
+  const headers = corsHeadersFor(request);
+  try {
+    return applyCors(await runGET(request), headers);
+  } catch (error) {
+    console.error("Cloud identity/roles GET failed:", error);
+    return applyCors(NextResponse.json({ error: "Unable to list roles." }, { status: 500 }), headers);
+  }
 }
 
 export async function POST(request: NextRequest) {
