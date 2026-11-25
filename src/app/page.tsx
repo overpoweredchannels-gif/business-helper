@@ -18029,8 +18029,7 @@ export default function Home() {
           active_alerts: [...getArrayValue(summaryData.alerts?.active_alerts), ...generatedAlertSummaries].slice(0, 25),
         };
       }
-      const localSummary = buildLocalDailyBriefingText(summaryData as Record<string, any>);
-      let briefingSummary = localSummary;
+      let briefingSummary = `${t('page.aiBriefingLocalFallback')}\n\n${buildLocalDailyBriefingText(summaryData)}`;
       let rawAiResponse: unknown = null;
 
       try {
@@ -18048,7 +18047,8 @@ export default function Home() {
         });
         const result = await response.json().catch(() => null);
         rawAiResponse = result ?? null;
-        if (response.ok && result?.ok && result.result?.answer) {
+        if (response.ok && result?.ok && result.provider !== "local_fallback" &&
+          typeof result.result?.answer === "string" && result.result.answer.trim()) {
           briefingSummary = result.result.answer;
         }
       } catch (err) {
