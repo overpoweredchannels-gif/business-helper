@@ -17,9 +17,10 @@ const PHASE_LABELS = {
   unavailable: "desktopUpdates.unavailable",
 } as const satisfies Record<DesktopUpdateStatus["phase"], MessageKey>;
 
-type UpdateAction = Exclude<keyof DesktopUpdaterBridge, "getStatus" | "onStatusChanged">;
+type UpdateAction = Exclude<keyof DesktopUpdaterBridge, "getVersion" | "getStatus" | "onStatusChanged">;
 type DesktopUpdatesValue = {
   status: DesktopUpdateStatus | null;
+  runningVersion: string | null;
   pendingAction: UpdateAction | null;
   actionFailed: boolean;
   runAction: (action: UpdateAction) => Promise<void>;
@@ -29,6 +30,7 @@ const DesktopUpdatesContext = createContext<DesktopUpdatesValue | null>(null);
 
 export function DesktopUpdatesProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<DesktopUpdateStatus | null>(null);
+  const [runningVersion, setRunningVersion] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<UpdateAction | null>(null);
   const [actionFailed, setActionFailed] = useState(false);
   const actionPending = useRef(false);
@@ -51,6 +53,9 @@ export function DesktopUpdatesProvider({ children }: { children: ReactNode }) {
     void updater.getStatus().then((snapshot) => {
       if (active && statusRevision.current === initialRevision) setStatus(snapshot);
     }).catch(() => { /* A later status event can still populate the panel. */ });
+    void updater.getVersion().then((version) => {
+      if (active && version) setRunningVersion(version);
+    }).catch(() => { /* The update prompt can still work without the version label. */ });
 
     return () => {
       active = false;
@@ -76,9 +81,9 @@ export function DesktopUpdatesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <DesktopUpdatesContext.Provider value={{ status, pendingAction, actionFailed, runAction }}>
+    <DesktopUpdatesContext.Provider value={{ status, runningVersion, pendingAction, actionFailed, runAction }}>
       {children}
-      {status && <DesktopUpdatePrompt status={status} pendingAction={pendingAction} actionFailed={actionFailed} runAction={runAction} />}
+      {status && <DesktopUpdatePrompt status={status} runningVersion={runningVersion} pendingAction={pendingAction} actionFailed={actionFailed} runAction={runAction} />}
     </DesktopUpdatesContext.Provider>
   );
 }
@@ -94,22 +99,86 @@ function formatDownloadEstimate(seconds: number, language: string): string {
   return new Intl.NumberFormat(language, { style: "unit", unit, unitDisplay: "long" }).format(Math.ceil(seconds / unitInSeconds));
 }
 
-function DesktopUpdatePrompt({ status, pendingAction, actionFailed, runAction }: Omit<DesktopUpdatesValue, "status"> & {
+function formatDownloadBytes(bytes: number, language: string, perSecond = false): string {
+  const [unit, divisor] = bytes >= 1_000_000_000 ? ["gigabyte", 1_000_000_000] as const
+    : bytes >= 1_000_000 ? ["megabyte", 1_000_000] as const
+      : bytes >= 1_000 ? ["kilobyte", 1_000] as const : ["byte", 1] as const;
+  return new Intl.NumberFormat(language, {
+    style: "unit",
+    unit: perSecond ? `${unit}-per-second` : unit,
+    unitDisplay: "short",
+    maximumFractionDigits: 1,
+  }).format(bytes / divisor);
+}
+
+function isNonnegativeNumber(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function DesktopDownloadProgress({ status }: { status: DesktopUpdateStatus }) {
+  const { t, language } = useRegional();
+  const progress = getProgress(status);
+  const { transferredBytes, totalBytes, bytesPerSecond, estimatedSecondsRemaining } = status;
+  const transferred = isNonnegativeNumber(transferredBytes) ? formatDownloadBytes(transferredBytes, language) : "—";
+  const downloaded = isNonnegativeNumber(totalBytes) && totalBytes > 0
+    ? t("desktopUpdates.downloadedOf").replace("{transferred}", transferred).replace("{total}", formatDownloadBytes(totalBytes, language))
+    : transferred;
+  const speed = isNonnegativeNumber(bytesPerSecond) ? formatDownloadBytes(bytesPerSecond, language, true) : "—";
+  const estimate = isNonnegativeNumber(bytesPerSecond) && bytesPerSecond > 0 && isNonnegativeNumber(estimatedSecondsRemaining)
+    ? t("desktopUpdates.eta").replace("{time}", formatDownloadEstimate(estimatedSecondsRemaining, language))
+    : t("desktopUpdates.estimating");
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4 text-sm font-medium">
+        <span>{t("desktopUpdates.downloadProgress")}</span>
+        {progress !== undefined && <bdi className="tabular-nums">{new Intl.NumberFormat(language, { style: "percent" }).format(progress / 100)}</bdi>}
+      </div>
+      <progress aria-label={t("desktopUpdates.downloadProgress")} max={100} value={progress} className="block h-2 w-full accent-primary" />
+      <dl className="grid gap-3 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-muted-foreground">{t("desktopUpdates.downloaded")}</dt>
+          <dd className="font-medium tabular-nums">{downloaded}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">{t("desktopUpdates.speed")}</dt>
+          <dd className="font-medium tabular-nums"><bdi>{speed}</bdi></dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">{t("desktopUpdates.timeRemaining")}</dt>
+          <dd className="font-medium tabular-nums">{estimate}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function DesktopUpdatePrompt({ status, runningVersion, pendingAction, actionFailed, runAction }: Omit<DesktopUpdatesValue, "status"> & {
   status: DesktopUpdateStatus;
 }) {
-  const { t, language } = useRegional();
+  const { t } = useRegional();
   const titleId = useId();
   const descriptionId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const [saleBlocked, setSaleBlocked] = useState(false);
   const installing = status.phase === "installing";
   const busy = installing || status.phase === "downloading" || pendingAction === "installUpdate";
   const failed = status.phase === "error" || actionFailed;
-  const progress = getProgress(status);
-  const seconds = status.estimatedSecondsRemaining;
-  const estimate = typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
-    ? t("desktopUpdates.eta").replace("{time}", formatDownloadEstimate(seconds, language))
-    : t("desktopUpdates.estimating");
+
+  function dismissPrompt() {
+    setSaleBlocked(false);
+    void runAction("dismissInstallPrompt");
+  }
+
+  function confirmInstall() {
+    if (!window.dispatchEvent(new Event("aankh:before-install-update", { cancelable: true }))) {
+      setSaleBlocked(true);
+      return;
+    }
+    setSaleBlocked(false);
+    void runAction("installUpdate");
+  }
 
   useEffect(() => {
     const element = dialog.current;
@@ -133,7 +202,7 @@ function DesktopUpdatePrompt({ status, pendingAction, actionFailed, runAction }:
       data-context-help-skip
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy && pendingAction === null) void runAction("dismissInstallPrompt");
+        if (!busy && pendingAction === null) dismissPrompt();
       }}
       className={cn(
         "fixed inset-0 overflow-y-auto text-foreground backdrop:bg-foreground/50 print:hidden",
@@ -153,29 +222,22 @@ function DesktopUpdatePrompt({ status, pendingAction, actionFailed, runAction }:
               <bdi>v{status.updateVersion}</bdi>
             </p>
           )}
-          <p className="text-sm text-muted-foreground"><span>{t("desktopUpdates.currentVersion")} </span><bdi>v{status.currentVersion}</bdi></p>
+          {runningVersion && <p className="text-sm text-muted-foreground"><span>{t("desktopUpdates.currentVersion")} </span><bdi>v{runningVersion}</bdi></p>}
         </div>
         <div id={descriptionId} aria-live="polite" className="space-y-2 text-sm text-muted-foreground">
           {!busy && <p>{t("desktopUpdates.saveWork")}</p>}
           <p>{t(installing ? "desktopUpdates.reopening" : "desktopUpdates.restartHint")}</p>
         </div>
-        {busy && !installing && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-4 text-sm font-medium">
-              <span>{t("desktopUpdates.downloadProgress")}</span>
-              {progress !== undefined && <bdi className="tabular-nums">{progress}%</bdi>}
-            </div>
-            <progress aria-label={t("desktopUpdates.downloadProgress")} max={100} value={progress} className="block h-2 w-full accent-primary" />
-            <p className="text-sm text-muted-foreground">{estimate}</p>
-          </div>
+        {busy && !installing && <DesktopDownloadProgress status={status} />}
+        {!busy && (saleBlocked || failed) && (
+          <p role="alert" className="text-sm text-destructive">{t(saleBlocked ? "desktopUpdates.saleBlocked" : "desktopUpdates.error")}</p>
         )}
-        {!busy && failed && <p role="alert" className="text-sm text-destructive">{t("desktopUpdates.error")}</p>}
         {!busy && (
           <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" disabled={pendingAction !== null} onClick={() => void runAction("dismissInstallPrompt")} className="min-h-11 min-w-11 rounded-lg border border-input px-4 py-2 text-sm font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
-              {t(failed ? "desktopUpdates.close" : "desktopUpdates.later")}
+            <button type="button" disabled={pendingAction !== null} onClick={dismissPrompt} className="min-h-11 min-w-11 rounded-lg border border-input px-4 py-2 text-sm font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+              {t(failed && !saleBlocked ? "desktopUpdates.close" : "desktopUpdates.later")}
             </button>
-            <button type="button" disabled={pendingAction !== null} onClick={() => void runAction("installUpdate")} className="min-h-11 min-w-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+            <button type="button" disabled={pendingAction !== null} onClick={confirmInstall} className="min-h-11 min-w-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
               {t(failed ? "desktopUpdates.retryInstall" : "desktopUpdates.install")}
             </button>
           </div>
@@ -191,10 +253,10 @@ export function DesktopUpdates({ surface, collapsed = false }: {
 }) {
   const updates = useContext(DesktopUpdatesContext);
   const { t } = useRegional();
-  if (!updates?.status) return null;
+  if (!updates?.status || !updates.runningVersion) return null;
 
-  const { status, pendingAction, actionFailed, runAction } = updates;
-  const version = `v${status.currentVersion}`;
+  const { status, runningVersion, pendingAction, actionFailed, runAction } = updates;
+  const version = `v${runningVersion}`;
   const phase = pendingAction === "checkForUpdates"
     ? "checking"
     : actionFailed ? "error" : status.phase;

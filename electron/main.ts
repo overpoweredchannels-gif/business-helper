@@ -16,7 +16,7 @@ import {
 import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdentity } from "./store";
 import { createDesktopUpdater } from "./desktop-updater";
 import { createUpdaterLogger } from "./updater-log";
-import type { DesktopUpdateStatus } from "./updater-types";
+import type { DesktopUpdateCheckResult, DesktopUpdateStatus } from "./updater-types";
 
 // Slice S0 — desktop shell spike. Serves the Next.js standalone build from
 // the local disk: the main process spawns .next/standalone/server.js on a
@@ -810,7 +810,7 @@ async function resolveAppUrl(): Promise<string | null> {
   return healthy ? url : null;
 }
 
-function createWindow(url: string | null): void {
+function createWindow(url: string | null, setupUpdaterWindow?: (window: BrowserWindow) => void): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -825,6 +825,7 @@ function createWindow(url: string | null): void {
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
   });
+  setupUpdaterWindow?.(mainWindow);
   if (url) {
     void mainWindow.loadURL(url);
   } else {
@@ -835,15 +836,18 @@ function createWindow(url: string | null): void {
   }
 }
 
-const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const UPDATE_FIRST_CHECK_DELAY_MS = 3_000;
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
-function setupAutoUpdater(): void {
+function setupAutoUpdater(): ((window: BrowserWindow) => void) | undefined {
   const currentVersion = app.getVersion();
   const unavailable: DesktopUpdateStatus = { currentVersion, phase: "unavailable", promptOpen: false };
-  const logger = app.isPackaged ? createUpdaterLogger(path.join(app.getPath("userData"), "updater.log")) : null;
+  const unavailableCheck: DesktopUpdateCheckResult = { isUpdateAvailable: false, versionInfo: null };
+  const logger = app.isPackaged ? createUpdaterLogger(path.join(app.getPath("userData"), "logs", "main.log")) : null;
   if (logger) autoUpdater.logger = logger;
-  const log = (message: string) => {
-    logger?.info(message);
+  const log = (message: string, error?: unknown) => {
+    if (error === undefined) logger?.info(message);
+    else logger?.error(message, error);
   };
   let activeNotification: Notification | null = null;
   const controller: ReturnType<typeof createDesktopUpdater> | null = app.isPackaged ? createDesktopUpdater({
@@ -852,9 +856,12 @@ function setupAutoUpdater(): void {
     log,
     publish: (status) => {
       try {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("aankh:updater:changed", status);
-      } catch {
-        log("Could not send update status to the window. The latest status remains available by request.");
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const channel = status.phase === "available" && status.promptOpen ? "update:available" : "update:status-changed";
+          mainWindow.webContents.send(channel, status);
+        }
+      } catch (error) {
+        log("Could not send update status to the window. The latest status remains available by request.", error);
       }
     },
     notifyAvailable: (version) => {
@@ -867,20 +874,20 @@ function setupAutoUpdater(): void {
         });
         activeNotification = notification;
         notification.on("click", () => {
-          controller?.openInstallPrompt();
           if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.show();
             mainWindow.focus();
           }
+          controller?.openInstallPrompt();
         });
         notification.on("close", () => {
           if (activeNotification === notification) activeNotification = null;
         });
-        notification.on("failed", () => log(`Windows could not display the notification for update ${version}.`));
+        notification.on("failed", (_event, error) => log(`Windows could not display the notification for update ${version}.`, error));
         notification.show();
-      } catch {
-        log(`Could not show the notification for update ${version}.`);
+      } catch (error) {
+        log(`Could not show the notification for update ${version}.`, error);
       }
     },
   }) : null;
@@ -888,29 +895,50 @@ function setupAutoUpdater(): void {
   const isMainFrame = (event: IpcMainInvokeEvent) => (
     mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents && event.senderFrame === event.sender.mainFrame
   );
-  ipcMain.handle("aankh:updater:status", () => controller?.getStatus() ?? unavailable);
-  ipcMain.handle("aankh:updater:check", (event) => {
-    if (isMainFrame(event)) return controller?.checkForUpdates("manual");
+  ipcMain.handle("app:version", () => currentVersion);
+  ipcMain.handle("update:status", () => controller?.getStatus() ?? unavailable);
+  ipcMain.handle("update:check-now", (event) => {
+    if (controller && isMainFrame(event)) return controller.checkForUpdates("manual");
+    return unavailableCheck;
   });
-  ipcMain.handle("aankh:updater:open-prompt", (event) => {
+  ipcMain.handle("update:open-prompt", (event) => {
     if (isMainFrame(event)) controller?.openInstallPrompt();
   });
-  ipcMain.handle("aankh:updater:dismiss-prompt", (event) => {
+  ipcMain.handle("update:dismiss-prompt", (event) => {
     if (isMainFrame(event)) controller?.dismissInstallPrompt();
   });
-  ipcMain.handle("aankh:updater:install", (event) => {
+  ipcMain.handle("update:download", (event) => {
     if (isMainFrame(event)) return controller?.installUpdate();
   });
 
   if (!controller) return;
   log(`Aankh ${currentVersion} started. Update checks run every ${UPDATE_CHECK_INTERVAL_MS / 60_000} minutes.`);
-  void controller.checkForUpdates("launch");
-  const timer = setInterval(() => void controller.checkForUpdates("periodic"), UPDATE_CHECK_INTERVAL_MS);
+  let launchTimer: ReturnType<typeof setTimeout> | undefined;
+  let periodicTimer: ReturnType<typeof setInterval> | undefined;
   app.once("before-quit", () => {
-    clearInterval(timer);
+    clearTimeout(launchTimer);
+    clearInterval(periodicTimer);
     const status = controller.getStatus();
-    if (status.phase === "installing") log(`Aankh closed for the installation of update ${status.updateVersion}.`);
+    if (status.phase === "installing") log(`Aankh is closing for the installation of update ${status.updateVersion}.`);
   });
+
+  return (window) => {
+    window.once("ready-to-show", () => {
+      launchTimer = setTimeout(() => {
+        void controller.checkForUpdates("launch");
+        periodicTimer = setInterval(() => void controller.checkForUpdates("periodic"), UPDATE_CHECK_INTERVAL_MS);
+      }, UPDATE_FIRST_CHECK_DELAY_MS);
+    });
+    if (process.platform === "win32") {
+      const skipInstallOnSessionEnd = () => {
+        if (!autoUpdater.autoInstallOnAppQuit) return;
+        autoUpdater.autoInstallOnAppQuit = false;
+        log("Windows is ending the session. Skipping the automatic install-on-quit fallback.");
+      };
+      window.once("query-session-end", skipInstallOnSessionEnd);
+      window.once("session-end", skipInstallOnSessionEnd);
+    }
+  };
 }
 
 // Slice S8 — daily auto backup (UMAIR's decision 1): one dated copy
@@ -996,7 +1024,7 @@ void app.whenReady().then(async () => {
   }
   setupLocalStore();
   setupDesktopAuth();
-  setupAutoUpdater();
+  const setupUpdaterWindow = setupAutoUpdater();
   setupBackupMenu();
   void runDailyBackupIfDue();
   setInterval(() => void runDailyBackupIfDue(), BACKUP_RECHECK_INTERVAL_MS);
@@ -1005,7 +1033,7 @@ void app.whenReady().then(async () => {
   // asks for it.
   handlePossibleAuthCallback(process.argv);
   const url = await resolveAppUrl();
-  createWindow(url);
+  createWindow(url, setupUpdaterWindow);
 });
 
 app.on("window-all-closed", () => {

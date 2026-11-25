@@ -70,7 +70,7 @@ export function useScannerCapture(options: ScannerCaptureOptions): void {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const config = latest.current;
-      const dialogOpen = Array.from(document.querySelectorAll('[role="dialog"]')).some((el) => el.getClientRects().length > 0);
+      const dialogOpen = Array.from(document.querySelectorAll('dialog[open], [role="dialog"]')).some((el) => el.getClientRects().length > 0);
       if (config.disabled || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || dialogOpen) {
         resetBurst();
         return;

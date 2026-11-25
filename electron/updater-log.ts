@@ -3,6 +3,7 @@ import electronLog from "electron-log/node";
 export function createUpdaterLogger(logPath: string) {
   const logger = electronLog.create({ logId: "aankh-updater" });
   logger.transports.file.resolvePathFn = () => logPath;
+  logger.transports.file.level = "info";
   logger.transports.file.maxSize = 256 * 1024;
   if (logger.transports.ipc) logger.transports.ipc.level = false;
   logger.transports.remote.level = false;
@@ -10,10 +11,11 @@ export function createUpdaterLogger(logPath: string) {
   logger.hooks.push((message) => ({
     ...message,
     data: message.data.map((value: unknown) => {
-      const text = value instanceof Error ? `${value.name}: ${value.message}` : String(value);
-      // The SDK can append HTTP bodies, headers, and stacks after the summary.
-      const [summary] = text.split(/\r?\n/, 1);
-      return summary
+      const text = value instanceof Error ? value.stack ?? `${value.name}: ${value.message}` : String(value);
+      // Preserve stack frames while omitting multiline HTTP bodies and headers.
+      const [summary, ...details] = text.split(/\r?\n/);
+      const frames = details.filter((line) => /^\s+at\s+\S.*:\d+:\d+\)?$/.test(line));
+      return [summary, ...frames].join("\n")
         .replace(/https?:\/\/[^\s"'<>]+/gi, (url) => {
           try {
             const { origin, pathname } = new URL(url);

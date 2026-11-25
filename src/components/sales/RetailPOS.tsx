@@ -258,9 +258,13 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
   }, [focusUnitFor, sale.lines.length]);
   useEffect(() => {
     if (!sale.lines.length) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    const warn = (event: Event) => { event.preventDefault(); };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    window.addEventListener("aankh:before-install-update", warn);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      window.removeEventListener("aankh:before-install-update", warn);
+    };
   }, [sale.lines.length]);
   // One scan path for every way a barcode can arrive (barcode box, global
   // scanner capture, find-product Enter): the parent adds the line through

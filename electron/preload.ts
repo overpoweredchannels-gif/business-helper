@@ -225,15 +225,20 @@ const bridge: AankhDesktopBridge = {
   isDesktop: true,
   platform: process.platform,
   updater: {
-    getStatus: () => ipcRenderer.invoke("aankh:updater:status"),
-    checkForUpdates: () => ipcRenderer.invoke("aankh:updater:check"),
-    openInstallPrompt: () => ipcRenderer.invoke("aankh:updater:open-prompt"),
-    dismissInstallPrompt: () => ipcRenderer.invoke("aankh:updater:dismiss-prompt"),
-    installUpdate: () => ipcRenderer.invoke("aankh:updater:install"),
+    getStatus: () => ipcRenderer.invoke("update:status"),
+    getVersion: () => ipcRenderer.invoke("app:version"),
+    checkForUpdates: () => ipcRenderer.invoke("update:check-now"),
+    openInstallPrompt: () => ipcRenderer.invoke("update:open-prompt"),
+    dismissInstallPrompt: () => ipcRenderer.invoke("update:dismiss-prompt"),
+    installUpdate: () => ipcRenderer.invoke("update:download"),
     onStatusChanged: (handler) => {
       const listener = (_event: unknown, status: DesktopUpdateStatus) => handler(status);
-      ipcRenderer.on("aankh:updater:changed", listener);
-      return () => ipcRenderer.removeListener("aankh:updater:changed", listener);
+      ipcRenderer.on("update:status-changed", listener);
+      ipcRenderer.on("update:available", listener);
+      return () => {
+        ipcRenderer.removeListener("update:status-changed", listener);
+        ipcRenderer.removeListener("update:available", listener);
+      };
     },
   },
   auth: {
