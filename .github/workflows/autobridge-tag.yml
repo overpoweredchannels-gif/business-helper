@@ -46,16 +46,16 @@
 # until the tag is free). The workflow is serialized (concurrency
 # group below) so two pushes cannot race the version computation.
 #
-# Dry-run (safe test): pushing to the test branch below runs this
-# workflow, pushes the tag, and dispatches desktop.yml with
+# Dry-run (safe test): this workflow triggers ONLY on a push to main
+# (a real run — publishes after verification). To test without
+# publishing, dispatch desktop.yml manually (workflow_dispatch) with
 # dry_run=true, so the release stays a DRAFT (invisible to the
-# updater). Delete the draft + tag after verifying. The test-branch
-# trigger is for the first proof run only and must be removed before
-# this branch merges.
+# updater); delete the draft + tag after verifying. The test-branch
+# trigger that used to run this workflow as a dry run was removed
+# before merge.
 #
 # Triggers:
 # - Push to main: compute version + push tag + dispatch release.
-# - Push to fix/autobridge-main-push: dry-run (REMOVE BEFORE MERGE).
 name: AutoBridge tag (compute version + push tag)
 
 on:
@@ -118,9 +118,11 @@ jobs:
           sha="$GITHUB_SHA"
           branch="$GITHUB_REF_NAME"
 
-          # Guard: only main (and the test branch while the dry-run
-          # test trigger is present) may push a tag. Any other branch
-          # exits quietly without creating a release.
+          # Guard: only main may push a tag. Any other branch exits
+          # quietly without creating a release. The test-branch arm
+          # below is retained as a safety net — it is unreachable via
+          # the trigger (only main triggers this workflow), so the
+          # logic is left untouched.
           if [ "$branch" != "main" ] && [ "$branch" != "fix/autobridge-main-push" ]; then
             echo "Branch $branch is not main — not pushing a tag."
             exit 0
@@ -255,7 +257,10 @@ jobs:
           # workflows (GitHub suppresses token-triggered runs), so
           # this dispatch is what actually starts the release.
           # dry_run=false for main (real run — publishes after
-          # verification); dry_run=true otherwise (draft only).
+          # verification); dry_run=true otherwise (draft only). The
+          # otherwise-arm is unreachable via the trigger (only main
+          # triggers this workflow) and is retained as a safety net,
+          # so a non-main run could only ever dry-run.
           if [ "$branch" = "main" ]; then dry="false"; else dry="true"; fi
           gh workflow run desktop.yml --ref "$branch" -f tag="$tag" -f dry_run="$dry"
           echo "Dispatched desktop.yml for $tag (dry_run=$dry)."
