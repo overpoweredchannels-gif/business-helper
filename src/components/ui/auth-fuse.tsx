@@ -674,18 +674,38 @@ function ForgotPasswordForm({ onNavigate, initialEmail }: { onNavigate: (view: A
   );
 }
 
+const VERIFICATION_RESEND_COOLDOWN_SECONDS = 60;
+
 function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view: AuthView, data?: { email?: string }) => void }) {
   const { t } = useRegional();
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
+  const [resendError, setResendError] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [secondsRemaining, setSecondsRemaining] = useState(0);
+  const requestInFlight = React.useRef(false);
+  const nextResendAt = React.useRef(0);
+
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const timer = window.setInterval(() => {
+      const seconds = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+      setSecondsRemaining(seconds);
+      if (seconds === 0) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownUntil]);
 
   const handleResend = useCallback(async () => {
-    if (!email) return;
+    if (!email || requestInFlight.current || Date.now() < nextResendAt.current) return;
+    requestInFlight.current = true;
     setResending(true);
+    setResendError(false);
+    setResent(false);
     try {
       // Same desktop seam as sign-up: the resent link must come back
       // to the app, not the web Site URL.
-      await supabase.auth.resend({
+      const { error } = await supabase.auth.resend({
         type: "signup",
         email,
         options: {
@@ -694,10 +714,16 @@ function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view:
             : undefined,
         },
       });
+      if (error) throw error;
+      const deadline = Date.now() + VERIFICATION_RESEND_COOLDOWN_SECONDS * 1000;
+      nextResendAt.current = deadline;
+      setCooldownUntil(deadline);
+      setSecondsRemaining(VERIFICATION_RESEND_COOLDOWN_SECONDS);
       setResent(true);
     } catch {
-      // silently fail
+      setResendError(true);
     } finally {
+      requestInFlight.current = false;
       setResending(false);
     }
   }, [email]);
@@ -721,9 +747,17 @@ function VerifyEmail({ email, onNavigate }: { email?: string; onNavigate: (view:
       </Alert>
 
       <div className="mt-6 grid gap-3">
-        <Button variant="outline" onClick={handleResend} disabled={resending || resent}>
+        {resendError && (
+          <div role="alert"><Alert>{t('auth.verificationResendFailed')}</Alert></div>
+        )}
+        {resent && (
+          <div role="status"><Alert variant="success">{t('auth.verificationSent')}</Alert></div>
+        )}
+        <Button variant="outline" onClick={handleResend} disabled={!email || resending || secondsRemaining > 0}>
           {resending ? <Loader2 className="size-4 animate-spin" /> : null}
-          {resent ? t('auth.verificationSent') : t('auth.resendVerification')}
+          {secondsRemaining > 0
+            ? t('auth.verificationResendCountdown').replace('{seconds}', String(secondsRemaining))
+            : t('auth.resendVerification')}
         </Button>
       </div>
 
