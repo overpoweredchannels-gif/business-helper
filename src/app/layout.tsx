@@ -11,24 +11,6 @@ import { LANGUAGE_BOOTSTRAP_SCRIPT } from "@/lib/regional/settings";
 import { regionalQaEnabled } from "@/lib/regional/qa";
 import { DISPLAY_ZOOM_BOOTSTRAP_SCRIPT } from "@/lib/preferences/display-zoom";
 
-// Self-hosted latin woff2 files (Google Fonts binaries, committed to the
-// repo). next/font/google is a build-time fetch: Turbopack serialises the
-// font URL Google serves into an internal import query, and Google
-// occasionally serves a URL containing "&" (or with no file extension),
-// which breaks the build with "next/font/google queries have exactly one
-// entry" / "Can't resolve '@vercel/turbopack-next/internal/font/google/font'"
-// (vercel/next.js#99114, still open). Desktop run #8 passed and run #9
-// failed with identical code — the failure depends on what Google serves at
-// build time. Self-hosting removes the network dependency from every build;
-// the families, weights and CSS variables are unchanged. Plus Jakarta Sans
-// is a variable font (wght 200-800); the woff2 covers the 400-700 range.
-const plusJakartaSans = localFont({
-  src: "./fonts/plus-jakarta-sans-latin.woff2",
-  variable: "--font-plus-jakarta",
-  weight: "400 700",
-  display: "swap",
-});
-
 const libreBaskerville = localFont({
   src: "./fonts/libre-baskerville-700-latin.woff2",
   variable: "--font-libre-baskerville",
@@ -52,7 +34,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#23140C",
+  themeColor: "#FFFFFF",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -64,7 +46,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${plusJakartaSans.variable} ${libreBaskerville.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${libreBaskerville.variable} h-full antialiased`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: DISPLAY_ZOOM_BOOTSTRAP_SCRIPT }} />
         {regionalQaEnabled() && <script dangerouslySetInnerHTML={{ __html: LANGUAGE_BOOTSTRAP_SCRIPT }} />}

@@ -30,7 +30,11 @@ const { chromium } = require('@playwright/test');
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await page.getByRole('heading', { name: 'Quick sale', exact: true }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: dashboard fits`);
-      if (width >= 1024) assert.ok(await page.locator('aside:visible nav').evaluate(el => el.scrollHeight <= el.clientHeight + 2), 'primary navigation fits without scrolling');
+      if (width >= 1024) {
+        const navigation = page.locator('aside:visible nav');
+        assert.equal(await navigation.locator('[data-nav-id]').count(), 36);
+        assert.ok(await navigation.evaluate(el => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto'), 'all groups scroll within the sidebar');
+      }
       const quickSaleY = await page.locator('[data-dashboard-widget="quick-sale"]').evaluate(el => el.getBoundingClientRect().top);
       const chartY = await page.locator('[data-dashboard-widget="chart-revenue"]').evaluate(el => el.getBoundingClientRect().top);
       assert.ok(quickSaleY < chartY, 'quick sale precedes analytics');

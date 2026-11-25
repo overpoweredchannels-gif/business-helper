@@ -19,61 +19,62 @@ html { zoom: var(--app-zoom, 1); }
   background: var(--color-card, #fff); color: inherit;
 }
 
-/* Aankh Quiet Ledger: neutral canvas, white flat cards, navy text,
-   restrained blue actions, light navigation. */
+/* Final archive light workspace tokens. */
 @theme inline {
-  /* Quiet Ledger tokens. Text meets 4.5:1 on card/canvas; UI boundaries
-     meet 3:1. See quiet-ledger-visual-release.md for the computed ratios. */
-  --color-background: #F4F6F8;
-  --color-foreground: #172B4D;
+  --color-background: #FFFFFF;
+  --color-foreground: #0D1014;
   --color-card: #FFFFFF;
-  --color-card-foreground: #172B4D;
-  --color-primary: #2457A6;
+  --color-card-foreground: #0D1014;
+  --color-primary: #0066D6;
   --color-primary-foreground: #FFFFFF;
-  --color-primary-hover: #1E4C94;
-  --color-primary-on-dark: #2457A6;
-  --color-primary-light: #EAF0F8;
-  --color-secondary: #F0F4F9;
-  --color-secondary-foreground: #172B4D;
-  --color-muted: #F0F4F9;
-  --color-muted-foreground: #4D5E73;
+  --color-primary-hover: #0056B8;
+  --color-primary-on-dark: #0066D6;
+  --color-primary-light: #E8F0FD;
+  --color-secondary: #F4F7FA;
+  --color-secondary-foreground: #0D1014;
+  --color-muted: #F4F7FA;
+  --color-muted-foreground: #5E646C;
   --color-muted-light: #E4E9EF;
-  --color-accent: #EAF0F8;
-  --color-accent-foreground: #2457A6;
-  --color-destructive: #C1272D;
+  --color-accent: #E8F0FD;
+  --color-accent-foreground: #0066D6;
+  --color-destructive: #D01520;
   --color-destructive-foreground: #FFFFFF;
   --color-destructive-bg: #FDECEC;
   --color-success: #1F7A4D;
   --color-success-foreground: #FFFFFF;
   --color-warning-text: #7A5200;
-  --color-panel-foreground: #172B4D;
-  --color-secondary-strong: #2457A6;
-  --color-accent-strong: #2457A6;
+  --color-panel-foreground: #0D1014;
+  --color-secondary-strong: #0066D6;
+  --color-accent-strong: #0066D6;
   --color-warning: #7A5200;
   --color-warning-foreground: #FFFFFF;
   --color-body: #3D4A5C;
   --color-light-text: #5B6B80;
   --color-panel: #FFFFFF;
-  --color-nav-surface: #F0F4F9;
-  --color-nav-muted: #4D5E73;
-  --color-nav-border: #D8DEE6;
+  --color-nav-surface: #F4F7FA;
+  --color-nav-muted: #5E646C;
+  --color-nav-border: #E0E6EB;
   --color-nav-input: #7A8AA0;
-  --color-nav-active: #EAF0F8;
-  --color-nav-active-foreground: #2457A6;
+  --color-nav-active: #E8F0FD;
+  --color-nav-active-foreground: #0066D6;
   --color-success-light: #E7F3EC;
   --color-warning-light: #FFF3D6;
-  --color-border: #D8DEE6;
+  --color-border: #E0E6EB;
   --color-input: #7A8AA0;
-  --color-ring: #2457A6;
-  --font-ui: var(--font-plus-jakarta);
-  --font-heading: var(--font-plus-jakarta);
+  --color-ring: #0066D6;
+  --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --color-workspace-canvas: #F8FAFD;
+  --color-forest: #11161F;
+  --shadow-workspace-card: 0 1px 2px rgb(15 23 42 / 4%), 0 4px 16px rgb(15 23 42 / 4%);
+  --shadow-workspace-card-hover: 0 2px 4px rgb(15 23 42 / 5%), 0 12px 28px rgb(0 102 214 / 10%);
+  --font-ui: var(--font-system);
+  --font-heading: var(--font-system);
   --font-brand: var(--font-libre-baskerville);
   --font-mono: ui-monospace, monospace;
   --text-small: 0.8125rem;
   --radius: 1rem;
   --radius-xl: 0.625rem;
-  /* Overlay elevation (Quiet Ledger spec D2): the only shadow in the system,
-     used on popovers, menus and the auth card. Cards stay flat. */
+  /* Existing overlay elevation for menus and dialogs. */
   --shadow-overlay: 0 1px 2px rgba(23,43,77,0.06), 0 8px 24px rgba(23,43,77,0.10);
 }
 
@@ -118,6 +119,8 @@ html { zoom: var(--app-zoom, 1); }
 }
 
 .dark {
+  --color-workspace-canvas: var(--color-background);
+  --color-forest: #0D3125;
   --color-background: #0E1626;
   --color-foreground: #E8EEF6;
   --color-card: #16233A;
@@ -192,10 +195,33 @@ body {
 /* Task navigation uses its own palette so light-surface tokens never land on dark. */
 .aankh-sidebar { scrollbar-color: var(--color-nav-border) var(--color-panel); scrollbar-width: thin; }
 .aankh-sidebar nav { scrollbar-color: var(--color-nav-border) var(--color-panel); scrollbar-width: thin; }
-.aankh-nav-group summary::-webkit-details-marker { display: none; }
-.aankh-nav-chevron { transition: transform 180ms ease; }
-.aankh-nav-group[open] > summary { color: var(--color-panel-foreground); background: var(--color-nav-surface); }
-.aankh-nav-group[open] .aankh-nav-chevron { transform: rotate(180deg); }
+.aankh-owner-frame { background: var(--color-workspace-canvas); }
+.aankh-owner-frame .mobile-navigation-panel { width: min(232px, calc(100vw - 2rem)); }
+@keyframes owner-drawer-enter {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes owner-drawer-enter-rtl {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .aankh-owner-frame .mobile-navigation[open] .mobile-navigation-panel { animation: owner-drawer-enter 200ms ease-out; }
+  .aankh-owner-frame .mobile-navigation[open] .mobile-navigation-panel:dir(rtl) { animation-name: owner-drawer-enter-rtl; }
+}
+#aankh-owner-content { --radius-workspace-card: 14px; }
+@media screen {
+  #aankh-owner-content .aankh-card {
+    border-radius: var(--radius-workspace-card);
+    box-shadow: var(--shadow-workspace-card);
+  }
+}
+@media screen and (hover: hover) and (prefers-reduced-motion: no-preference) {
+  #aankh-owner-content .aankh-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-workspace-card-hover);
+  }
+}
 .aankh-nav-item { position: relative; }
 .aankh-nav-item[aria-current="page"]::before { content: ""; position: absolute; inset-inline-start: 0; top: 30%; bottom: 30%; width: 3px; background: var(--color-primary); border-radius: 2px; }
 .aankh-sidebar [data-workspace-help-slot] :where(button) { min-height: 44px; border: 1px solid var(--color-nav-border); background: var(--color-nav-surface); color: var(--color-panel-foreground); font-size: .8125rem; font-weight: 500; }
@@ -226,7 +252,6 @@ body {
   .aankh-object { animation: object-enter 700ms ease-out both; }
   .aankh-chart-bar { transform-box: fill-box; transform-origin: center bottom; animation: chart-enter 500ms ease-out both; }
   .workspace-section { animation: workspace-enter 280ms ease-out; }
-  .aankh-nav-group[open] > div { animation: workspace-enter 180ms ease-out; }
 }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   button.aankh-metric:hover, .aankh-card:focus-within {

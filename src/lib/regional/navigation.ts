@@ -12,6 +12,8 @@ export function navigationLabel(id:string,fallback:string,language:Language){
   return language==='en'?fallback:(labels[id]?.[language==='es'?0:language==='it'?1:2]??fallback);
 }
 const chrome:Record<string,readonly [string,string,string]>={
+  Insights:['Información','Approfondimenti','تجزیات'], AI:['IA','IA','مصنوعی ذہانت'],
+  "Team & Field":['Equipo y campo','Squadra e territorio','ٹیم اور فیلڈ'], Settings:['Configuración','Impostazioni','ترتیبات'],
   Home:['Inicio','Home','ابتدا'],Sell:['Vender','Vendere','فروخت'],Stock:['Existencias','Scorte','اسٹاک'],Buy:['Comprar','Acquistare','خریداری'],Customers:['Clientes','Clienti','گاہک'],Money:['Finanzas','Finanze','مالیات'],More:['Más','Altro','مزید'],
   'Find a page':['Buscar una página','Trova una pagina','صفحہ تلاش کریں'],'Search menu':['Buscar en el menú','Cerca nel menu','مینو میں تلاش کریں'],'Main navigation':['Navegación principal','Navigazione principale','مرکزی نیویگیشن'],'Navigation menu':['Menú de navegación','Menu di navigazione','نیویگیشن مینو'],'Close navigation menu':['Cerrar menú','Chiudi menu','مینو بند کریں'],'No matching pages. Try another name.':['No hay páginas coincidentes. Prueba otro nombre.','Nessuna pagina corrispondente. Prova un altro nome.','کوئی صفحہ نہیں ملا۔ دوسرا نام آزمائیں۔'],
   'Drag to reorder':['Arrastra para reordenar','Trascina per riordinare','ترتیب بدلنے کے لیے گھسیٹیں'],

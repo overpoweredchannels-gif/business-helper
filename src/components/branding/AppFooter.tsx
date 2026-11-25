@@ -16,7 +16,7 @@ export function AppFooter() {
   return (
     <footer className="border-t border-border bg-card print:hidden">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col items-center justify-between gap-2 px-4 py-3 sm:flex-row sm:px-6">
-        <div className="flex items-center gap-2"><img src="/aankh-app-eye.png" alt="Aankh" width={24} height={24} className="size-6" /><p className="text-xs text-muted-foreground">Aankh <span aria-hidden="true">·</span> A product by <a href="https://oppresso.site/" target="_blank" rel="noreferrer" className="font-semibold text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring">OPPRESSO</a></p></div>
+        <div className="flex items-center gap-2"><img src="/aankh-app-eye.png" alt="" width={24} height={24} className="size-6" /><p className="text-xs text-muted-foreground">Aankh <span aria-hidden="true">·</span> <a href="https://oppresso.site/" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">A product by OPPRESSO</a></p></div>
         <nav aria-label="OPPRESSO contact links" className="flex flex-wrap items-center justify-center gap-1">
           {FOOTER_LINKS.map((link, index) => (
             <span key={link.label} className="flex items-center">

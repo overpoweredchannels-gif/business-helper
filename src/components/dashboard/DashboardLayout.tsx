@@ -5,7 +5,7 @@ import { Header } from "./Header";
 import { FloatingAI } from "./FloatingAI";
 import { MobileNavigation } from "./MobileNavigation";
 import { useCallback, useState } from "react";
-import { LanguageSwitcher, useRegional } from "@/components/regional/RegionalProvider";
+import { useRegional } from "@/components/regional/RegionalProvider";
 import { navigationLabel } from "@/lib/regional/navigation";
 import type { SectionId } from "@/lib/tradeos/types";
 import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
@@ -90,12 +90,17 @@ customizeMode,
   canSwitchCurrency,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const closeMenu = useCallback(() => setMobileMenuOpen(false), []);
+  const openAccount = () => {
+    closeMenu();
+    setAccountOpen(true);
+  };
 
-  const {language, enabled: regionalEnabled, ui} = useRegional();
+  const {language} = useRegional();
   const localizedNavigation = navigationItems.map(item => ({...item,label:navigationLabel(item.id,item.label,language)}));
   return (
-    <div className="flex min-h-dvh w-full min-w-0 bg-background">
+    <div className="aankh-owner-frame flex min-h-dvh w-full min-w-0">
       <Sidebar
         items={localizedNavigation}
         activeSection={activeSection}
@@ -104,6 +109,8 @@ customizeMode,
           setMobileMenuOpen(false);
         }}
         organizationName={organizationName}
+        userName={userName}
+        onOpenAccount={openAccount}
         customizeMode={customizeMode}
         hiddenIds={hiddenNavIds}
         canCustomize={canCustomize}
@@ -125,6 +132,8 @@ customizeMode,
                 setMobileMenuOpen(false);
               }}
               organizationName={organizationName}
+              userName={userName}
+              onOpenAccount={openAccount}
               forceVisible
               disableCollapse
               customizeMode={customizeMode}
@@ -158,8 +167,10 @@ customizeMode,
           productStatus={productStatus}
           onViewAllProducts={onViewAllProducts}
           canSwitchCurrency={canSwitchCurrency}
+          accountOpen={accountOpen}
+          onAccountOpenChange={setAccountOpen}
         />
-        <main className="responsive-content min-w-0 flex-1 pb-24 lg:pb-8">
+        <main id="aankh-owner-content" className="responsive-content mx-auto w-full min-w-0 max-w-[1500px] flex-1 pb-24 lg:pb-8">
           {children}
         </main>
       </div>

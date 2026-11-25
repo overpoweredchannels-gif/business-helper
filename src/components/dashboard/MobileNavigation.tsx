@@ -33,8 +33,12 @@ export function MobileNavigation({ open, onClose, children }: {
       onKeyDown={(event) => {
         if (event.key !== "Tab" || !dialog.current) return;
         const controls = Array.from(dialog.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        )).filter(control => control.getClientRects().length > 0);
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), details > summary:first-of-type, [tabindex]:not([tabindex="-1"])',
+        )).filter(control => {
+          const closedGroup = control.closest("details:not([open])");
+          return control.getClientRects().length > 0
+            && (!closedGroup || closedGroup.querySelector(":scope > summary")?.contains(control));
+        });
         const first = controls[0];
         const last = controls[controls.length - 1];
         if (!first || !last) return;

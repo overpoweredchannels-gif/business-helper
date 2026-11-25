@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Search, Bell, Sparkles, Menu, X, LogOut, User, AlertCircle, Package, DollarSign } from "lucide-react";
+import { Search, Bell, Sparkles, Menu, X, LogOut, User, AlertCircle, Package, Home } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { activeSuggestionIndex } from "@/components/invoices/search-selection";
 import { SuggestionPopover, type SuggestionStatus, type SuggestionStatusNote } from "@/components/search/SuggestionPopover";
@@ -9,6 +9,7 @@ import { useSuggestionPlacement } from "@/components/search/useSuggestionPlaceme
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
 import { CurrencySwitcher } from "@/components/regional/CurrencySwitcher";
+import { navigationText } from "@/lib/regional/navigation";
 
 export interface SearchSuggestion {
   id: string;
@@ -58,6 +59,8 @@ interface HeaderProps {
   onNotificationClick?: (notification: Notification) => void;
   /** Owner-only: the header currency switch converts the whole business. */
   canSwitchCurrency?: boolean;
+  accountOpen?: boolean;
+  onAccountOpenChange?: (open: boolean) => void;
 }
 
 function suggestionIcon(type: SearchSuggestion["type"]) {
@@ -127,12 +130,13 @@ function HeaderSearchBox({
 
   return (
     <div ref={anchorRef} className={cn("relative min-w-0", className)}>
-      <div className="flex min-h-11 items-center gap-2 rounded-xl border border-input bg-background px-3 py-2 text-sm text-muted-foreground transition-all focus-within:bg-card focus-within:ring-2 focus-within:ring-ring">
+      <div className="flex min-h-11 items-center gap-2 rounded-xl border border-input bg-muted px-3 text-sm text-muted-foreground transition-colors focus-within:bg-card focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
         <Search className="size-4 shrink-0" />
         <input
           type="text"
           role="combobox"
           data-help-id="header-search"
+          aria-keyshortcuts="Control+k Meta+k"
           aria-label={ui('header.searchLabel')}
           aria-autocomplete="list"
           aria-expanded={showPopover}
@@ -165,8 +169,9 @@ function HeaderSearchBox({
               setOpen(false);
             }
           }}
-          className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
+          className="min-h-11 min-w-0 flex-1 border-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
         />
+        <kbd aria-hidden="true" className="hidden shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground lg:inline">Ctrl/⌘ K</kbd>
       </div>
       {showPopover && (
         <SuggestionPopover
@@ -218,16 +223,42 @@ export function Header({
   notifications = [],
   onNotificationClick,
   canSwitchCurrency,
+  accountOpen,
+  onAccountOpenChange,
 }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [localProfileOpen, setLocalProfileOpen] = useState(false);
+  const profileOpen = accountOpen ?? localProfileOpen;
+  const setProfileOpen = onAccountOpenChange ?? setLocalProfileOpen;
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const notifTriggerRef = useRef<HTMLButtonElement>(null);
   const profileTriggerRef = useRef<HTMLButtonElement>(null);
-  const { ui } = useRegional();
+  const headerRef = useRef<HTMLElement>(null);
+  const { ui, language } = useRegional();
+
+  useEffect(() => {
+    if (profileOpen) profileTriggerRef.current?.focus();
+  }, [profileOpen]);
+
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.altKey || event.shiftKey
+        || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k"
+        || document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
+      const input = Array.from(headerRef.current?.querySelectorAll<HTMLInputElement>('[data-help-id="header-search"]') ?? [])
+        .find(field => field.getClientRects().length > 0);
+      event.preventDefault();
+      setProfileOpen(false);
+      setNotifOpen(false);
+      if (input) input.focus();
+      else setSearchOpen(true);
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, [setProfileOpen]);
 
   // Escape handler for popups: closes when focus is on trigger, help button,
   // or popup content. Returns focus to trigger. Does not intercept when a
@@ -328,8 +359,8 @@ export function Header({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-card border-b border-border">
-      <div className="flex min-h-16 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:px-6 lg:px-8">
+    <header ref={headerRef} className="sticky top-0 z-30 border-b border-border bg-card">
+      <div className="flex min-h-16 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:px-6 lg:min-h-[72px] lg:px-8">
         {/* Mobile menu + Logo */}
         <div className="flex min-w-0 items-center gap-1 sm:gap-3 lg:hidden">
           <button
@@ -343,27 +374,23 @@ export function Header({
           <button
             type="button"
             onClick={onGoHome}
-            className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <img src="/aankh-app-eye.png" alt="Aankh logo" width={28} height={28} className="size-7 shrink-0 rounded-md" />
             <span className="font-brand font-bold text-sm text-foreground hidden min-[375px]:inline">Aankh</span>
           </button>
         </div>
 
-        {/* Brand and organization identity */}
         <div className="hidden shrink-0 items-center gap-3 lg:flex">
           <button
             type="button"
             onClick={onGoHome}
-            className="flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            aria-label={navigationText("Home", language)}
+            className="grid size-11 place-items-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <img src="/aankh-app-eye.png" alt="Aankh" width={36} height={36} className="size-9" />
-            <span className="text-left">
-              <span className="block font-brand text-lg font-bold leading-tight">Aankh</span>
-              <span className="mt-1 block max-w-40 truncate text-[11px] text-muted-foreground">{organizationName}</span>
-            </span>
+            <Home aria-hidden="true" className="size-5" />
           </button>
-          {sectionLabel && <span className="ms-2 border-s border-border ps-4 text-sm font-medium text-body">{sectionLabel}</span>}
+          {sectionLabel && <span className="max-w-40 truncate text-sm font-medium text-body">{sectionLabel}</span>}
         </div>
 
           <HeaderSearchBox
@@ -376,7 +403,7 @@ export function Header({
             onSubmitQuery={handleSubmitQuery}
             productStatus={productStatus}
             onViewAllProducts={onViewAllProducts}
-            className="hidden min-w-0 max-w-xl flex-1 lg:block"
+            className="hidden min-w-0 max-w-[620px] flex-1 lg:block"
           />
         {/* Right: Search, AI, Notifications, Profile */}
         <div className="flex items-center gap-1">
@@ -418,6 +445,7 @@ export function Header({
               onClick={() => setNotifOpen(!notifOpen)}
               data-help-id="header-notifications"
               aria-label={ui('header.notifications')}
+              aria-expanded={notifOpen}
               className="relative size-11 shrink-0 flex items-center justify-center rounded-lg text-foreground/70 hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <Bell className="size-4.5" />
@@ -448,7 +476,7 @@ export function Header({
                             setNotifOpen(false);
                           }}
                           className={cn(
-                            "w-full text-left flex gap-3 px-3 py-2.5 rounded-lg mb-0.5 border-l-2 transition-colors hover:bg-muted",
+                            "mb-0.5 flex min-h-11 w-full gap-3 rounded-lg border-s-2 px-3 py-2.5 text-start transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                             severityStyles[n.severity || "info"],
                           )}
                         >
@@ -456,7 +484,7 @@ export function Header({
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
                             {n.description && <p className="text-xs text-light-text mt-0.5 line-clamp-2">{n.description}</p>}
-                            {n.time && <p className="text-[10px] text-light-text/70 mt-0.5">{n.time}</p>}
+                            {n.time && <p className="mt-0.5 text-xs text-muted-foreground">{n.time}</p>}
                           </div>
                         </button>
                       );
@@ -469,7 +497,7 @@ export function Header({
                     onNotificationClick?.({ id: "notifications-center", title: ui('header.viewAllNotifications'), section: "notifications" });
                     setNotifOpen(false);
                   }}
-                  className="w-full text-center rounded-lg px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
+                  className="min-h-11 w-full rounded-lg px-3 py-2 text-center text-xs font-medium text-primary transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   {ui('header.viewAllNotifications')}
                 </button>
@@ -487,11 +515,12 @@ export function Header({
               ref={profileTriggerRef}
               onClick={() => setProfileOpen(!profileOpen)}
               data-help-id="header-profile"
+              aria-label={userName || ui('header.userFallback')}
               aria-expanded={profileOpen}
               className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="size-3.5 text-primary" />
+              <div aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-light text-xs font-semibold text-primary">
+                {Array.from(userName?.trim() ?? "")[0]?.toLocaleUpperCase() || <User className="size-4" />}
               </div>
               <span className="hidden xl:inline text-sm font-medium max-w-[160px] truncate"><bdi>{userName || ui('header.userFallback')}</bdi></span>
             </button>
@@ -510,7 +539,7 @@ export function Header({
                   <div className="flex flex-wrap gap-2 border-b border-border p-3 xl:hidden"><LanguageSwitcher /><CurrencySwitcher canSwitch={canSwitchCurrency} /></div>
                   <button
                     onClick={onLogout}
-                    className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive hover:bg-destructive/5 transition-colors"
+                    className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <LogOut className="size-4" />
                     {ui('header.signOut')}
