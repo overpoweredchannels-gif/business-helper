@@ -1,5 +1,6 @@
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import { excludeVoidedPayments } from "../payments/voided-payments";
+import { isPayablePurchasePaymentType } from "../purchases/returns-offset";
 import { buildCustomerLedger } from "./customer-ledger";
 import { buildSupplierLedger } from "./supplier-ledger";
 
@@ -14,7 +15,10 @@ import { buildSupplierLedger } from "./supplier-ledger";
  * Semantics documented up front:
  * - Cash balance = cash sales revenue + customer payments - cash purchases
  *   - supplier payments - expenses. The data contract has no opening bank
- *   balance, so "bank balance" is reported as not tracked.
+ *   balance, so "bank balance" is reported as not tracked. Supplier
+ *   payments explicitly allocated to paid-at-entry (cash/card) purchases
+ *   are NOT counted again here — the cash purchase total already counts
+ *   that money once (see ignoredCashPurchasePayments).
  * - Gross profit per sale item = (selling price - cost) * quantity, where cost
  *   is the purchase_price_snapshot, falling back to the product's last
  *   purchase price when no snapshot was recorded.
@@ -56,6 +60,11 @@ export interface FinancialLedger {
     cashOut: number;
     bankTracked: boolean;
     bankBalance: number | null;
+    // Cash vs credit (2026-11-25): supplier payments recorded against
+    // paid-at-entry (cash/card) purchases. They are ignored in cashOut
+    // (the cash purchase total already counts that money once) and
+    // reported here so the anomaly stays visible instead of vanishing.
+    ignoredCashPurchasePayments: { count: number; amount: number };
   };
   receivables: { total: number; overdue: number; count: number };
   payables: { total: number; overdue: number; count: number };
@@ -304,8 +313,40 @@ export function buildFinancialLedger(data: MemoryWriterRawData, now: Date = new 
   for (const cp of excludeVoidedPayments(customerPayments)) {
     cashIn += toNumber(cp.amount);
   }
+  // Cash vs credit (2026-11-25): a payment recorded against a
+  // paid-at-entry (cash/card) purchase is money already counted — the
+  // cash purchase totals below add it once. Counting the payment row
+  // too double-counts it. Only the part of each payment explicitly
+  // allocated to paid-at-entry purchases is ignored; the rest (credit
+  // invoices, and the unallocated legacy pool, which cannot be tied to
+  // any invoice) still counts as cash out. The ignored allocations are
+  // reported, not hidden: on production they are 8 allocations /
+  // €663.48 — the supplier-payment screen used to invite recording them.
+  const paidAtEntryPurchaseIds = new Set(
+    purchaseTransactions
+      .filter((tx) => !isPayablePurchasePaymentType(tx.payment_type ?? null))
+      .map((tx) => String(tx.id))
+  );
+  const voidedSupplierPaymentIds = new Set(
+    supplierPayments.filter((payment) => payment.voided_at).map((payment) => String(payment.id))
+  );
+  let ignoredCashPurchasePaymentCount = 0;
+  let ignoredCashPurchasePaymentAmount = 0;
+  const ignoredByPaymentId = new Map<string, number>();
+  for (const allocation of data.supplierPaymentAllocations ?? []) {
+    if (voidedSupplierPaymentIds.has(String(allocation.supplier_payment_id ?? ""))) continue;
+    if (!paidAtEntryPurchaseIds.has(String(allocation.purchase_transaction_id ?? ""))) continue;
+    const amount = Math.max(0, toNumber(allocation.amount));
+    ignoredCashPurchasePaymentCount += 1;
+    ignoredCashPurchasePaymentAmount += amount;
+    const paymentId = String(allocation.supplier_payment_id ?? "");
+    ignoredByPaymentId.set(paymentId, (ignoredByPaymentId.get(paymentId) ?? 0) + amount);
+  }
   for (const sp of excludeVoidedPayments(supplierPayments)) {
-    cashOut += toNumber(sp.amount);
+    cashOut += Math.max(
+      0,
+      toNumber(sp.amount) - (ignoredByPaymentId.get(String(sp.id)) ?? 0)
+    );
   }
   for (const tx of purchaseTransactions) {
     if (String(tx.payment_type ?? "").toLowerCase() === "cash") {
@@ -339,6 +380,10 @@ export function buildFinancialLedger(data: MemoryWriterRawData, now: Date = new 
       cashOut: cashOut + totalExpenseOut,
       bankTracked: false,
       bankBalance: null,
+      ignoredCashPurchasePayments: {
+        count: ignoredCashPurchasePaymentCount,
+        amount: ignoredCashPurchasePaymentAmount,
+      },
     },
     receivables: {
       total: customerLedger.totals.totalOutstanding,

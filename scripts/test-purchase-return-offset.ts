@@ -71,11 +71,14 @@ assert.equal(
   "A confirmed, invoice-linked return of 2 × 100 must offset the invoice by 200"
 );
 
+// Cash vs credit (2026-11-25): these scenarios net a payable, so they
+// are credit invoices — a cash invoice is paid at entry with remaining 0.
 const scenarioNet = netPurchaseInvoiceAllocation({
   purchaseTotal: 500,
   returnedAmount: scenarioMap[INVOICE_TX] ?? 0,
   explicitAllocatedAmount: 0,
   legacyPoolAvailable: 0,
+  paymentType: "credit",
 });
 assert.equal(scenarioNet.remainingPayableAmount, 300, "Scenario remaining must be 300, not stay at 500");
 assert.equal(scenarioNet.returnedAmount, 200);
@@ -88,6 +91,7 @@ const partPaidNet = netPurchaseInvoiceAllocation({
   returnedAmount: scenarioMap[INVOICE_TX] ?? 0,
   explicitAllocatedAmount: 200,
   legacyPoolAvailable: 0,
+  paymentType: "credit",
 });
 assert.equal(partPaidNet.remainingPayableAmount, 100, "Part-paid: 500 − 200 returned − 200 paid = 100");
 assert.equal(partPaidNet.paidAmount, 200);
@@ -100,6 +104,7 @@ const controlNet = netPurchaseInvoiceAllocation({
   returnedAmount: 0,
   explicitAllocatedAmount: 0,
   legacyPoolAvailable: 0,
+  paymentType: "credit",
 });
 assert.equal(controlNet.remainingPayableAmount, 500, "Control: total 500 − paid 0 = 500");
 
@@ -195,6 +200,7 @@ const overReturnNet = netPurchaseInvoiceAllocation({
   returnedAmount: 600,
   explicitAllocatedAmount: 0,
   legacyPoolAvailable: 0,
+  paymentType: "credit",
 });
 assert.equal(overReturnNet.remainingPayableAmount, 0, "Over-return floors at 0 — no negative payable");
 
@@ -203,6 +209,7 @@ const poolNet = netPurchaseInvoiceAllocation({
   returnedAmount: 200,
   explicitAllocatedAmount: 100,
   legacyPoolAvailable: 300,
+  paymentType: "credit",
 });
 assert.equal(poolNet.fallbackAllocatedAmount, 200, "Legacy pool covers only what returns+explicit leave");
 assert.equal(poolNet.remainingPayableAmount, 0);

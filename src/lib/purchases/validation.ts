@@ -12,6 +12,20 @@ export const MAX_BATCH_NUMBER_LENGTH = 100;
 export const MAX_SUPPLIER_NAME_LENGTH = 150;
 export const MAX_TEXT_FIELD_LENGTH = 100;
 
+// Cash vs credit (2026-11-25, Rule 1): the purchase form offers exactly
+// these two payment types, and the server rejects anything else (see
+// validatePurchaseTransactionInput below). "cash" means paid at entry —
+// the purchase itself is the payment, and no payable is ever created;
+// "credit" (udhaar) means not yet paid, and only then does a payable
+// show. Payment METHOD recording (bank transfer / Easypaisa / JazzCash /
+// online) is a separate scope — there is no method field yet, so the
+// form must not offer one it cannot store.
+export const PURCHASE_PAYMENT_TYPE_OPTIONS: ReadonlyArray<"cash" | "credit"> = [
+  "cash",
+  "credit",
+];
+export const PURCHASE_PAYMENT_TYPE_DEFAULT = "cash" as const;
+
 export interface ValidationResult {
   ok: boolean;
   errors: string[];

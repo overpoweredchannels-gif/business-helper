@@ -81,11 +81,46 @@ export function computeReturnedValueByPurchaseTransaction(
   );
 }
 
+// Cash vs credit (2026-11-25, Rule 1): only an explicit "credit"
+// purchase is a payable. Cash and card are paid at the moment of the
+// purchase — "Paid by construction" (Rule 1) — and contribute 0 to
+// outstanding. Anything else (missing, null, or an unrecognised value)
+// is treated as paid at entry too, but it is NOT a clean value: it is
+// logged as an anomaly so a bad write can never silently hide a payable.
+//
+// This normalization is the single place the rule lives. The tile
+// engine, the supplier-payment candidates, the supplier statement and
+// the brain all call these helpers — never re-implement the check.
+export type PurchasePaymentType = "credit" | "cash" | "card" | "unknown";
+
+export function normalizePurchasePaymentType(value: unknown): PurchasePaymentType {
+  if (typeof value !== "string") return "unknown";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "credit") return "credit";
+  if (normalized === "cash") return "cash";
+  if (normalized === "card") return "card";
+  return "unknown";
+}
+
+// Positive match: ONLY an explicit credit purchase is payable. Every
+// other value — cash, card, unknown, null — is paid at entry.
+export function isPayablePurchasePaymentType(value: unknown): boolean {
+  return normalizePurchasePaymentType(value) === "credit";
+}
+
+export function isPaidAtEntryPurchasePaymentType(value: unknown): boolean {
+  return !isPayablePurchasePaymentType(value);
+}
+
 export interface PurchaseInvoiceAllocationInput {
   purchaseTotal: number;
   returnedAmount: number;
   explicitAllocatedAmount: number;
   legacyPoolAvailable: number;
+  // The invoice's payment_type. When it is missing or unrecognised the
+  // invoice is treated as paid at entry and an anomaly is logged — a
+  // missing type must never silently become a payable.
+  paymentType?: string | null;
 }
 
 export interface PurchaseInvoiceAllocationNet {
@@ -95,6 +130,39 @@ export interface PurchaseInvoiceAllocationNet {
   paidAmount: number;
   remainingPayableAmount: number;
   legacyPoolRemaining: number;
+  // True when the invoice was paid at entry (cash, card, or an
+  // unknown/missing type) — it can never be a payable.
+  paidAtEntry: boolean;
+  // Explicit payment allocations recorded against a paid-at-entry
+  // invoice: money recorded twice (once at entry, once as a payment).
+  // The engine ignores them for the payable; the brain reports the
+  // count so the anomaly stays visible instead of vanishing.
+  ignoredAllocatedAmount: number;
+}
+
+// Per-supplier outstanding from the tile's payables stats — the
+// Suppliers list and the suppliers export read this, never the dead
+// suppliers.outstanding_balance column (always 0.00: no trigger and no
+// writer ever updates it).
+export function payableBySupplierId(
+  stats: ReadonlyArray<{ supplierId: string; remainingPayable: number }>
+): Record<string, number> {
+  return stats.reduce<Record<string, number>>((byId, stat) => {
+    byId[stat.supplierId] = Math.max(0, stat.remainingPayable);
+    return byId;
+  }, {});
+}
+
+// The credit a paid-at-entry purchase posts on the supplier statement:
+// the net amount paid at entry (total minus confirmed returns). A
+// credit purchase posts 0 — it is still owed. The confirmed return
+// itself is a separate credit entry, so netting it here keeps the
+// statement's balance effect of a cash purchase at exactly zero.
+export function paidAtEntryCreditForPurchase(net: {
+  paidAtEntry: boolean;
+  paidAmount: number;
+}): number {
+  return net.paidAtEntry ? Math.max(0, net.paidAmount) : 0;
 }
 
 // Per-invoice netting for the payables engine: the returned amount
@@ -102,11 +170,36 @@ export interface PurchaseInvoiceAllocationNet {
 // legacy unallocated-payment pool only covers what is still owed after
 // both. Remaining is floored at 0 — an over-return creates no negative
 // payable (there is no supplier-credit ledger to hold it).
+//
+// Cash rule: a paid-at-entry invoice (cash, card, unknown/missing
+// type) is never a payable — remaining is 0, the legacy pool is not
+// consumed by it (the pool stays available for credit invoices), and
+// paidAmount is the net amount paid at entry (total minus confirmed
+// returns). Explicit allocations recorded against it are reported as
+// ignoredAllocatedAmount: the money was already counted at entry.
 export function netPurchaseInvoiceAllocation(
   input: PurchaseInvoiceAllocationInput
 ): PurchaseInvoiceAllocationNet {
   const returnedAmount = Math.max(0, input.returnedAmount);
   const explicitAllocatedAmount = Math.max(0, input.explicitAllocatedAmount);
+  const paymentType = normalizePurchasePaymentType(input.paymentType);
+  if (paymentType !== "credit") {
+    if (paymentType === "unknown") {
+      console.warn(
+        "[cash-vs-credit] purchase invoice payment_type is missing or unknown; treating as paid at entry"
+      );
+    }
+    return {
+      returnedAmount,
+      explicitAllocatedAmount,
+      fallbackAllocatedAmount: 0,
+      paidAmount: Math.max(0, input.purchaseTotal - returnedAmount),
+      remainingPayableAmount: 0,
+      legacyPoolRemaining: Math.max(0, input.legacyPoolAvailable),
+      paidAtEntry: true,
+      ignoredAllocatedAmount: explicitAllocatedAmount,
+    };
+  }
   const remainingAfterExplicitAllocation = Math.max(
     0,
     input.purchaseTotal - returnedAmount - explicitAllocatedAmount
@@ -128,5 +221,7 @@ export function netPurchaseInvoiceAllocation(
       0,
       input.legacyPoolAvailable - fallbackAllocatedAmount
     ),
+    paidAtEntry: false,
+    ignoredAllocatedAmount: 0,
   };
 }

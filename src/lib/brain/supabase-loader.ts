@@ -20,6 +20,7 @@ export async function loadRawBusinessData(
     expensesRes,
     customerPaymentsRes,
     supplierPaymentsRes,
+    supplierAllocationsRes,
     tasksRes,
     alertsRes,
   ] = await Promise.all([
@@ -34,6 +35,7 @@ export async function loadRawBusinessData(
     supabase.from("expenses").select("id, expense_type, amount, notes, expense_date, created_at, supplier_id, customer_id").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("customer_payments").select("id, customer_id, amount, payment_date, voided_at, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("supplier_payments").select("id, supplier_id, amount, payment_date, voided_at, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+    supabase.from("supplier_payment_allocations").select("id, supplier_payment_id, purchase_transaction_id, amount").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("tasks").select("id, title, task_type, priority, status, due_date, created_at, completed_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("ai_alerts").select("id, alert_type, title, summary, severity, status, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
   ]);
@@ -53,6 +55,7 @@ export async function loadRawBusinessData(
     { name: "expenses", core: false, error: expensesRes.error },
     { name: "customer_payments", core: false, error: customerPaymentsRes.error },
     { name: "supplier_payments", core: false, error: supplierPaymentsRes.error },
+    { name: "supplier_payment_allocations", core: false, error: supplierAllocationsRes.error },
     { name: "tasks", core: false, error: tasksRes.error },
     { name: "ai_alerts", core: false, error: alertsRes.error },
   ];
@@ -124,6 +127,9 @@ export async function loadRawBusinessData(
     expenses: (expensesRes.data ?? []) as MemoryWriterRawData["expenses"],
     customerPayments: (customerPaymentsRes.data ?? []) as MemoryWriterRawData["customerPayments"],
     supplierPayments: (supplierPaymentsRes.data ?? []) as MemoryWriterRawData["supplierPayments"],
+    // Cash vs credit (2026-11-25): the tile engines' input for the
+    // cash-out ignore — explicit allocations to paid-at-entry purchases.
+    supplierPaymentAllocations: (supplierAllocationsRes.data ?? []) as MemoryWriterRawData["supplierPaymentAllocations"],
     tasks: (tasksRes.data ?? []).map((t: Record<string, unknown>) => ({
       id: String(t.id),
       title: String(t.title ?? ""),

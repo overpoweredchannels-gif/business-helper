@@ -94,6 +94,11 @@ export interface PurchaseTransaction {
   purchase_date?: string | null;
   expense_review_status: string | null;
   expense_reviewed_at: string | null;
+  // Cash vs credit (2026-11-25): "cash" | "credit" — the tile engine,
+  // the payment candidates and the supplier statement all read it.
+  // Optional: older rows and rows fetched before this select change do
+  // not carry it; a missing value is treated as paid at entry.
+  payment_type?: string | null;
   // Slice S6 — dedupe key for the history merge: the purchase RPC
   // stores the client idempotency key on the row. Optional: older
   // rows and rows fetched before this select change do not carry it.
@@ -543,6 +548,12 @@ export interface SupplierPurchasePaymentAllocation {
   fallbackAllocatedAmount: number;
   paidAmount: number;
   remainingPayableAmount: number;
+  // Cash vs credit (2026-11-25): true when the invoice was paid at entry
+  // (cash, card, or an unknown/missing type) — it can never be a payable.
+  paidAtEntry: boolean;
+  // Explicit allocations recorded against a paid-at-entry invoice: money
+  // recorded twice. Ignored for the payable; reported, not hidden.
+  ignoredAllocatedAmount: number;
 }
 
 export interface SupplierLedgerEntry {

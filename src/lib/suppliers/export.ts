@@ -23,6 +23,12 @@ export type SupplierExportOptions = {
   creditSummary: (supplier: Supplier) => string;
   /** The list's over-limit flags line for a supplier. */
   overLimitSummary: (supplier: Supplier) => string;
+  /** Cash vs credit (2026-11-25): the engine's per-supplier remaining
+   * payable, the same values the list renders. When given, the export
+   * reads it — never the dead suppliers.outstanding_balance column
+   * (always 0.00) — so the list and the export can never drift apart.
+   * When omitted, the stored column is used as before. */
+  outstandingBySupplierId?: Record<string, number>;
 };
 
 export const buildSupplierExportRows = (
@@ -35,7 +41,10 @@ export const buildSupplierExportRows = (
     Phone: supplier.phone ?? options.noneLabel,
     City: supplier.city ?? options.noneLabel,
     Area: supplier.area ?? options.noneLabel,
-    "Outstanding Balance": safeNumber(supplier.outstanding_balance ?? 0),
+    "Outstanding Balance":
+      options.outstandingBySupplierId?.[supplier.id] !== undefined
+        ? safeNumber(options.outstandingBySupplierId[supplier.id])
+        : safeNumber(supplier.outstanding_balance ?? 0),
     "Last Purchase": supplier.last_purchase_date
       ? options.formatDate(supplier.last_purchase_date)
       : options.noneLabel,

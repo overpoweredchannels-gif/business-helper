@@ -127,8 +127,28 @@ function main() {
     ["First", "Second"],
   );
 
+  // ─── 7. Cash vs credit (2026-11-25): with outstandingBySupplierId the
+  // export reads the engine's per-supplier remaining payable — the same
+  // values the list renders — instead of the dead stored column. A
+  // supplier whose stored column says 1234.5 but whose engine payable
+  // is 0 exports 0; one the map omits falls back to the stored column.
+  const engineRows = buildSupplierExportRows(
+    [
+      { ...supplierBase, id: "s6", supplier_name: "Engine Zero" },
+      { ...supplierBase, id: "s7", supplier_name: "Engine Value", outstanding_balance: 10 },
+      { ...supplierBase, id: "s8", supplier_name: "No Engine Entry", outstanding_balance: 77 },
+    ],
+    {
+      ...options,
+      outstandingBySupplierId: { s6: 0, s7: 450 },
+    },
+  );
+  assert.equal(engineRows[0]?.["Outstanding Balance"], 0);
+  assert.equal(engineRows[1]?.["Outstanding Balance"], 450);
+  assert.equal(engineRows[2]?.["Outstanding Balance"], 77);
+
   console.log(
-    "Suppliers export tests passed: list-mirroring columns (incl. Area + Over-limit), None labels, Archived status, raw outstanding, empty list.",
+    "Suppliers export tests passed: list-mirroring columns (incl. Area + Over-limit), None labels, Archived status, raw outstanding, empty list, engine outstanding override.",
   );
 }
 

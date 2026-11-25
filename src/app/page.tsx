@@ -87,7 +87,7 @@ import {
   voidPaymentAtomic,
   type ReconcileRow,
 } from "@/lib/payments/submit-payment";
-import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, netPurchaseInvoiceAllocation } from "@/lib/purchases/returns-offset";
+import { computePurchaseReturnValueByReturnId, computeReturnedValueByPurchaseTransaction, isPayablePurchasePaymentType, netPurchaseInvoiceAllocation, paidAtEntryCreditForPurchase, payableBySupplierId } from "@/lib/purchases/returns-offset";
 import { buildReturnPrefillLines } from "@/lib/returns/prefill";
 import { cancelPurchaseReturnAtomic, cancelSalesReturnAtomic } from "@/lib/returns/cancel-return";
 
@@ -304,6 +304,8 @@ import {
   stockStatusFor,
 } from "@/lib/inventory/service";
 import {
+  PURCHASE_PAYMENT_TYPE_DEFAULT,
+  PURCHASE_PAYMENT_TYPE_OPTIONS,
   validatePurchaseOrderInput,
   validateReceiveQuantities,
   validatePurchaseReturnInput,
@@ -785,6 +787,12 @@ export default function Home() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [purchaseLines, setPurchaseLines] = useState<PurchaseLine[]>([]);
+  // Cash vs credit (2026-11-25): the purchase form's payment-type
+  // selector. "cash" means paid at entry (no payable); "credit" means
+  // not yet paid (payable). Default cash — the previous behaviour was a
+  // hardcoded "cash", so the default keeps every existing flow identical
+  // until the user chooses credit.
+  const [purchasePaymentType, setPurchasePaymentType] = useState<"cash" | "credit">(PURCHASE_PAYMENT_TYPE_DEFAULT);
   const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
@@ -6774,7 +6782,7 @@ export default function Home() {
         try {
           const { data, error } = await supabase
             .from("suppliers")
-            .select("id, supplier_name, contact_person, phone, whatsapp, city, area, notes, credit_limit, credit_days, credit_policy, preferred_payment_method, allow_over_limit, allow_overdue_sales, outstanding_balance, last_purchase_date, deleted_at, is_active")
+            .select("id, supplier_name, contact_person, phone, whatsapp, city, area, notes, credit_limit, credit_days, credit_policy, preferred_payment_method, allow_over_limit, allow_overdue_sales, last_purchase_date, deleted_at, is_active")
             .eq("organization_id", orgId)
             .order("supplier_name", { ascending: true });
           if (error) throw error;
@@ -6829,7 +6837,7 @@ export default function Home() {
         try {
           const { data, error } = await supabase
             .from("purchase_transactions")
-            .select("id, supplier_id, invoice_number, created_at, purchase_date, expense_review_status, expense_reviewed_at, total_amount, request_key")
+            .select("id, supplier_id, invoice_number, created_at, purchase_date, payment_type, expense_review_status, expense_reviewed_at, total_amount, request_key")
             .eq("organization_id", orgId)
             .order("created_at", { ascending: false });
           if (error) throw error;
@@ -7398,6 +7406,10 @@ export default function Home() {
   const [receiveLoading, setReceiveLoading] = useState(false);
   const [receiveMessage, setReceiveMessage] = useState<string | null>(null);
   const [receiveError, setReceiveError] = useState<string | null>(null);
+  // Cash vs credit (2026-11-25): same payment-type choice as the
+  // purchase form — a received PO is a purchase, so it must not
+  // hardcode "cash" either.
+  const [receivePaymentType, setReceivePaymentType] = useState<"cash" | "credit">(PURCHASE_PAYMENT_TYPE_DEFAULT);
 
   const [purchaseReturns, setPurchaseReturns] = useState<PurchaseReturn[]>([]);
   const [purchaseReturnsLoading, setPurchaseReturnsLoading] = useState(false);
@@ -11338,7 +11350,7 @@ export default function Home() {
         supplier_id: selectedSupplierId,
         supplier_invoice_number: supplierInvoiceNumber.trim() || null,
         purchase_date: toDateInputValue(new Date()),
-        payment_type: "cash",
+        payment_type: purchasePaymentType,
         lines: invoiceLines,
       };
 
@@ -11371,6 +11383,7 @@ export default function Home() {
         setSelectedSupplierId(null);
         setSupplierInvoiceNumber("");
         setPurchaseLines([]);
+        setPurchasePaymentType(PURCHASE_PAYMENT_TYPE_DEFAULT);
         await refreshPendingPurchases();
         return true;
       };
@@ -11423,6 +11436,7 @@ export default function Home() {
       setSelectedSupplierId(null);
       setSupplierInvoiceNumber("");
       setPurchaseLines([]);
+      setPurchasePaymentType(PURCHASE_PAYMENT_TYPE_DEFAULT);
       fetchPurchaseTransactions();
       fetchPurchaseItems();
       fetchProducts();
@@ -11696,7 +11710,7 @@ export default function Home() {
     try {
       const result = await createPurchase({
         supplier_id: po.supplier_id, purchase_order_id: receivePoId,
-        purchase_date: toDateInputValue(new Date()), payment_type: "cash",
+        purchase_date: toDateInputValue(new Date()), payment_type: receivePaymentType,
         notes: t('page.receivedPoNote').replace('{number}', po.po_number),
         lines: receiveLines.filter((line) => Number(line.receiveQuantity) > 0).map((line) => ({
           order_item_id: line.itemId, product_id: line.productId, quantity: Number(line.receiveQuantity),
@@ -11709,6 +11723,7 @@ export default function Home() {
       setReceiveMessage(t('page.poReceived').replace('{status}', nextStatus === "received" ? t('page.fully') : t('page.partially')).replace('{number}', invoiceNumber));
       setReceivePoId(null);
       setReceiveLines([]);
+      setReceivePaymentType(PURCHASE_PAYMENT_TYPE_DEFAULT);
       await fetchPurchaseOrders();
       await fetchPurchaseOrderItems();
       fetchPurchaseTransactions();
@@ -13683,12 +13698,18 @@ export default function Home() {
     .reduce<Record<string, SupplierPurchasePaymentAllocation>>((allocations, transaction) => {
       const purchaseTotal = purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0;
       const availableLegacyPool = legacySupplierPaymentPoolBySupplier[transaction.supplier_id] ?? 0;
+      // Cash vs credit (2026-11-25): the payment type goes into the
+      // engine's input normalization — only an explicit "credit"
+      // invoice can carry a remaining payable; cash/card (and an
+      // unknown/missing type) are paid at entry with remaining 0, and
+      // the pool is not consumed by them.
       const net = netPurchaseInvoiceAllocation({
         purchaseTotal,
         returnedAmount: returnedValueByPurchaseTransaction[transaction.id] ?? 0,
         explicitAllocatedAmount:
           supplierAllocatedAmountsByPurchaseTransaction[transaction.id] ?? 0,
         legacyPoolAvailable: availableLegacyPool,
+        paymentType: transaction.payment_type ?? null,
       });
 
       legacySupplierPaymentPoolBySupplier[transaction.supplier_id] =
@@ -13700,6 +13721,8 @@ export default function Home() {
         fallbackAllocatedAmount: net.fallbackAllocatedAmount,
         paidAmount: net.paidAmount,
         remainingPayableAmount: net.remainingPayableAmount,
+        paidAtEntry: net.paidAtEntry,
+        ignoredAllocatedAmount: net.ignoredAllocatedAmount,
       };
       return allocations;
     }, {});
@@ -14142,6 +14165,15 @@ export default function Home() {
     purchaseDate: string | null;
   }> = purchaseTransactions
     .filter((transaction) => transaction.supplier_id === selectedSupplierPaymentId)
+    // Cash vs credit (2026-11-25): only explicit credit purchases are
+    // payable candidates — the same filter the customer side already
+    // applies (unpaidCreditInvoicesForSelectedPaymentCustomer). A cash
+    // purchase is paid at entry, so listing it here invited recording
+    // payments against an already-paid invoice (the €1,813.55 on
+    // production). The engine already gives cash a remaining of 0, but
+    // the explicit filter also covers the edit path, where the payment
+    // being edited is added back as headroom.
+    .filter((transaction) => isPayablePurchasePaymentType(transaction.payment_type ?? null))
     .map((transaction) => {
       const allocation = supplierPaymentAllocationByPurchaseTransaction[transaction.id];
       const purchaseTotal = allocation?.purchaseTotal ?? purchaseInvoiceTotalsByTransaction[transaction.id] ?? 0;
@@ -14526,6 +14558,11 @@ export default function Home() {
       remainingPayable,
     };
   });
+  // Cash vs credit (2026-11-25): the engine's per-supplier remaining
+  // payable, keyed by supplier — the Suppliers list and the suppliers
+  // export read this instead of the dead suppliers.outstanding_balance
+  // column (always 0.00: no trigger and no writer ever updates it).
+  const payablesRemainingBySupplierId = payableBySupplierId(payablesStats);
   const selectedSupplierLedgerPurchaseTransactions = purchaseTransactions.filter(
     (transaction) => transaction.supplier_id === selectedSupplierLedgerId
   );
@@ -14550,6 +14587,14 @@ export default function Home() {
   const supplierLedgerRawEntries: SupplierLedgerEntry[] = [
     ...selectedSupplierLedgerPurchaseTransactions.map((transaction) => {
       const timestamp = getUsableTimestamp(transaction.purchase_date, transaction.created_at);
+      // Cash vs credit (2026-11-25): a cash purchase was paid at entry,
+      // so it posts an equal credit — the statement shows "Paid at
+      // entry" and the purchase has zero balance effect. A credit
+      // purchase posts no credit: it is still owed. The confirmed
+      // return is a separate credit entry, and the paid-at-entry credit
+      // already nets it, so the return is never counted twice.
+      const allocation = supplierPaymentAllocationByPurchaseTransaction[transaction.id];
+      const paidAtEntryCredit = allocation ? paidAtEntryCreditForPurchase(allocation) : 0;
       return {
         id: `purchase-${transaction.id}`,
         date: getDateOnly(timestamp.value),
@@ -14557,9 +14602,9 @@ export default function Home() {
         eventTime: timestamp.time,
         eventType: "purchase" as const,
         reference: `Purchase invoice ${transaction.invoice_number}`,
-        notes: "Purchase invoice",
-        debit: supplierPaymentAllocationByPurchaseTransaction[transaction.id]?.purchaseTotal ?? 0,
-        credit: 0,
+        notes: allocation?.paidAtEntry ? "Purchase invoice — Paid at entry" : "Purchase invoice",
+        debit: allocation?.purchaseTotal ?? 0,
+        credit: paidAtEntryCredit,
       };
     }),
     ...selectedSupplierLedgerPurchaseReturns
@@ -14627,8 +14672,14 @@ export default function Home() {
   const supplierLedgerTotalReturns = supplierLedgerEntriesInDateRange
     .filter((entry) => entry.eventType === "return")
     .reduce((sum, entry) => sum + entry.credit, 0);
-  const supplierLedgerCurrentBalance =
-    supplierLedgerTotalPurchases - supplierLedgerTotalPayments - supplierLedgerTotalReturns;
+  // Cash vs credit (2026-11-25): the current balance is the net of
+  // every ledger entry (debit − credit), not purchases − payments −
+  // returns — a cash purchase's "Paid at entry" credit must net its
+  // debit to zero instead of inflating what is owed.
+  const supplierLedgerCurrentBalance = supplierLedgerEntriesInDateRange.reduce(
+    (sum, entry) => sum + entry.debit - entry.credit,
+    0
+  );
   const supplierLedgerUnallocatedPayments = selectedSupplierLedgerPayments
     .filter((payment) =>
       isDateInRange(
@@ -16919,6 +16970,9 @@ export default function Home() {
         formatDate,
         creditSummary: (supplier) => supplierCreditSummary(supplier, t),
         overLimitSummary: (supplier) => supplierOverLimitSummary(supplier, t),
+        // Cash vs credit (2026-11-25): the export reads the same
+        // engine values the list renders — never the dead stored column.
+        outstandingBySupplierId: payablesRemainingBySupplierId,
       })
     );
   };
@@ -28155,7 +28209,7 @@ export default function Home() {
                             <div>{t('customers.phonePrefix')} {supplier.phone ?? t('common.none')}</div>
                             <div>{t('customers.cityPrefix')} {supplier.city ?? t('common.none')}</div>
                             <div>{t('suppliers.areaLabel')}: {supplier.area ?? t('common.none')}</div>
-                            <div>{t('suppliers.outstandingPrefix')} {formatBooksMoney(supplier.outstanding_balance ?? 0)}</div>
+                            <div>{t('suppliers.outstandingPrefix')} {formatBooksMoney(payablesRemainingBySupplierId[supplier.id] ?? 0)}</div>
                             <div>{t('suppliers.lastPurchasePrefix')} {supplier.last_purchase_date ? formatDate(supplier.last_purchase_date) : t('common.none')}</div>
                             <div>{t('suppliers.creditPrefix')} {supplierCreditSummary(supplier, t)}</div>
                             <div>{supplierOverLimitSummary(supplier, t)}</div>
@@ -28291,6 +28345,26 @@ export default function Home() {
                 />
                 <span className="text-xs text-muted-foreground/80">
                   {t('buy.invoiceNumberNote')}
+                </span>
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                <span>{t('sell.paymentType')}</span>
+                <select
+                  value={purchasePaymentType}
+                  onChange={(e) => setPurchasePaymentType(e.target.value as "cash" | "credit")}
+                  className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {PURCHASE_PAYMENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option === "cash" ? t('sell.paymentCash') : t('sell.paymentCredit')}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground/80">
+                  {purchasePaymentType === "credit"
+                    ? t('buy.paymentTypeCreditHint')
+                    : t('buy.paymentTypeCashHint')}
                 </span>
               </label>
             </div>
@@ -29299,6 +29373,28 @@ export default function Home() {
                 </div>
               )}
 
+              <div className="mt-4 max-w-xs">
+                <label className="flex flex-col gap-2 text-sm text-foreground/80">
+                  <span>{t('sell.paymentType')}</span>
+                  <select
+                    value={receivePaymentType}
+                    onChange={(e) => setReceivePaymentType(e.target.value as "cash" | "credit")}
+                    className="w-full min-h-11 rounded border border-input px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {PURCHASE_PAYMENT_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option === "cash" ? t('sell.paymentCash') : t('sell.paymentCredit')}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-muted-foreground/80">
+                    {receivePaymentType === "credit"
+                      ? t('buy.paymentTypeCreditHint')
+                      : t('buy.paymentTypeCashHint')}
+                  </span>
+                </label>
+              </div>
+
               <div className="mt-4 flex flex-wrap gap-3">
                 <button
                   type="button"
@@ -29313,6 +29409,7 @@ export default function Home() {
                   onClick={() => {
                     setReceivePoId(null);
                     setReceiveLines([]);
+                    setReceivePaymentType(PURCHASE_PAYMENT_TYPE_DEFAULT);
                     setReceiveMessage(null);
                     setReceiveError(null);
                   }}

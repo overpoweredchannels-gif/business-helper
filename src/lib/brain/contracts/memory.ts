@@ -571,6 +571,18 @@ export interface MemoryWriterRawData {
     voided_at?: string | null;
     created_at?: string;
   }>;
+  // Cash vs credit (2026-11-25): explicit supplier-payment allocations.
+  // The financial ledger needs them to ignore payments recorded against
+  // paid-at-entry (cash/card) purchases — without them the brain's
+  // cash-out double-counts those payments. Optional with a [] fallback
+  // (same tolerance as the other non-core collections): a missing table
+  // must never fail the load, it only disables the ignore.
+  supplierPaymentAllocations?: Array<{
+    id?: string | null;
+    supplier_payment_id?: string | null;
+    purchase_transaction_id?: string | null;
+    amount?: number | string | null;
+  }>;
 }
 
 // ─── Fuzzy Match ───
