@@ -3,6 +3,7 @@ import { excludeVoidedPayments } from "../payments/voided-payments";
 import {
   computeCreditAllocationsByTransaction,
   computeReturnedValueBySalesTransaction,
+  computeSalesInvoiceNetTotal,
 } from "../sales/returns-offset";
 
 /**
@@ -22,6 +23,9 @@ export interface CustomerInvoiceItem {
   quantity: number;
   sellingPrice: number;
   purchasePrice: number | null;
+  /** Line discount — an input of the tile's invoice-net-total fallback. */
+  discount: number;
+  /** Line value net of discount (quantity × selling price − discount), the tile's line-value formula. */
   total: number;
 }
 
@@ -120,7 +124,8 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
       quantity: toNumber(item.quantity),
       sellingPrice: toNumber(item.selling_price),
       purchasePrice: item.purchase_price_snapshot != null ? toNumber(item.purchase_price_snapshot) : null,
-      total: toNumber(item.quantity) * toNumber(item.selling_price),
+      discount: toNumber(item.discount),
+      total: toNumber(item.quantity) * toNumber(item.selling_price) - toNumber(item.discount),
     });
     itemsByTransaction.set(key, list);
   }
@@ -135,7 +140,25 @@ export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new D
       invoiceNumber: String(tx.invoice_number ?? ""),
       date: String(tx.sale_date ?? tx.created_at ?? ""),
       createdAt: String(tx.created_at ?? ""),
-      amount: items.reduce((sum, item) => sum + item.total, 0),
+      // J1b receivables fix — the invoice amount is the TILE's net total
+      // (stored total_amount when finite and > 0, else the discount/tax
+      // recompute), not the plain item sum. A discounted/taxed credit
+      // invoice overstated the receivable by the discount+tax difference
+      // (production: +€1.33). The helper mirrors page.tsx
+      // salesInvoiceTotalsByTransaction exactly; the stored-total and
+      // fallback paths are both pinned by the J1b parity test.
+      amount: computeSalesInvoiceNetTotal(
+        {
+          total_amount: tx.total_amount,
+          discount_amount: tx.discount_amount,
+          tax_rate: tx.tax_rate,
+        },
+        items.map((item) => ({
+          quantity: item.quantity,
+          selling_price: item.sellingPrice,
+          discount: item.discount,
+        }))
+      ),
       paymentType: tx.payment_type ?? null,
       creditDueDate: tx.credit_due_date ?? null,
       items,

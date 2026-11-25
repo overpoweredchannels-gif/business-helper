@@ -10,6 +10,7 @@ import {
 import {
   computeCreditAllocationsByTransaction,
   computeReturnedValueBySalesTransaction,
+  computeSalesInvoiceNetTotal,
 } from "../src/lib/sales/returns-offset";
 import type { MemoryWriterRawData } from "../src/lib/brain/contracts/memory";
 
@@ -47,13 +48,16 @@ import type { MemoryWriterRawData } from "../src/lib/brain/contracts/memory";
 //   S2: 100 − 0 − 0 − 0 = 100, overdue (due 2026-10-31)
 //   Receivables total = 350; overdue = 100
 //
-// SCOPE NOTE: the tile's sales invoice total nets line discounts,
-// invoice discount and tax; the brain's invoice amount is the plain
-// item sum (quantity × selling price). The two agree when discount = 0
-// and tax = 0 — this fixture's case, and the common case. A
-// discount/tax invoice-total divergence is a separate input divergence
-// (the brain loader does not carry discount/tax columns); it is NOT
-// fixed here and is recorded as a J1b follow-up.
+// DISCOUNT/TAX FIX (2026-11-25, Claude msg 49 — J1b ships only at
+// receivables parity 0.00): the tile's sales invoice total nets line
+// discounts, invoice discount and tax; the brain's invoice amount was
+// the plain item sum. The two agree when discount = 0 and tax = 0 —
+// this fixture's case, and the common case — but on production data
+// the divergence is +€1.33 on receivables (aggregate invoice-total
+// divergence −€1.52 over credit invoices). The loader now carries
+// total_amount / discount_amount / tax_rate (+ line discount) and the
+// customer ledger uses computeSalesInvoiceNetTotal, the tile's same
+// formula (see the discount/tax section below).
 //
 // Run: npx tsx scripts/test-j1b-payables-receivables-parity.ts
 
@@ -394,6 +398,147 @@ check(
 check(
   financialLedger.receivables.overdue === 100,
   `financial ledger receivables overdue 100, got ${financialLedger.receivables.overdue}`
+);
+
+// ─── Discount/tax invoice totals: the brain must use the tile's net total ───
+//
+// The tile's sales invoice total (page.tsx salesInvoiceTotalsByTransaction)
+// is the STORED total_amount when finite and > 0, else a recompute
+// matching the save path: Σ(qty × price − line discount) − |invoice
+// discount|, floored at 0, plus tax%. The brain used the plain item sum
+// (qty × price), so a discounted/taxed credit invoice overstated the
+// receivable — on production data this is the +€1.33 J1b receivables
+// delta (aggregate invoice-total divergence −€1.52). The loader now
+// carries total_amount / discount_amount / tax_rate (+ line discount),
+// and buildCustomerLedger uses computeSalesInvoiceNetTotal, the same
+// formula, extracted to src/lib/sales/returns-offset.ts.
+//
+// Hand-computed (tile formula):
+//   S3: stored 189 → 189 (fallback would be 187: (200−10−20) × 1.10)
+//   S4: stored 0 → fallback (200−10−20) × 1.10 = 187
+//   C2 outstanding = 189 + 187 = 376 (no payments, no returns)
+
+// The helper itself, both paths + the missing/degenerate inputs.
+check(
+  computeSalesInvoiceNetTotal(
+    { total_amount: 189, discount_amount: 20, tax_rate: 10 },
+    [{ quantity: 2, selling_price: 100, discount: 10 }]
+  ) === 189,
+  "stored total wins over the recompute"
+);
+check(
+  computeSalesInvoiceNetTotal(
+    { total_amount: 0, discount_amount: 20, tax_rate: 10 },
+    [{ quantity: 2, selling_price: 100, discount: 10 }]
+  ) === 187,
+  `stored 0 falls back to the recompute (187), got ${computeSalesInvoiceNetTotal(
+    { total_amount: 0, discount_amount: 20, tax_rate: 10 },
+    [{ quantity: 2, selling_price: 100, discount: 10 }]
+  )}`
+);
+check(
+  computeSalesInvoiceNetTotal(
+    {},
+    [{ quantity: 2, selling_price: 100, discount: 10 }]
+  ) === 190,
+  "missing columns fall back to the recompute (190: line discount only, no invoice discount/tax to apply)"
+);
+check(
+  computeSalesInvoiceNetTotal(
+    { total_amount: -5, discount_amount: 20, tax_rate: 10 },
+    [{ quantity: 2, selling_price: 100, discount: 10 }]
+  ) === 187,
+  "negative stored total falls back to the recompute (187)"
+);
+
+const discountTaxData: MemoryWriterRawData = {
+  ...buildFixture(),
+  customers: [
+    {
+      id: "cus-c2",
+      customer_name: "Customer Two",
+      credit_days: 30,
+      credit_limit: null,
+      allow_over_limit: false,
+      allow_overdue_sales: false,
+    },
+  ],
+  salesTransactions: [
+    {
+      id: "st-s3",
+      customer_id: "cus-c2",
+      invoice_number: "INV-S3",
+      created_at: "2026-11-15T10:00:00.000Z",
+      sale_date: "2026-11-15",
+      payment_type: "credit",
+      credit_due_date: "2026-12-15",
+      total_amount: 189,
+      discount_amount: 20,
+      tax_rate: 10,
+    },
+    {
+      id: "st-s4",
+      customer_id: "cus-c2",
+      invoice_number: "INV-S4",
+      created_at: "2026-11-16T10:00:00.000Z",
+      sale_date: "2026-11-16",
+      payment_type: "credit",
+      credit_due_date: "2026-12-16",
+      total_amount: 0,
+      discount_amount: 20,
+      tax_rate: 10,
+    },
+  ],
+  salesItems: [
+    {
+      id: "si-s3",
+      sales_transaction_id: "st-s3",
+      product_id: 1,
+      quantity: 2,
+      selling_price: 100,
+      purchase_price_snapshot: 100,
+      discount: 10,
+      created_at: "2026-11-15T10:00:00.000Z",
+    },
+    {
+      id: "si-s4",
+      sales_transaction_id: "st-s4",
+      product_id: 1,
+      quantity: 2,
+      selling_price: 100,
+      purchase_price_snapshot: 100,
+      discount: 10,
+      created_at: "2026-11-16T10:00:00.000Z",
+    },
+  ],
+  salesReturns: [],
+  salesReturnItems: [],
+  customerPayments: [],
+  customerPaymentAllocations: [],
+} as MemoryWriterRawData;
+
+const discountTaxLedger = buildCustomerLedger(discountTaxData, NOW);
+const customerC2 = discountTaxLedger.byId.get("cus-c2");
+check(customerC2 !== undefined, "customer C2 entry exists");
+check(
+  customerC2?.outstandingBalance === 376,
+  `customer C2 outstanding 376 (189 stored + 187 recomputed), got ${customerC2?.outstandingBalance}`
+);
+check(
+  customerC2?.overdueAmount === 0,
+  `customer C2 overdue 0 (due dates in future), got ${customerC2?.overdueAmount}`
+);
+check(
+  discountTaxLedger.totals.totalOutstanding === 376,
+  `brain receivables total 376, got ${discountTaxLedger.totals.totalOutstanding}`
+);
+check(
+  customerC2?.totalSales === 376,
+  `customer C2 total sales 376 (net, not gross 400), got ${customerC2?.totalSales}`
+);
+check(
+  customerC2?.invoices.map((inv) => inv.amount).join(",") === "189,187",
+  `customer C2 invoice amounts 189,187, got ${customerC2?.invoices.map((inv) => inv.amount).join(",")}`
 );
 
 // ─── Cash-invoice treatment: parity, not definition ───

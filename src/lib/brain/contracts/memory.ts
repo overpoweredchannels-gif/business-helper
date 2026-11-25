@@ -473,6 +473,14 @@ export interface MemoryWriterRawData {
     sale_date?: string | null;
     payment_type?: string | null;
     credit_due_date?: string | null;
+    // J1b receivables fix — the tile's invoice net total: stored
+    // total_amount when finite and > 0, else recomputed from the line
+    // discounts, invoice discount and tax (computeSalesInvoiceNetTotal).
+    // Loaded by loadRawBusinessData; absent = old behaviour (plain
+    // item sum) for fixtures / rows without the columns.
+    total_amount?: number | string | null;
+    discount_amount?: number | string | null;
+    tax_rate?: number | string | null;
   }>;
   salesItems: Array<{
     id: string;
@@ -481,6 +489,9 @@ export interface MemoryWriterRawData {
     quantity: number;
     selling_price: number;
     purchase_price_snapshot?: number | null;
+    // J1b receivables fix — line discount, an input of the tile's
+    // invoice-net-total fallback (see salesTransactions above).
+    discount?: number | string | null;
     created_at?: string;
   }>;
   purchaseTransactions: Array<{

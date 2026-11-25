@@ -58,6 +58,49 @@ export function computeReturnedValueBySalesTransaction(
     }, {});
 }
 
+// ─── Sales invoice net total (J1b receivables fix) ──────────────────────────
+//
+// The dashboard tile's sales invoice total (page.tsx
+// salesInvoiceTotalsByTransaction): the STORED total_amount when finite
+// and > 0, else a recompute matching the save path — Σ(qty × price −
+// line discount) − |invoice discount|, floored at 0, plus tax%. The
+// brain's customer ledger used the plain item sum (qty × price), so a
+// discounted/taxed credit invoice overstated the receivable (on
+// production data: J1b receivables +€1.33 vs the tile). The ledger must
+// use this same total — do not fork the formula.
+
+export interface SalesInvoiceNetTotalTransactionRow {
+  total_amount?: number | string | null;
+  discount_amount?: number | string | null;
+  tax_rate?: number | string | null;
+}
+
+export interface SalesInvoiceNetTotalItemRow {
+  quantity?: number | string | null;
+  selling_price?: number | string | null;
+  discount?: number | string | null;
+}
+
+export function computeSalesInvoiceNetTotal(
+  transaction: SalesInvoiceNetTotalTransactionRow,
+  items: readonly SalesInvoiceNetTotalItemRow[]
+): number {
+  const storedTotal = Number(transaction.total_amount ?? 0);
+  if (Number.isFinite(storedTotal) && storedTotal > 0) return storedTotal;
+  // Fallback: recompute net-of-discount subtotal + tax, matching the save path.
+  const lineSubtotal = items.reduce(
+    (sum, item) =>
+      sum +
+      safeNumber(item.quantity) * safeNumber(item.selling_price) -
+      safeNumber(item.discount),
+    0
+  );
+  const invoiceDiscount = Math.abs(safeNumber(transaction.discount_amount));
+  const taxRate = safeNumber(transaction.tax_rate);
+  const taxableBase = Math.max(0, lineSubtotal - invoiceDiscount);
+  return taxableBase + (taxableBase * taxRate) / 100;
+}
+
 export interface CreditInvoiceAllocationInput {
   invoiceTotal: number;
   returnedAmount: number;
