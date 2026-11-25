@@ -721,27 +721,26 @@ async function runSmoke(standaloneArg, portArg) {
   };
   child.stdout.on("data", keep);
   child.stderr.on("data", keep);
+  const childHasExited = () => child.exitCode !== null || child.signalCode !== null;
   const stop = async () => {
-    if (child.exitCode === null) {
-      child.kill("SIGTERM");
-      await Promise.race([new Promise((r) => child.once("exit", r)), sleep(5000)]);
-      if (child.exitCode === null) {
-        // Still alive after the grace period: force-kill, then wait for the
-        // exit that SIGKILL will produce. (Awaiting "exit" unconditionally
-        // here deadlocks when the child already exited on SIGTERM: the
-        // event never fires again, the event loop empties, and Node exits
-        // 0 without ever printing the verdict.)
-        child.kill("SIGKILL");
-        await new Promise((r) => child.once("exit", r));
-      }
+    if (childHasExited()) return;
+    // A signal-terminated child can have a null exitCode. Listen once
+    // before signaling so either termination path resolves the same wait.
+    const exited = new Promise((resolveExit) => child.once("exit", resolveExit));
+    child.kill("SIGTERM");
+    await Promise.race([exited, sleep(5000)]);
+    if (!childHasExited()) {
+      child.kill("SIGKILL");
+      await exited;
     }
   };
   try {
     const base = `http://127.0.0.1:${port}`;
     let ready = false;
     for (let i = 0; i < 60; i += 1) {
-      if (child.exitCode !== null) {
-        fail(`standalone server exited early (code ${child.exitCode}) — last output:\n${tail}`);
+      if (childHasExited()) {
+        const reason = child.signalCode ? `signal ${child.signalCode}` : `code ${child.exitCode}`;
+        fail(`standalone server exited early (${reason}) — last output:\n${tail}`);
         return false;
       }
       try {

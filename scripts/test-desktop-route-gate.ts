@@ -19,9 +19,9 @@ const ENV = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
 };
 
-function runGate(args: string[]): { status: number; stdout: string } {
+function runGate(args: string[], timeout?: number): { status: number; stdout: string } {
   try {
-    const stdout = execFileSync("node", [GATE, ...args], { encoding: "utf8", env: ENV });
+    const stdout = execFileSync("node", [GATE, ...args], { encoding: "utf8", env: ENV, timeout });
     return { status: 0, stdout };
   } catch (err) {
     const e = err as { status?: number; stdout?: string };
@@ -131,5 +131,34 @@ const noRatchetRun = runGate(["--manifest", noRatchet]);
 assert.equal(noRatchetRun.status, 1, "18. Gate fails when the manifest has no ratchet baseline");
 assert.match(noRatchetRun.stdout, /no ratchet\.pending_direct_cloud_fetches baseline/, "19. Missing-baseline failure names the ratchet field");
 rmSync(join(noRatchet, ".."), { recursive: true, force: true });
+
+// Smoke mode must return the probes' verdict after terminating its child.
+const fixtureDir = mkdtempSync(join(tmpdir(), "desktop-route-smoke-"));
+try {
+  const port = execFileSync(process.execPath, ["-e", `
+    const server = require("node:net").createServer();
+    server.listen(0, "127.0.0.1", () => {
+      console.log(server.address().port);
+      server.close();
+    });
+  `], { encoding: "utf8", timeout: 5_000 }).trim();
+  const fixture = join(fixtureDir, "server.cjs");
+  const smokeArgs = ["--smoke", "--standalone", fixture, "--port", port];
+  for (const [provisionStatus, expectedExit, verdict] of [[500, 1, "FAIL"], [401, 0, "PASS"]] as const) {
+    writeFileSync(fixture, `
+      require("node:http").createServer((request, response) => {
+        if (request.url === "/login") response.statusCode = 200;
+        else if (request.url === "/api/auth/provision") response.statusCode = ${provisionStatus};
+        else response.statusCode = 401;
+        response.end();
+      }).listen(Number(process.env.PORT), process.env.HOSTNAME);
+    `);
+    const smoke = runGate(smokeArgs, 20_000);
+    assert.equal(smoke.status, expectedExit, `Smoke probe HTTP ${provisionStatus} must exit ${expectedExit}\n${smoke.stdout}`);
+    assert.ok(smoke.stdout.includes(`SMOKE: ${verdict}`), `Smoke probe HTTP ${provisionStatus} must print ${verdict}`);
+  }
+} finally {
+  rmSync(fixtureDir, { recursive: true, force: true });
+}
 
 console.log("test-desktop-route-gate: all assertions passed");
