@@ -1,3 +1,5 @@
+import { DesktopUpdates } from "./DesktopUpdates";
+
 const FOOTER_LINKS = [
   { label: "Website", href: "https://oppresso.site/" },
   { label: "WhatsApp", href: "https://wa.me/923255355151" },
@@ -32,7 +34,10 @@ export function AppFooter() {
           ))}
         </nav>
 
-        <p className="text-[11px] text-light-text">© 2026 OPPRESSO</p>
+        <div className="text-center sm:text-end">
+          <DesktopUpdates surface="footer" />
+          <p className="text-[11px] text-light-text">© 2026 OPPRESSO</p>
+        </div>
       </div>
     </footer>
   );

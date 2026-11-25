@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { LocalCustomerRow, LocalExpenseRow, LocalPaymentRow, LocalPurchaseRow, LocalReturnRow, LocalSaleRow, LocalSupplierRow, MirrorKind, MirrorRow, StoredIdentity, SyncIssueRow } from "./store";
+import type { DesktopUpdateStatus, DesktopUpdaterBridge } from "./updater-types";
 
 // Slice S0 — minimal, context-isolated bridge. Slice S2 adds the
 // local-first store: the main process owns the SQLite database
@@ -194,6 +195,8 @@ export interface AankhDesktopBridge {
   platform: NodeJS.Platform;
   /** Deep-link auth callbacks + system-browser opener (desktop auth). */
   auth: AankhDesktopAuthBridge;
+  /** Installed version and updater status from the Electron main process. */
+  updater?: DesktopUpdaterBridge;
   /** The local-first SQLite store (S2). Absent when the store failed to open. */
   localSales?: AankhLocalSalesBridge;
   /** The SQLite-backed identity cache (S2). Absent when the store failed to open. */
@@ -221,6 +224,18 @@ export interface AankhDesktopBridge {
 const bridge: AankhDesktopBridge = {
   isDesktop: true,
   platform: process.platform,
+  updater: {
+    getStatus: () => ipcRenderer.invoke("aankh:updater:status"),
+    checkForUpdates: () => ipcRenderer.invoke("aankh:updater:check"),
+    openInstallPrompt: () => ipcRenderer.invoke("aankh:updater:open-prompt"),
+    dismissInstallPrompt: () => ipcRenderer.invoke("aankh:updater:dismiss-prompt"),
+    installUpdate: () => ipcRenderer.invoke("aankh:updater:install"),
+    onStatusChanged: (handler) => {
+      const listener = (_event: unknown, status: DesktopUpdateStatus) => handler(status);
+      ipcRenderer.on("aankh:updater:changed", listener);
+      return () => ipcRenderer.removeListener("aankh:updater:changed", listener);
+    },
+  },
   auth: {
     onAuthCallback: (handler) => {
       const listener = (_event: unknown, url: string) => handler(url);

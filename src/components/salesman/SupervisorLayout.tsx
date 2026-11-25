@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useCallback, useState } from "react";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
 import { useRegional, LanguageSwitcher } from "@/components/regional/RegionalProvider";
+import { DesktopUpdates } from "@/components/branding/DesktopUpdates";
 
 const NAV_ITEMS = [
   { href: "/supervisor", key: 'supervisor.nav.overview' as const, icon: LayoutDashboard },
@@ -88,6 +89,7 @@ export default function SupervisorLayout({ organizationName, userName, children 
           <LogOut className="size-4.5 shrink-0" />
           <span>{ui('supervisor.logOut')}</span>
         </button>
+        <DesktopUpdates surface="sidebar" />
       </div>
     </aside>
   );

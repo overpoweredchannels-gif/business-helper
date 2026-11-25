@@ -10,6 +10,7 @@ import { DASHBOARD_SECTION_DRAG_TYPE, isDashboardSectionCard } from "@/lib/dashb
 import { groupNavigationItems } from "@/lib/dashboard/navigation-groups";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { navigationText } from "@/lib/regional/navigation";
+import { DesktopUpdates } from "@/components/branding/DesktopUpdates";
 
 const groupIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   Sell: Receipt, Stock: Package, Buy: ShoppingCart, Customers: Users,
@@ -222,7 +223,7 @@ export function Sidebar({
         )}
       </nav>
 
-      {/* Footer: customize + collapse */}
+      {/* Footer: workspace controls and desktop updater */}
       <div className="border-t border-nav-border p-3 space-y-1">
         <details open={customizing} className="sidebar-utilities">
           <summary aria-label={navigationText('Customize your workspace',language)} className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-3 text-sm text-panel-foreground hover:bg-nav-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-on-dark"><Pencil className="size-4 shrink-0" />{!collapsed && <span className="flex-1 text-xs">{navigationText('Customize your workspace',language)}</span>}<ChevronDown className="size-3" /></summary>
@@ -277,6 +278,7 @@ export function Sidebar({
           {!collapsed && !forceVisible && <span>{navigationText('Collapse',language)}</span>}
         </button>
         )}
+        <DesktopUpdates surface="dashboard" collapsed={collapsed} />
       </div>
     </aside>
   );

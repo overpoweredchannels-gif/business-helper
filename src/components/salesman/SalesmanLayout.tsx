@@ -14,6 +14,7 @@ import { navigationItems } from "@/lib/tradeos/constants";
 import { hasSalesTool } from "@/lib/sales/access";
 import { useRegional, LanguageSwitcher } from "@/components/regional/RegionalProvider";
 import { navigationLabel } from "@/lib/regional/navigation";
+import { DesktopUpdates } from "@/components/branding/DesktopUpdates";
 
 interface SalesmanLayoutProps {
   organizationName?: string | null;
@@ -103,6 +104,7 @@ export default function SalesmanLayout({ organizationName, userName, grantedSect
           <LogOut className="size-4.5 shrink-0" />
           <span>{ui('salesman.logOut')}</span>
         </button>
+        <DesktopUpdates surface="sidebar" />
       </div>
     </aside>
   );

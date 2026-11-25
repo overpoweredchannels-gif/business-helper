@@ -12,6 +12,7 @@ import { useCallback, useState } from "react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import type { RegionalUiKey } from "@/lib/regional/ui-messages";
 import { MobileNavigation } from "@/components/dashboard/MobileNavigation";
+import { DesktopUpdates } from "@/components/branding/DesktopUpdates";
 
 const NAV_ITEMS: { href: string; labelKey: RegionalUiKey; icon: React.ComponentType<{ className?: string }> }[] = [
   { href: "/manager", labelKey: "owner.nav.overview", icon: LayoutDashboard },
@@ -101,6 +102,7 @@ export default function OwnerFsmLayout({ organizationName, userName, children }:
           <LogOut className="size-4.5 shrink-0" />
           <span>{ui('owner.logOut')}</span>
         </button>
+        <DesktopUpdates surface="sidebar" />
       </div>
     </aside>
   );

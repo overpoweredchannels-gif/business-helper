@@ -4,6 +4,7 @@ import "./globals.css";
 import "./workspace.css";
 import AppHelp from "@/components/help/AppHelp";
 import { AppFooter } from "@/components/branding/AppFooter";
+import { DesktopUpdatesProvider } from "@/components/branding/DesktopUpdates";
 import DesktopAuthCallbackListener from "@/components/ui/DesktopAuthCallbackListener";
 import { RegionalProvider } from "@/components/regional/RegionalProvider";
 import { LANGUAGE_BOOTSTRAP_SCRIPT } from "@/lib/regional/settings";
@@ -68,7 +69,16 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: DISPLAY_ZOOM_BOOTSTRAP_SCRIPT }} />
         {regionalQaEnabled() && <script dangerouslySetInnerHTML={{ __html: LANGUAGE_BOOTSTRAP_SCRIPT }} />}
       </head>
-      <body className="min-h-full flex flex-col"><RegionalProvider><DesktopAuthCallbackListener />{children}<AppFooter /><AppHelp /></RegionalProvider></body>
+      <body className="min-h-full flex flex-col">
+        <RegionalProvider>
+          <DesktopUpdatesProvider>
+            <DesktopAuthCallbackListener />
+            {children}
+            <AppFooter />
+            <AppHelp />
+          </DesktopUpdatesProvider>
+        </RegionalProvider>
+      </body>
     </html>
   );
 }

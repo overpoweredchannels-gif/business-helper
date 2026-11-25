@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import { autoUpdater } from "electron-updater";
 import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
@@ -14,6 +14,8 @@ import {
   writeScopedBackup,
 } from "./backup";
 import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdentity } from "./store";
+import { createDesktopUpdater } from "./desktop-updater";
+import type { DesktopUpdateStatus } from "./updater-types";
 
 // Slice S0 — desktop shell spike. Serves the Next.js standalone build from
 // the local disk: the main process spawns .next/standalone/server.js on a
@@ -85,7 +87,7 @@ function errorHtml(reason: string | null, appUrl: string | null): string {
     appUrl !== null
       ? `<p><button type="button" id="aankh-retry" style="min-height:44px;padding:10px 20px;font-size:15px;font-weight:600;color:#fff;background:#a44a2b;border:0;border-radius:8px;cursor:pointer">Retry</button></p><p id="aankh-retry-status" role="status"></p><script>var appUrl=${JSON.stringify(appUrl)};var btn=document.getElementById('aankh-retry');var status=document.getElementById('aankh-retry-status');btn.addEventListener('click',function(){btn.disabled=true;btn.textContent='Checking…';status.textContent='';fetch(appUrl,{mode:'no-cors',cache:'no-store'}).then(function(){window.location.href=appUrl;}).catch(function(){btn.disabled=false;btn.textContent='Retry';status.textContent='Still not responding — the server did not answer. Try again in a moment.';});});</script>`
       : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start.</p><p>The app keeps checking in the background and will open if the server answers. If this page stays up, press Retry to check now, or close the app and open it again. If the problem continues, reinstall Aankh.</p>${detail}${retry}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Aankh</title></head><body style="font-family:sans-serif;padding:40px;color:#222"><h1>Aankh could not start</h1><p>The local app server did not start.</p><p>The app keeps checking in the background and will open if the server answers. If this page stays up, press Retry to check now, or close the app and open it again. If the problem continues, reinstall Aankh.</p>${detail}${retry}<footer>Aankh v${escapeHtml(app.getVersion())}</footer></body></html>`;
 }
 
 let serverProcess: ChildProcess | null = null;
@@ -832,16 +834,89 @@ function createWindow(url: string | null): void {
   }
 }
 
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const UPDATE_LOG_MAX_BYTES = 256 * 1024;
+
 function setupAutoUpdater(): void {
-  // Updates are best-effort and must never crash the app: no release is
-  // published yet, and the shop PC may be offline at launch.
-  if (!app.isPackaged) return;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on("error", () => {
-    // No release feed, no network, or no update — stay on the current build.
+  const currentVersion = app.getVersion();
+  const unavailable: DesktopUpdateStatus = { currentVersion, phase: "unavailable", promptOpen: false };
+  const logPath = path.join(app.getPath("userData"), "updater.log");
+  const log = (message: string) => {
+    try {
+      fs.mkdirSync(path.dirname(logPath), { recursive: true });
+      const size = fs.statSync(logPath, { throwIfNoEntry: false })?.size ?? 0;
+      if (size >= UPDATE_LOG_MAX_BYTES) fs.renameSync(logPath, `${logPath}.1`);
+      fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
+    } catch (error) {
+      console.error("Could not write the Aankh updater log", error);
+      console.error(message);
+    }
+  };
+  let activeNotification: Notification | null = null;
+  const controller: ReturnType<typeof createDesktopUpdater> | null = app.isPackaged ? createDesktopUpdater({
+    updater: autoUpdater,
+    currentVersion,
+    log,
+    publish: (status) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("aankh:updater:changed", status);
+      } catch {
+        log("Could not send update status to the window. The latest status remains available by request.");
+      }
+    },
+    notifyAvailable: (version) => {
+      if (process.platform !== "win32" || !Notification.isSupported()) return;
+      try {
+        activeNotification?.close();
+        const notification = new Notification({
+          title: "New update is available",
+          body: `Aankh v${version} is available. Click to open the update.`,
+        });
+        activeNotification = notification;
+        notification.on("click", () => {
+          controller?.openInstallPrompt();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        });
+        notification.on("close", () => {
+          if (activeNotification === notification) activeNotification = null;
+        });
+        notification.on("failed", () => log(`Windows could not display the notification for update ${version}.`));
+        notification.show();
+      } catch {
+        log(`Could not show the notification for update ${version}.`);
+      }
+    },
+  }) : null;
+
+  const isMainFrame = (event: IpcMainInvokeEvent) => (
+    mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents && event.senderFrame === event.sender.mainFrame
+  );
+  ipcMain.handle("aankh:updater:status", () => controller?.getStatus() ?? unavailable);
+  ipcMain.handle("aankh:updater:check", (event) => {
+    if (isMainFrame(event)) return controller?.checkForUpdates("manual");
   });
-  void autoUpdater.checkForUpdatesAndNotify().catch(() => {
-    // Same: best-effort only.
+  ipcMain.handle("aankh:updater:open-prompt", (event) => {
+    if (isMainFrame(event)) controller?.openInstallPrompt();
+  });
+  ipcMain.handle("aankh:updater:dismiss-prompt", (event) => {
+    if (isMainFrame(event)) controller?.dismissInstallPrompt();
+  });
+  ipcMain.handle("aankh:updater:install", (event) => {
+    if (isMainFrame(event)) return controller?.installUpdate();
+  });
+
+  if (!controller) return;
+  log(`Aankh ${currentVersion} started. Update checks run every ${UPDATE_CHECK_INTERVAL_MS / 60_000} minutes.`);
+  void controller.checkForUpdates("launch");
+  const timer = setInterval(() => void controller.checkForUpdates("periodic"), UPDATE_CHECK_INTERVAL_MS);
+  app.once("before-quit", () => {
+    clearInterval(timer);
+    const status = controller.getStatus();
+    if (status.phase === "installing") log(`Aankh closed for the installation of update ${status.updateVersion}.`);
   });
 }
 
@@ -923,6 +998,8 @@ void app.whenReady().then(async () => {
   // argv scan below still works if a link is passed by hand.
   if (app.isPackaged) {
     app.setAsDefaultProtocolClient(DESKTOP_AUTH_PROTOCOL);
+    // Match the AppUserModelID of the shortcuts created by electron-builder.
+    if (process.platform === "win32") app.setAppUserModelId("site.oppresso.aankh");
   }
   setupLocalStore();
   setupDesktopAuth();
