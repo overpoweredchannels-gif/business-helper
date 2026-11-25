@@ -34,7 +34,7 @@
  *      the selling price ("Selling Price: 100 EUR"), read from
  *      organizations.books_currency into store.meta.currency.
  *
- * This test replays the EXACT live 7-message sequence through the real
+ * This test exercises confirmation and cancellation through the real
  * brain chat path (getBusinessBrain().chat -> processMessage, shared
  * "default_session") in ONE process, with a real store built by
  * ensureServerBusinessBrain from a fake Supabase client (one product,
@@ -44,17 +44,9 @@
  * real Supabase. The final message is "cancel" — never "yes" — so no
  * sale is ever executed.
  *
- * Two honest test-double notes:
- *  - The stub classifier supplies selling_price 100 for the sale
- *    message (the live test price): the message itself carries no
- *    price, and the point here is confirmation content, not
- *    classifier price extraction. On live, the real classifier may
- *    instead ask for the price; that is a legitimate create_sale
- *    question, not this bug.
- *  - The expiry answer "no" exercises the LLM-return normalization
- *    path: "no" is not itself a skip phrase, so it reaches the stub
- *    field extractor, which returns "none" — and the runtime must
- *    still store NULL, never "none".
+ * The stub classifier supplies a price only for the message containing
+ * one. The other cases exercise the catalog default and a product
+ * without a usable default.
  *
  * Run: npx tsx scripts/test-create-sale-confirmation-content.ts
  */
@@ -91,6 +83,7 @@ function check(condition: boolean, label: string): void {
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 const PROFILE_ID = "00000000-0000-0000-0000-000000000002";
 const PRODUCT_ID = "00000000-0000-0000-0000-000000000011";
+const UNPRICED_PRODUCT_ID = "00000000-0000-0000-0000-000000000012";
 const CUSTOMER_ID = "00000000-0000-0000-0000-000000000021";
 
 const ownerActor: ActorContext = {
@@ -109,18 +102,19 @@ const ORG_TIMEZONE = "Asia/Karachi";
 function classifyUserMessage(message: string): Record<string, unknown> {
   const base = { entities: {}, confidence: 0.9 };
   switch (message) {
-    case "sell 2 COCA COLA 1L to Walk-in customer for cash":
+    case "sell 2 COCA COLA 1L to Walk-in customer for 100":
+    case "sell 2 COCA COLA 1L to Walk-in customer":
+    case "sell 2 Unpriced Water to Walk-in customer for cash":
       return {
         intent: "create_sale",
         language: "english",
         confidence: 0.9,
         entities: {
           customer_name: "Walk-in",
-          product_name: "COCA COLA 1L",
+          product_name: message.includes("Unpriced Water") ? "Unpriced Water" : "COCA COLA 1L",
           quantity: 2,
-          // Live test price (the message itself carries no price).
-          selling_price: 100,
-          payment_type: "cash",
+          selling_price: message.endsWith("100") ? 100 : null,
+          payment_type: message.endsWith("cash") ? "cash" : null,
         },
       };
     default:
@@ -142,10 +136,7 @@ function readBody(req: IncomingMessage): Promise<string> {
  * POISON values on purpose: the live wrong date (2024-05-22) for the
  * invoice date and a fake batch code — if the deterministic intercept
  * ever regresses and the runtime consults the LLM for "today" /
- * "no batch", those poison values surface in the confirmation and the
- * assertions below fail. Expiry returns "none" to exercise the
- * LLM-return normalization path (the user answers "no", which is not
- * itself a skip phrase).
+ * "no batch", those poison values surface in the confirmation.
  */
 function startStubLlm(): Promise<{ port: number; close: () => Promise<void> }> {
   const server = createServer(async (req, res: ServerResponse) => {
@@ -225,6 +216,13 @@ function fakeSupabase(): SupabaseClient {
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+      },
+      {
+        id: UNPRICED_PRODUCT_ID,
+        name: "Unpriced Water",
+        unit_type: "piece",
+        default_selling_price: null,
+        is_active: true,
       },
     ],
     customers: [
@@ -367,7 +365,7 @@ async function main(): Promise<void> {
     check(getNextRequiredField(skipped) === null, "all-skipped optionals do not block confirmation");
     const unanswered = saleContext();
     unanswered.collectedData.batch_number = undefined;
-    check(getNextRequiredField(unanswered) === "batch_number", "a never-answered optional still blocks");
+    check(getNextRequiredField(unanswered) === null, "a never-answered sale optional does not block");
     const requiredNull = saleContext();
     requiredNull.collectedData.quantity = null;
     check(getNextRequiredField(requiredNull) === "quantity", "a NULL required field still blocks");
@@ -378,120 +376,37 @@ async function main(): Promise<void> {
     check(raw?.timezone === "Asia/Karachi", "loader reads the org timezone from regional_preferences");
     check(raw?.currency === "EUR", "loader reads the org books currency");
 
-    console.log("(6) live 7-message sequence through the real brain chat path");
+    console.log("(6) sale confirmation, price defaults, and cancellation through brain chat");
     const inited = await ensureServerBusinessBrain(fakeSupabase(), ownerActor);
-    check(inited.ok === true, "brain init succeeds with the fake org data");
+    check(inited.ok === true, "brain init succeeds with fake org data");
     const brain = getBusinessBrain();
-    check(brain !== null, "brain singleton exists after init");
     if (!brain) throw new Error("brain is null after init");
 
-    const first = await brain.chat("sell 2 COCA COLA 1L to Walk-in customer for cash");
-    check(first.ok === true, "#1 sale message returns ok");
-    check(
-      typeof first.message === "string" &&
-        first.message.includes("What is the sale date? (Defaults to today)"),
-      "#1 asks the first optional field (invoice_date)",
-    );
-    check(storedSession()?.collectedData._customer_name === "Walk-in", "session stores the resolved customer display name");
-    check(storedSession()?.collectedData._product_name === "COCA COLA 1L", "session stores the resolved product display name");
+    const first = await brain.chat("sell 2 COCA COLA 1L to Walk-in customer for 100");
+    check(first.ok === true && first.message.includes("Create Sale Invoice:"), "explicit price confirms immediately");
+    check(first.message.includes("Customer: Walk-in") && first.message.includes("Product: COCA COLA 1L"), "confirmation uses resolved names");
+    check(first.message.includes("Selling Price: 100 EUR"), "explicit price overrides the catalog price");
+    check(first.message.includes(`Invoice Date: ${todayInTimezone(ORG_TIMEZONE)}`), "confirmation uses today's org date");
+    check(first.message.includes("Batch: —") && first.message.includes("Expiry: —"), "unused optionals remain blank");
+    check(!first.message.includes("{"), "confirmation contains no literal placeholders");
+    check(storedSession()?.state === "waiting_for_confirmation", "sale requires confirmation");
+    check((await brain.chat("cancel")).message.toLowerCase().includes("cancelled"), "explicit-price sale cancels");
 
-    const saleDate = await brain.chat("today");
-    check(
-      typeof saleDate.message === "string" &&
-        saleDate.message.includes("Which batch to sell from? (Optional)"),
-      "#2 'today' answered -> runtime asks batch_number",
-    );
-    check(
-      storedSession()?.collectedData.invoice_date === todayInTimezone(ORG_TIMEZONE),
-      "#2 invoice_date is today's date in the org timezone",
-    );
-    check(
-      storedSession()?.collectedData.invoice_date !== "2024-05-22",
-      "#2 invoice_date is NOT the stub LLM's poison date (the LLM was never asked)",
-    );
+    const prefilling = await brain.chat("sell 2 COCA COLA 1L to Walk-in customer");
+    check(prefilling.message.includes("Selling Price: 250 EUR"), "catalog price fills the missing price immediately");
+    check(storedSession()?.state === "waiting_for_confirmation", "catalog-price sale requires confirmation");
+    check((await brain.chat("cancel")).message.toLowerCase().includes("cancelled"), "catalog-price sale cancels");
 
-    const batch = await brain.chat("no batch");
-    check(
-      typeof batch.message === "string" &&
-        batch.message.includes("Expiry date for batch tracking? (Optional)"),
-      "#3 'no batch' answered -> runtime asks expiry_date (no re-ask loop)",
-    );
-    check(storedSession()?.collectedData.batch_number === null, "#3 batch_number is stored as NULL, not 'no batch'");
-
-    const expiry = await brain.chat("no");
-    check(
-      typeof expiry.message === "string" &&
-        expiry.message.includes("Any additional notes? (Optional)"),
-      "#4 'no' answered -> runtime asks notes",
-    );
-    check(storedSession()?.collectedData.expiry_date === null, "#4 expiry_date is NULL even though the LLM answered 'none'");
-
-    const notes = await brain.chat("nahi");
-    check(notes.ok === true, "#5 'nahi' returns ok");
-    check(storedSession()?.collectedData.notes === null, "#5 notes is stored as NULL, not 'nahi'");
-    check(
-      typeof notes.message === "string" && notes.message.includes("Create Sale Invoice:"),
-      "#5 all fields filled -> create_sale confirmation summary",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Customer: Walk-in"),
-      "confirmation shows Customer: Walk-in (live defect 1 fixed)",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Product: COCA COLA 1L"),
-      "confirmation shows Product: COCA COLA 1L (live defect 1 fixed)",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Selling Price: 100 EUR"),
-      "confirmation shows Selling Price: 100 EUR (live defect 4 fixed)",
-    );
-    check(
-      typeof notes.message === "string" &&
-        notes.message.includes(`Invoice Date: ${todayInTimezone(ORG_TIMEZONE)}`),
-      "confirmation shows today's org-timezone date (live defect 2 fixed)",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Batch: —"),
-      "confirmation shows Batch: — (live defect 3 fixed)",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Expiry: —"),
-      "confirmation shows Expiry: — (live defect 3 fixed)",
-    );
-    check(
-      typeof notes.message === "string" && !notes.message.includes("{"),
-      "confirmation contains no literal {placeholder}",
-    );
-    check(
-      typeof notes.message === "string" &&
-        !notes.message.includes("2024-05-22") &&
-        !notes.message.includes("no batch") &&
-        !notes.message.includes("no expiry") &&
-        !notes.message.includes("none") &&
-        !notes.message.includes("nahi") &&
-        !notes.message.includes("BATCH-999"),
-      "confirmation contains no poison value from the stub LLM or the user",
-    );
-    check(
-      typeof notes.message === "string" &&
-        notes.message.includes("Please confirm with yes or no."),
-      "confirmation asks for confirmation (text only — nothing confirmed, no sale executed)",
-    );
-    check(
-      storedSession()?.state === "waiting_for_confirmation",
-      "session awaits confirmation after the optional fields",
-    );
-
-    console.log("(7) cancel the pending sale — never 'yes', no sale is created");
-    const cancelled = await brain.chat("cancel");
-    check(cancelled.ok === true, "cancel returns ok");
-    check(
-      typeof cancelled.message === "string" &&
-        cancelled.message.toLowerCase().includes("cancelled"),
-      "cancel acknowledges the cancellation",
-    );
-    check(storedSession()?.state === "cancelled", "session is cancelled after 'cancel'");
-
+    const unpriced = await brain.chat("sell 2 Unpriced Water to Walk-in customer for cash");
+    check(unpriced.message.includes("What is the selling price"), "unpriced product asks for a price");
+    const rejected = await brain.chat("today");
+    check(rejected.message.includes("Please give a number"), "a non-numeric answer re-asks for a number");
+    check(storedSession()?.pendingField === "selling_price", "price is still pending");
+    check(storedSession()?.collectedData.selling_price === undefined, "a non-numeric answer never becomes a price");
+    const numeric = await brain.chat("95 EUR");
+    check(numeric.message.includes("Selling Price: 95 EUR"), "a numeric reply advances to confirmation");
+    check((await brain.chat("cancel")).message.toLowerCase().includes("cancelled"), "pending sale cancels");
+    check(storedSession()?.state === "cancelled", "sale was cancelled without execution");
     console.log(`\nAll ${passed} create-sale confirmation-content checks passed.`);
   } finally {
     await stub.close();

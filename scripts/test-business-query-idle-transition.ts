@@ -49,21 +49,8 @@
  *    message (the catalog price of COCA COLA 1L): the message itself
  *    carries no price, and (d)'s point is session routing — a fresh
  *    create_sale intent reaching confirmation instead of being eaten
- *    by the stale business_query walk — not classifier price
- *    extraction. On live, the real classifier may instead ask for
- *    the price; that is a legitimate create_sale question, not this
- *    bug.
- *  - One-shot confirmation is NOT reachable for create_sale even
- *    with the fix: getNextRequiredField walks required AND optional
- *    fields, so with all five required fields filled the runtime
- *    still asks the four optional fields (invoice_date,
- *    batch_number, expiry_date, notes) before confirming. That is
- *    pre-existing behaviour, OUT of scope for this slice (which
- *    fixes only the idle transition + session cleanup) — (d) drives
- *    those four answers ("today" / "no batch" / "no expiry" /
- *    "no notes") to reach the confirmation text. It is reported as
- *    a follow-up observation: live #4 will ask "What is the sale
- *    date?" rather than confirm in one turn.
+ *    by the stale business_query walk. J-05 sends the sale directly
+ *    to confirmation when the required fields are available.
  *  - After (d) the session awaits confirmation, so (e) is sent
  *    after an explicit "cancel" (a real user abandoning the pending
  *    sale). Without the cancel, (e) would re-present the pending
@@ -187,19 +174,7 @@ function startStubLlm(): Promise<{ port: number; close: () => Promise<void> }> {
         const userMessage = match ? match[1] : "";
         content = JSON.stringify(classifyUserMessage(userMessage));
       } else if (prompt.includes("Task: field_extraction")) {
-        // The runtime asks optional create_sale fields one by one;
-        // the stub extracts a plain value for each field label.
-        if (prompt.includes("Current field being asked: Invoice Date")) {
-          content = JSON.stringify({ value: "2026-11-19", confidence: 0.9, clarification_needed: false });
-        } else if (
-          prompt.includes("Current field being asked: Batch Number") ||
-          prompt.includes("Current field being asked: Expiry Date") ||
-          prompt.includes("Current field being asked: Notes")
-        ) {
-          content = JSON.stringify({ value: "none", confidence: 0.9, clarification_needed: false });
-        } else {
-          content = JSON.stringify({ value: null, confidence: 0.1, clarification_needed: true });
-        }
+        content = JSON.stringify({ value: null, confidence: 0.1, clarification_needed: true });
       } else if (prompt.includes("Task: business_chat")) {
         content = DIRECT_ANSWER;
       } else {
@@ -397,12 +372,12 @@ async function main(): Promise<void> {
     );
     check(
       typeof fourth.message === "string" &&
-        fourth.message.includes("What is the sale date? (Defaults to today)"),
-      "#4 asks the first optional create_sale field (invoice_date) — fresh intent, not the stale walk",
+        fourth.message.includes("Create Sale Invoice:"),
+      "#4 reaches create_sale confirmation immediately",
     );
     check(
-      storedSession()?.state === "waiting_for_invoice_date",
-      "session waits for invoice_date after #4",
+      storedSession()?.state === "waiting_for_confirmation",
+      "session asks for sale confirmation after #4",
     );
     check(
       storedSession()?.actionType === "create_sale",
@@ -417,54 +392,9 @@ async function main(): Promise<void> {
       "session holds payment cash after #4",
     );
 
-    console.log("(d2) answer the four optional fields to reach confirmation");
-    const saleDate = await brain.chat("today");
-    check(
-      typeof saleDate.message === "string" &&
-        saleDate.message.includes("Which batch to sell from? (Optional)"),
-      "invoice_date answered -> runtime asks batch_number",
-    );
-    const batch = await brain.chat("no batch");
-    check(
-      typeof batch.message === "string" &&
-        batch.message.includes("Expiry date for batch tracking? (Optional)"),
-      "batch_number answered -> runtime asks expiry_date",
-    );
-    const expiry = await brain.chat("no expiry");
-    check(
-      typeof expiry.message === "string" &&
-        expiry.message.includes("Any additional notes? (Optional)"),
-      "expiry_date answered -> runtime asks notes",
-    );
-    const notes = await brain.chat("no notes");
-    check(notes.ok === true, "notes answer returns ok");
-    check(
-      typeof notes.message === "string" &&
-        notes.message.includes("Create Sale Invoice:"),
-      "all fields filled -> create_sale confirmation summary",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Quantity: 2"),
-      "confirmation carries quantity 2",
-    );
-    check(
-      typeof notes.message === "string" && notes.message.includes("Payment: cash"),
-      "confirmation carries payment cash",
-    );
-    check(
-      typeof notes.message === "string" &&
-        notes.message.includes("Please confirm with yes or no."),
-      "confirmation asks for confirmation (text only — nothing confirmed, no sale executed)",
-    );
-    check(!isFieldInterrogation(notes.message ?? ""), "confirmation is not a business_query field question");
-    check(
-      storedSession()?.state === "waiting_for_confirmation",
-      "session awaits confirmation after the optional fields",
-    );
-    check(
-      storedSession()?.actionType === "create_sale",
-      "session actionType is create_sale at confirmation",
-    );
+    check(fourth.message.includes("Quantity: 2"), "confirmation carries quantity 2");
+    check(fourth.message.includes("Payment: cash"), "confirmation carries payment cash");
+    check(fourth.message.includes("Please confirm with yes or no."), "execution still requires confirmation");
 
     console.log("(d3) cancel the pending sale so (e) can reach a fresh intent");
     const cancelled = await brain.chat("cancel");

@@ -1302,6 +1302,8 @@ export function getNextRequiredField(context: ConversationContext): string | nul
     }
   }
 
+  if (context.actionType === "create_sale") return null;
+
   // Optional fields: an explicit skip stores NULL, which counts as
   // answered-with-nothing (Area J confirmation fix, 2026-11-20) — only
   // a field never answered (undefined / "") still blocks. Required

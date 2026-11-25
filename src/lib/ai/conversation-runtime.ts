@@ -402,9 +402,15 @@ export class ConversationRuntime {
       context.collectedData.area = area;
     }
     if (entities.quantity) context.collectedData.quantity = entities.quantity;
-    if (entities.selling_price) context.collectedData.selling_price = entities.selling_price;
+    if (classification.intent === "create_sale") {
+      const price = this.parseSalePrice(entities.selling_price);
+      if (price !== null) context.collectedData.selling_price = price;
+    } else if (entities.selling_price) {
+      context.collectedData.selling_price = entities.selling_price;
+    }
     if (entities.purchase_price) context.collectedData.purchase_price = entities.purchase_price;
     if (entities.payment_type) context.collectedData.payment_type = entities.payment_type;
+    this.applySaleDefaults(context);
     if (entities.credit_days && entities.payment_type === "credit") context.collectedData["credit_days"] = entities.credit_days;
     // A skip phrase from the classifier ("none", "nahi", ...) is NULL,
     // never a raw string in the record (Area J confirmation fix).
@@ -630,6 +636,12 @@ export class ConversationRuntime {
 
     if (currentField && schema.fieldDefinitions[currentField]) {
       const extracted = await this.extractFieldValue(message, currentField, context);
+      if (context.actionType === "create_sale" && currentField === "selling_price" && !extracted.found) {
+        const question = "Please give a number for the selling price per unit.";
+        context = addConversationMessage(context, "assistant", "question", question, currentField);
+        this.sessions.set(sessionId, context);
+        return { response: question, state: context.state, actionType: context.actionType };
+      }
       if (extracted.found) {
         // `found` with a NULL value is a real answer (an explicit skip),
         // not a miss — store the NULL, never the raw phrase. The old code
@@ -645,6 +657,7 @@ export class ConversationRuntime {
       }
     }
 
+    this.applySaleDefaults(context);
     const missingFields = this.getMissingRequiredFields(context);
     if (missingFields.length > 0) {
       let nextField = missingFields[0];
@@ -657,6 +670,7 @@ export class ConversationRuntime {
             context.collectedData.customer_id = customer.id;
             context.collectedData._customer_name = customer.name;
             delete context.collectedData["_customer_name_hint"];
+            this.applySaleDefaults(context);
             needFieldUpdate = false;
             continue;
           }
@@ -679,10 +693,12 @@ export class ConversationRuntime {
             context.collectedData.product_id = product.id;
             context.collectedData._product_name = product.name;
             delete context.collectedData["_product_name_hint"];
+            this.applySaleDefaults(context);
             needFieldUpdate = false;
             continue;
           }
         }
+        if (context.collectedData[field] !== undefined && context.collectedData[field] !== null && context.collectedData[field] !== "") continue;
         nextField = field;
         needFieldUpdate = true;
         break;
@@ -717,11 +733,11 @@ export class ConversationRuntime {
         missing.push(field);
       }
     }
-    if (missing.length > 0) return missing;
+    if (missing.length > 0 || context.actionType === "create_sale") return missing;
     // Optional fields: an explicit skip stores NULL, which counts as
     // answered-with-nothing (Area J confirmation fix, 2026-11-20) — only
     // a field never answered (undefined / "") is still missing. This
-    // mirrors getNextRequiredField in conversation-engine.ts.
+    // mirrors getNextRequiredField in conversation-engine.ts for other actions.
     for (const field of schema.optionalFields) {
       const value = context.collectedData[field];
       if (value === undefined || value === "") {
@@ -873,6 +889,18 @@ export class ConversationRuntime {
     const def = schema.fieldDefinitions[fieldKey];
     if (!def) return { found: false, value: message };
 
+    if (context.actionType === "create_sale" && fieldKey === "selling_price") {
+      const price = this.parseSalePrice(message);
+      return { found: price !== null, value: price };
+    }
+    if (context.actionType === "create_sale" && fieldKey === "product_id") {
+      const product = this.resolveProduct(message.trim());
+      if (product) {
+        context.collectedData._product_name = product.name;
+        return { found: true, value: product.id };
+      }
+    }
+
     // Deterministic answers first (Area J confirmation fix, 2026-11-20):
     // skip phrases and "today" are resolved server-side, never by the
     // LLM — the LLM previously answered "today" with a stale invented
@@ -985,10 +1013,43 @@ export class ConversationRuntime {
     return null;
   }
 
+  private parseSalePrice(value: unknown): number | null {
+    if (typeof value === "string") {
+      const currency = this.orgCurrency();
+      const text = value.trim();
+      const amount = currency && text.toUpperCase().endsWith(` ${currency}`)
+        ? text.slice(0, -currency.length).trim()
+        : text;
+      if (!/^\d+(?:\.\d+)?$/.test(amount)) return null;
+      value = Number(amount);
+    }
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  private applySaleDefaults(context: ConversationContext): void {
+    if (context.actionType !== "create_sale") return;
+    const customerId = context.collectedData.customer_id;
+    if (context.collectedData.payment_type == null && typeof customerId === "string" &&
+      this.store?.getCustomer(customerId)?.creditPolicy === "cash_only") {
+      context.collectedData.payment_type = "cash";
+    }
+    if (context.collectedData.selling_price != null) return;
+    const productId = context.collectedData.product_id;
+    if (typeof productId !== "string") return;
+    const price = this.store?.getProduct(productId)?.defaultSellingPrice;
+    // Product memory uses zero when a default selling price is unset.
+    if (typeof price === "number" && Number.isFinite(price) && price > 0) {
+      context.collectedData.selling_price = price;
+    }
+  }
+
   private async presentConfirmation(
     context: ConversationContext,
     sessionId: string
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
+    if (context.actionType === "create_sale" && context.collectedData.invoice_date == null) {
+      context.collectedData.invoice_date = todayInTimezone(this.orgTimeZone());
+    }
     context.awaitingConfirmation = true;
     context.confirmationSummary = formatConfirmationSummary(context, {
       currency: this.orgCurrency(),
