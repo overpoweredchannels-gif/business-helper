@@ -28,6 +28,17 @@
 # branch ref (guard skips) while the version still comes from the tag
 # input.
 #
+# UPDATE 2026-11-25: the slug mystery is SOLVED — drafts are ALWAYS
+# created with an "untagged-<hex>" URL slug (normal GitHub behaviour,
+# NOT a failure, and NOT caused by the tag-delivery method, the
+# creation tool, or tag age). PUBLISHING a draft rewrites its slug to
+# the tag: v0.1.2 published 2026-11-25 13:40 PKT, and the tag-based
+# latest.yml URL went from HTTP 404 to HTTP 200 carrying
+# "version: 0.1.2". So v0.1.0/v0.1.1 got proper slugs because they
+# were PUBLISHED, not because a human pushed the tag. The two-workflow
+# design stays as-is (it works); only the slug diagnosis above is
+# superseded — see step 3 below.
+#
 # How it works:
 # 1. Push to main -> autobridge-tag.yml computes the next version
 #    (latest PUBLISHED release patch + 1), pushes the git tag for it,
@@ -41,27 +52,33 @@
 #    from the tag (github.ref_name, e.g. v0.1.2 -> 0.1.2), builds the
 #    NSIS installer with that version using electron-builder
 #    --publish always. electron-builder creates the draft release and
-#    uploads the installer + blockmap + latest.yml to it. After the
-#    verify step passes, a real run publishes the release
-#    (`gh release edit --draft=false`); a dry run leaves it a draft,
-#    which the updater cannot see.
+#    uploads the installer + blockmap + latest.yml to it. A real run
+#    publishes the draft (`gh release edit --draft=false`) right after
+#    the upload step; the verify step then checks the PUBLISHED release
+#    by tag. A dry run leaves it a draft, which the updater cannot see,
+#    and the verify step only checks the draft's assets (never the
+#    tag-based URLs — drafts 404 by tag, which is expected).
+#
+#    PROVEN 2026-11-25: drafts are ALWAYS created with an
+#    "untagged-<hex>" URL slug — normal GitHub behaviour, NOT a
+#    failure. No creation tool (gh, REST API, electron-builder), no
+#    tag-delivery method (API tag, git-pushed tag) and no tag age
+#    (15s to ~10 min) ever changed it (runs 45462676529,
+#    45474906156, 45480046106, 45482359627, 45484284717,
+#    45487016222, 45490810697, 45495325902). PUBLISHING a draft
+#    rewrites its slug to the tag: v0.1.2 published 2026-11-25
+#    13:40 PKT, and the tag-based latest.yml URL went from HTTP 404
+#    to HTTP 200 carrying "version: 0.1.2". So the draft's slug is
+#    NEVER checked anywhere in this workflow; only the published
+#    release's tag-based URLs are.
 #
 #    Why electron-builder --publish always and not `gh` / the REST API:
-#    creating the release with `gh release create` or the REST API
-#    (POST /repos/{owner}/{repo}/releases with an explicit tag_name)
-#    minted an UNtagged URL slug (untagged-<hex>) EVERY time — across
-#    API-created and git-pushed tags, after waits of 15s, 60s and
-#    180s, and even when the release was created AFTER the build so
-#    the tag had aged ~4 min (runs 45462676529, 45474906156,
-#    45480046106, 45482359627, 45484284717, 45487016222). The
-#    time-based theory is exhausted: the lag is longer than ~4 min
-#    or not time-based at all. electron-builder's publish is the ONLY
-#    creation path that has ever produced a properly-slugged draft in
-#    this repo (v0.1.0/v0.1.1 were created by electron-builder and
-#    carry Tag v0.1.1). One material difference in its request:
-#    GitHubPublisher.createRelease() sends only {tag_name, name,
-#    draft, prerelease} — it does NOT set target_commitish, which
-#    the `gh`/REST calls did.
+#    electron-builder builds the installer + blockmap, writes
+#    latest.yml, and creates the draft + uploads the artifacts in one
+#    step, with the hyphenated safe name the updater expects
+#    (useSafeArtifactName=true for GitHub). Its GitHubPublisher
+#    request sends only {tag_name, name, draft, prerelease} — it does
+#    NOT set target_commitish.
 #
 #    Duplicate-publisher guard: electron-builder 26.18.0 can create
 #    TWO GitHubPublisher instances for one build (the artifact-upload
@@ -75,17 +92,18 @@
 #    draft releases titled "0.1.2" with the assets split between
 #    them. A dedup step after the build therefore ensures exactly ONE
 #    release tagged v0.1.2 remains (keeping the one with the
-#    installer), deletes any extra draft, and fails loudly if the
-#    kept release's URL slug is untagged. A manual `gh release
-#    upload --clobber` step then re-uploads the installer + blockmap
-#    + latest.yml to the kept release, so it is complete even if
-#    electron-builder's upload split or missed a file.
+#    installer) and deletes any extra draft. It does NOT check the
+#    URL slug — drafts are untagged by design (see above). A manual
+#    `gh release upload --clobber` step then re-uploads the installer
+#    + blockmap + latest.yml to the kept release, so it is complete
+#    even if electron-builder's upload split or missed a file.
 #    electron-builder always creates a DRAFT here (releaseType is
 #    forced to "draft" via --config.publish.releaseType=draft on the
 #    CLI, with EP_DRAFT=true as a backstop inside the build step —
 #    EP_DRAFT is set in the run script, NOT in a YAML env: block, so
 #    the Slice 0 gate's env allowlist is not tripped); a real run
-#    publishes it only in the publish step, after the verify step.
+#    publishes it in the publish step, after the upload step and
+#    before the verify step.
 # 4. The installed app (electron-updater, autoInstallOnAppQuit=true) sees
 #    the new latest.yml on launch, downloads the installer in the
 #    background, and installs it on quit. No reinstall, no manual step.
@@ -316,11 +334,11 @@ jobs:
       # comment), each creating its own draft, with the assets split
       # between them (run 45453282258). Ensure exactly ONE release
       # tagged v<version> remains: keep the draft with the most
-      # assets (preferring the one holding the installer), delete
-      # any extra draft, then fail loudly if the kept release's URL
-      # slug is untagged — that is the decisive test of whether
-      # electron-builder's publish mints a properly-slugged draft.
-      # A published release with this tag is a hard stop.
+      # assets (preferring the one holding the installer) and delete
+      # any extra draft. The URL slug is NOT checked here — drafts
+      # are untagged by design and publishing rewrites the slug
+      # (proven 2026-11-25 on v0.1.2). A published release with this
+      # tag is a hard stop.
       - name: Deduplicate releases (exactly one draft)
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -354,7 +372,6 @@ jobs:
           $check = gh release view $tag --json tagName,isDraft,url | ConvertFrom-Json
           if ($check.tagName -ne $tag) { throw "release view returned tagName '$($check.tagName)', expected '$tag' — the draft is untagged" }
           if (-not $check.isDraft) { throw "release $tag is NOT a draft after the build" }
-          if ($check.url -match "untagged-") { throw "release $tag URL is untagged ($($check.url)) — electron-builder's publish also minted an untagged slug, so the slug is not caused by the creation tool either; the remaining options are a much longer tag age or testing whether publishing rewrites the slug" }
           Write-Host "Exactly one tagged draft release $tag ($($check.url))."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -398,6 +415,32 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
 
+      # Real runs only: publish the release AFTER the upload step and
+      # BEFORE the verify step. The publish must come before verify:
+      # the verify step's tag-based URL checks can only pass on a
+      # PUBLISHED release (drafts 404 by tag — expected, not a
+      # failure — because a draft's slug is "untagged-<hex>" until
+      # publishing rewrites it to the tag, proven 2026-11-25 on
+      # v0.1.2). Gates + build + smoke test already passed, so a bad
+      # build should not reach here; if verify then fails, the
+      # workflow fails loudly. A dry run skips this step entirely
+      # and leaves the release as a draft (invisible to the updater).
+      # The re-check fails loudly if the release is still a draft
+      # after the edit.
+      - name: Publish the release (real runs only)
+        if: ${{ steps.dryrun.outputs.dry_run != 'true' }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          gh release edit $tag --draft=false
+          if ($LASTEXITCODE -ne 0) { throw "gh release edit $tag --draft=false failed (exit $LASTEXITCODE)" }
+          $isDraft = gh release view $tag --json isDraft --jq .isDraft
+          if ($isDraft -ne "false") { throw "release $tag is still a draft after publishing" }
+          Write-Host "Published release $tag — the updater can now see version $version."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:
@@ -405,81 +448,69 @@ jobs:
           path: dist-electron/*.exe
           if-no-files-found: error
 
-      # Proof step: the release must exist, be a DRAFT at this point (it
-      # is created as a draft in BOTH modes; a real run publishes it in
-      # the next step, after this check passes), carry the installer +
-      # latest.yml with the exact computed version, be the ONLY release
-      # carrying the tag, and serve its uploaded assets from download
-      # URLs containing /download/<tag>/ (the path electron-updater
-      # fetches by tag — the release URL slug itself is not checked
-      # here; the dedup step already failed loudly on an untagged
-      # slug). A duplicate release, a missing latest.yml, a
-      # wrong version, or a tag-less download path fails the workflow
-      # loudly instead of silently leaving users without an update.
+      # Proof step: the release must exist, be the ONLY release carrying
+      # the tag, and carry the installer + blockmap + latest.yml with
+      # the exact computed version. What is checked depends on the
+      # mode, because the publish step runs BEFORE this step:
+      # - Dry run: the release must still be a DRAFT with the three
+      #   assets. Tag-based download URLs are NOT checked — drafts
+      #   404 by tag, which is expected (only a published release
+      #   serves by tag).
+      # - Real run: the release must be PUBLISHED (not a draft), carry
+      #   the three assets, and serve latest.yml + installer + blockmap
+      #   from TAG-BASED download URLs (the path electron-updater
+      #   fetches by tag — it never uses an asset's browser_download_url).
+      #   A missing asset, a wrong version, or a tag-based URL that
+      #   does not resolve fails the workflow loudly instead of
+      #   silently leaving users without an update.
       - name: Verify the release the updater will read
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $tag = "v$version"
+          $dryRun = "${{ steps.dryrun.outputs.dry_run }}"
           $list = gh release list --json tagName | ConvertFrom-Json
           $count = @($list | Where-Object { $_.tagName -eq $tag }).Count
           if ($count -ne 1) { throw "expected exactly 1 release tagged $tag, found $count — duplicate releases exist" }
-          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name], downloads: [.assets[] | {name: .name, url: .url}]}'
+          $rel = gh release view $tag --json isDraft,isPrerelease,assets --jq '{draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name]}'
           Write-Host "Release $tag : $rel"
-          $draft = ($rel | ConvertFrom-Json).draft
-          $prerelease = ($rel | ConvertFrom-Json).prerelease
-          $assets = ($rel | ConvertFrom-Json).assets
-          if (-not $draft) { throw "release $tag is NOT a draft at verify time — it should be a draft until the publish step" }
+          $parsed = ($rel | ConvertFrom-Json)
+          $draft = $parsed.draft
+          $prerelease = $parsed.prerelease
+          $assets = $parsed.assets
           if ($prerelease) { throw "release $tag is a prerelease — the updater 'latest' channel ignores it" }
           if ($assets -notcontains "Aankh-Setup-$version.exe") { throw "release $tag is missing the installer Aankh-Setup-$version.exe" }
           if ($assets -notcontains "Aankh-Setup-$version.exe.blockmap") { throw "release $tag is missing the blockmap Aankh-Setup-$version.exe.blockmap" }
           if ($assets -notcontains "latest.yml") { throw "release $tag is missing latest.yml — the updater has no feed" }
-          # The updater (electron-updater GitHubProvider) fetches
-          # latest.yml and the installer from TAG-BASED URLs
-          # (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>),
-          # never from an asset's browser_download_url. A release whose
-          # URL slug is "untagged-<hex>" (GitHub mints the slug at
-          # creation and never rewrites it, even when the tag IS
-          # attached) has browser_download_url values under
-          # /download/untagged-<hex>/ — that does not matter, because
-          # the updater never uses them. What matters is that the
-          # TAG-BASED URLs resolve. Test them directly (with the token,
-          # because this is a draft). The downloads array above is only
-          # diagnostic (it shows the real browser_download_url values).
-          $repo = "overpoweredchannels-gif/business-helper"
-          $base = "https://github.com/$repo/releases/download/$tag"
-          $latestPath = Join-Path $env:RUNNER_TEMP "latest-tag.yml"
-          $code = curl.exe -s -L -o $latestPath -w "%{http_code}" -H "Authorization: Bearer $env:GH_TOKEN" "$base/latest.yml"
-          $code = "$code".Trim()
-          if ($code -ne "200") { throw "tag-based download URL for latest.yml returned HTTP $code (expected 200) — the updater fetches latest.yml by tag, so this release would not update installed apps. URL: $base/latest.yml" }
-          $ymlText = Get-Content $latestPath -Raw
-          Write-Host $ymlText
-          if ($ymlText -notmatch "version: $version") { throw "latest.yml does not carry version $version" }
-          Write-Host "Verified: latest.yml is fetchable by tag ($base/latest.yml) and carries version $version."
-          foreach ($f in @("Aankh-Setup-$version.exe", "Aankh-Setup-$version.exe.blockmap")) {
-            $u = "$base/$f"
-            $code = curl.exe -s -o NUL -w "%{http_code}" -L -H "Authorization: Bearer $env:GH_TOKEN" -H "Range: bytes=0-0" $u
+          if ($dryRun -eq "true") {
+            if (-not $draft) { throw "release $tag is NOT a draft in a dry run — it should stay a draft until the publish step of a real run" }
+            Write-Host "Verified (dry run): release $tag is a DRAFT with installer + blockmap + latest.yml version $version. Tag-based URL checks skipped — drafts 404 by tag, which is expected."
+          } else {
+            if ($draft) { throw "release $tag is still a DRAFT after the publish step — the publish did not take effect" }
+            # The updater (electron-updater GitHubProvider) fetches
+            # latest.yml and the installer from TAG-BASED URLs
+            # (https://github.com/<owner>/<repo>/releases/download/<tag>/<file>),
+            # never from an asset's browser_download_url. Publishing
+            # rewrites the release's URL slug to the tag (proven
+            # 2026-11-25 on v0.1.2), so these URLs must resolve now.
+            $repo = "overpoweredchannels-gif/business-helper"
+            $base = "https://github.com/$repo/releases/download/$tag"
+            $latestPath = Join-Path $env:RUNNER_TEMP "latest-tag.yml"
+            $code = curl.exe -s -L -o $latestPath -w "%{http_code}" -H "Authorization: Bearer $env:GH_TOKEN" "$base/latest.yml"
             $code = "$code".Trim()
-            if (($code -ne "200") -and ($code -ne "206")) { throw "tag-based download URL for $f returned HTTP $code (expected 200 or 206). URL: $u" }
-            Write-Host "Verified: $f is fetchable by tag (HTTP $code)."
+            if ($code -ne "200") { throw "tag-based download URL for latest.yml returned HTTP $code (expected 200) — the updater fetches latest.yml by tag, so this release would not update installed apps. URL: $base/latest.yml" }
+            $ymlText = Get-Content $latestPath -Raw
+            Write-Host $ymlText
+            if ($ymlText -notmatch "version: $version") { throw "latest.yml does not carry version $version" }
+            Write-Host "Verified: latest.yml is fetchable by tag ($base/latest.yml) and carries version $version."
+            foreach ($f in @("Aankh-Setup-$version.exe", "Aankh-Setup-$version.exe.blockmap")) {
+              $u = "$base/$f"
+              $code = curl.exe -s -o NUL -w "%{http_code}" -L -H "Authorization: Bearer $env:GH_TOKEN" -H "Range: bytes=0-0" $u
+              $code = "$code".Trim()
+              if (($code -ne "200") -and ($code -ne "206")) { throw "tag-based download URL for $f returned HTTP $code (expected 200 or 206). URL: $u" }
+              Write-Host "Verified: $f is fetchable by tag (HTTP $code)."
+            }
+            Write-Host "Verified: release $tag is PUBLISHED with installer + latest.yml version $version, all fetchable by tag."
           }
-          Write-Host "Verified: release $tag is a DRAFT with installer + latest.yml version $version, all fetchable by tag."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-
-      # Real runs only: publish the release AFTER the verify step passed,
-      # so a bad build never ships. A dry run leaves the release as a
-      # draft (invisible to the updater). The re-check fails loudly if
-      # the release is still a draft after the edit.
-      - name: Publish the release (real runs only)
-        if: ${{ steps.dryrun.outputs.dry_run != 'true' }}
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $tag = "v$version"
-          gh release edit $tag --draft=false
-          $isDraft = gh release view $tag --json isDraft --jq .isDraft
-          if ($isDraft -ne "false") { throw "release $tag is still a draft after publishing" }
-          Write-Host "Published release $tag — the updater can now see version $version."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
