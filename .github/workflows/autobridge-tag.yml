@@ -60,7 +60,7 @@ name: AutoBridge tag (compute version + push tag)
 
 on:
   push:
-    branches: [main, fix/autobridge-main-push]
+    branches: [main]
 
 # Serialize tag pushes: runs queue up instead of overlapping, so the
 # version computation (latest release + 1) can never collide between
