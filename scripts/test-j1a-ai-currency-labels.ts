@@ -16,6 +16,7 @@ import { processInventoryQuery } from "../src/lib/ai/inventory-intelligence";
 import { processBusinessIntelligenceQuery } from "../src/lib/ai/business-intelligence";
 import { buildBusinessQueryDirectPrompt } from "../src/lib/ai/business-query-direct";
 import { generateExecutiveReport, explainKPI } from "../src/lib/ai/executive-ai";
+import { formatBooksMoney } from "../src/lib/tradeos/formatters";
 import { execute as executeKpiSkill } from "../src/lib/brain/skills/kpi";
 import { execute as executeRecEngine } from "../src/lib/brain/skills/recommendation-engine";
 import type { AssistantIntent } from "../src/lib/assistant/types";
@@ -41,8 +42,12 @@ import type { AssistantIntent } from "../src/lib/assistant/types";
 //
 // Fix (LABELS ONLY — no threshold, formula or valuation change): all AI
 // text formats money with the org's books currency via one shared
-// helper (formatAiMoney, books formatter, no conversion, no relabel;
-// unknown currency falls back to the legacy PKR default).
+// helper (formatAiMoney, books formatter, no conversion, no relabel).
+// Follow-up (Claude msg 48): a currency that is present but unknown is
+// NOT silently relabelled PKR — it renders its ISO code as a prefix
+// ("XYZ 9,440"); a missing currency renders the bare number ("9,440");
+// both cases are logged. NEVER silently fall back to PKR: that is the
+// same bug J1a fixed.
 //
 // The test covers TWO currencies: a EUR org and a PKR org. A EUR-only
 // test would hide a hardcode (the old code renders PKR for both).
@@ -126,15 +131,54 @@ async function main(): Promise<void> {
     // PKR: the legacy label, no euro sign.
     const pkr = formatAiMoney(1000, "PKR");
     check((pkr.includes("PKR") || pkr.includes("Rs")) && !pkr.includes("€"), `formatAiMoney(1000, "PKR") labels PKR (got ${pkr})`);
-    // Unknown/invalid currency falls back to the legacy PKR default, never throws.
-    check(!formatAiMoney(1000, undefined).includes("€"), "unknown currency falls back to PKR, never throws");
-    check(!formatAiMoney(1000, "XXX").includes("€"), "invalid currency code falls back to PKR, never throws");
+    // Unknown currency present: ISO code prefix, NEVER a silent PKR
+    // relabel (Claude msg 48 — the silent fallback is the same bug J1a
+    // fixed). The number uses plain en-PK grouping with no forced
+    // fraction digits, so 9,440 renders as "9,440" and 9,440.5 as "9,440.5".
+    check(formatAiMoney(9440, "XYZ") === "XYZ 9,440", `formatAiMoney(9440, "XYZ") is XYZ 9,440 (got ${formatAiMoney(9440, "XYZ")})`);
+    check(formatAiMoney(1000, "XXX") === "XXX 1,000", `formatAiMoney(1000, "XXX") is XXX 1,000 (got ${formatAiMoney(1000, "XXX")})`);
+    check(formatAiMoney(9440.5, "XYZ") === "XYZ 9,440.5", `formatAiMoney(9440.5, "XYZ") keeps the fraction (got ${formatAiMoney(9440.5, "XYZ")})`);
+    check(!hasPkrLabel(formatAiMoney(9440, "XYZ")), "unknown currency never renders a PKR/Rs label");
+    check(!formatAiMoney(9440, "XYZ").includes("€"), "unknown currency never renders €");
+    // Missing currency: bare number only, NEVER a silent PKR relabel.
+    check(formatAiMoney(9440, undefined) === "9,440", `formatAiMoney(9440, undefined) is the bare number 9,440 (got ${formatAiMoney(9440, undefined)})`);
+    check(formatAiMoney(9440, null) === "9,440", `formatAiMoney(9440, null) is the bare number 9,440 (got ${formatAiMoney(9440, null)})`);
+    check(formatAiMoney(9440, "") === "9,440", `formatAiMoney(9440, "") is the bare number 9,440 (got ${formatAiMoney(9440, "")})`);
+    check(!hasPkrLabel(formatAiMoney(9440, undefined)), "missing currency never renders a PKR/Rs label");
+    // Both fallback cases are logged.
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
+    try {
+      formatAiMoney(9440, "XYZ");
+      formatAiMoney(9440, undefined);
+      formatAiMoney(9440, null);
+    } finally {
+      console.warn = origWarn;
+    }
+    check(warnings.some((w) => w.includes("XYZ")), "unknown currency logs the unknown code");
+    check(warnings.some((w) => /missing/i.test(w)), "missing currency logs the missing case");
   }
   if (typeof aiMoney.resolveAiCurrency === "function") {
-    const resolveAiCurrency = aiMoney.resolveAiCurrency as (currency: unknown) => string;
-    check(resolveAiCurrency("EUR") === "EUR", "resolveAiCurrency passes EUR through");
-    check(resolveAiCurrency("PKR") === "PKR", "resolveAiCurrency passes PKR through");
-    check(resolveAiCurrency(undefined) === "PKR", "resolveAiCurrency falls back to PKR for unknown");
+    type AiCurrencyResolution =
+      | { kind: "known"; currency: string }
+      | { kind: "unknown"; code: string }
+      | { kind: "missing" };
+    const resolveAiCurrency = aiMoney.resolveAiCurrency as (
+      currency: unknown
+    ) => AiCurrencyResolution;
+    const eurResolved = resolveAiCurrency("EUR");
+    check(eurResolved.kind === "known" && eurResolved.currency === "EUR", "resolveAiCurrency reports EUR as known");
+    const pkrResolved = resolveAiCurrency("PKR");
+    check(pkrResolved.kind === "known" && pkrResolved.currency === "PKR", "resolveAiCurrency reports PKR as known");
+    const lowerResolved = resolveAiCurrency("eur");
+    check(lowerResolved.kind === "known" && lowerResolved.currency === "EUR", "resolveAiCurrency normalises lowercase eur to known EUR");
+    const xyzResolved = resolveAiCurrency("XYZ");
+    check(xyzResolved.kind === "unknown" && xyzResolved.code === "XYZ", "resolveAiCurrency reports XYZ as unknown with its code");
+    check(resolveAiCurrency(undefined).kind === "missing", "resolveAiCurrency reports undefined as missing, never PKR");
+    check(resolveAiCurrency(null).kind === "missing", "resolveAiCurrency reports null as missing, never PKR");
   }
 
   // --- (b) Brain context text: EUR org. ---
@@ -212,8 +256,10 @@ async function main(): Promise<void> {
   // (a STRING), while both functions read payload.businessHealth.score,
   // so they throw TypeError on any input. That crash predates J1a (same
   // function at HEAD) and needs its own slice; J1a only re-labels the
-  // money inside them. The check below locks in the known-broken state
-  // so the follow-up slice can flip it to green.
+  // money inside them. The checks below lock in the known-broken state
+  // so the follow-up slice can flip them to green — they are labelled
+  // "known-broken: executive-ai defect, expected-fail" (Claude msg 48)
+  // so they read as expected-fail, not green.
   const execAiSource = readFileSync("src/lib/ai/executive-ai.ts", "utf8");
   check(
     execAiSource.includes("generateMorningBriefing(payload, language, data.currency)"),
@@ -236,7 +282,7 @@ async function main(): Promise<void> {
   }
   check(
     execCrashedAsKnown,
-    "KNOWN PRE-EXISTING DEFECT (not J1a): generateExecutiveReport still throws TypeError reading businessHealth — needs its own slice"
+    "known-broken: executive-ai defect, expected-fail — generateExecutiveReport still throws TypeError reading businessHealth (needs its own slice)"
   );
   let kpiCrashedAsKnown = false;
   try {
@@ -249,7 +295,7 @@ async function main(): Promise<void> {
   }
   check(
     kpiCrashedAsKnown,
-    "KNOWN PRE-EXISTING DEFECT (not J1a): explainKPI still throws the same TypeError — needs its own slice"
+    "known-broken: executive-ai defect, expected-fail — explainKPI still throws the same TypeError (needs its own slice)"
   );
 
   // --- (e) Intelligence modules: PKR org (mirror). ---
@@ -307,6 +353,23 @@ async function main(): Promise<void> {
   });
   check(pkrPrompt.includes("Use PKR currency formatting."), "PKR direct prompt says PKR formatting");
   check(!pkrPrompt.includes("Use EUR currency formatting."), "PKR direct prompt never says EUR formatting");
+  const xyzPrompt = buildBusinessQueryDirectPrompt({
+    question: "What are my payables?",
+    language: "english",
+    businessContext: eurContext,
+    history: "",
+    currency: "XYZ",
+  });
+  check(xyzPrompt.includes("Use XYZ currency formatting."), "unknown-code direct prompt says XYZ formatting");
+  check(!xyzPrompt.includes("Use PKR currency formatting."), "unknown-code direct prompt never says PKR formatting");
+  const missingPrompt = buildBusinessQueryDirectPrompt({
+    question: "What are my payables?",
+    language: "english",
+    businessContext: eurContext,
+    history: "",
+  });
+  check(!missingPrompt.includes("Use PKR currency formatting."), "missing-currency direct prompt never says PKR formatting");
+  check(missingPrompt.includes("bare numbers"), "missing-currency direct prompt tells the model to render bare numbers");
 
   // --- (g) Sale/purchase success messages: EUR vs PKR. ---
   console.log("(g) sale/purchase success messages label the org currency");
@@ -404,6 +467,40 @@ async function main(): Promise<void> {
     !directPromptSource.includes('"Use PKR currency formatting."') &&
       !directPromptSource.includes("`Use PKR currency formatting.`"),
     "business-query-direct.ts never hardcodes the PKR prompt line"
+  );
+
+  // --- (i) AI amounts equal the dashboard books formatter string. ---
+  // The dashboard renders money with formatBooksMoney (tradeos/formatters,
+  // backed by formatBooksAmount with the active number locale, en-PK in
+  // this test process). The AI formatter must produce EXACTLY that
+  // string on both a EUR org and a PKR org (Claude msg 48) — any drift
+  // in locale, digits or symbol fails here, not on a live screen.
+  console.log("(i) AI amounts equal the dashboard books formatter string");
+  const aiMoneyForSectionI = (await import("../src/lib/ai/ai-money")) as {
+    formatAiMoney: (amount: number, currency: unknown) => string;
+  };
+  const formatAiMoney = aiMoneyForSectionI.formatAiMoney;
+  check(
+    formatAiMoney(9440, "EUR") === formatBooksMoney(9440, "EUR"),
+    `AI EUR 9440 equals dashboard books string (AI ${formatAiMoney(9440, "EUR")} vs dashboard ${formatBooksMoney(9440, "EUR")})`
+  );
+  check(
+    formatAiMoney(9475.86, "EUR") === formatBooksMoney(9475.86, "EUR"),
+    `AI EUR 9475.86 equals dashboard books string (AI ${formatAiMoney(9475.86, "EUR")} vs dashboard ${formatBooksMoney(9475.86, "EUR")})`
+  );
+  check(
+    formatAiMoney(9440, "PKR") === formatBooksMoney(9440, "PKR"),
+    `AI PKR 9440 equals dashboard books string (AI ${formatAiMoney(9440, "PKR")} vs dashboard ${formatBooksMoney(9440, "PKR")})`
+  );
+  check(
+    formatAiMoney(8220, "PKR") === formatBooksMoney(8220, "PKR"),
+    `AI PKR 8220 equals dashboard books string (AI ${formatAiMoney(8220, "PKR")} vs dashboard ${formatBooksMoney(8220, "PKR")})`
+  );
+  // NBSP after "Rs": Intl renders PKR with a non-breaking space, so the
+  // literal must spell it out (\u00A0) — a regular space never matches.
+  check(
+    formatAiMoney(8220, "PKR") === "Rs\u00A08,220.00",
+    `PKR renders exactly the dashboard string Rs 8,220.00 (got ${formatAiMoney(8220, "PKR")})`
   );
 
   console.log(`\nAll ${passed} checks passed.`);
