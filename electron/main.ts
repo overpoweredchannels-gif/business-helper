@@ -15,6 +15,7 @@ import {
 } from "./backup";
 import { createLocalStore, type LocalSaleRow, type LocalStore, type StoredIdentity } from "./store";
 import { createDesktopUpdater } from "./desktop-updater";
+import { createUpdaterLogger } from "./updater-log";
 import type { DesktopUpdateStatus } from "./updater-types";
 
 // Slice S0 — desktop shell spike. Serves the Next.js standalone build from
@@ -835,22 +836,14 @@ function createWindow(url: string | null): void {
 }
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-const UPDATE_LOG_MAX_BYTES = 256 * 1024;
 
 function setupAutoUpdater(): void {
   const currentVersion = app.getVersion();
   const unavailable: DesktopUpdateStatus = { currentVersion, phase: "unavailable", promptOpen: false };
-  const logPath = path.join(app.getPath("userData"), "updater.log");
+  const logger = app.isPackaged ? createUpdaterLogger(path.join(app.getPath("userData"), "updater.log")) : null;
+  if (logger) autoUpdater.logger = logger;
   const log = (message: string) => {
-    try {
-      fs.mkdirSync(path.dirname(logPath), { recursive: true });
-      const size = fs.statSync(logPath, { throwIfNoEntry: false })?.size ?? 0;
-      if (size >= UPDATE_LOG_MAX_BYTES) fs.renameSync(logPath, `${logPath}.1`);
-      fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
-    } catch (error) {
-      console.error("Could not write the Aankh updater log", error);
-      console.error(message);
-    }
+    logger?.info(message);
   };
   let activeNotification: Notification | null = null;
   const controller: ReturnType<typeof createDesktopUpdater> | null = app.isPackaged ? createDesktopUpdater({

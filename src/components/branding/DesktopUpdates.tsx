@@ -247,7 +247,7 @@ export function DesktopUpdates({ surface, collapsed = false }: {
       className={cn(
         "space-y-1 break-words px-2 pt-2 text-xs",
         onDarkPanel ? "text-panel-foreground" : "text-foreground",
-        surface === "footer" && "[body:has([data-desktop-updates-sidebar])_&]:hidden",
+        surface === "footer" && "lg:[body:has([data-desktop-updates-sidebar])_&]:hidden",
       )}
     >
       {details}

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { UpdateCheckResult, UpdateInfo } from "electron-updater";
 import { createDesktopUpdater } from "../electron/desktop-updater";
+import { createUpdaterLogger } from "../electron/updater-log";
 import type { DesktopUpdateStatus } from "../electron/updater-types";
 
 const currentVersion = "0.1.5";
@@ -169,6 +173,24 @@ async function verifyPeriodicOffers(): Promise<void> {
 async function main(): Promise<void> {
   await verifyLaunchAndInstall();
   await verifyPeriodicOffers();
+  const logDirectory = mkdtempSync(join(tmpdir(), "aankh-updater-log-"));
+  try {
+    const logPath = join(logDirectory, "updater.log");
+    const logger = createUpdaterLogger(logPath);
+    logger.transports.console.level = false;
+    logger.info("Desktop update 0.1.6 is available.");
+    logger.error(new Error(
+      "HTTP 403 from https://user:password@example.test/latest.yml?sig=signed-value\nHeaders: private-response",
+    ));
+    logger.warn("Authorization: Bearer private-token");
+    logger.info("Generated new staging user ID: 01234567-abcd-4000-8000-0123456789ab");
+    const contents = readFileSync(logPath, "utf8");
+    assert.match(contents, /\[info\].*Desktop update 0\.1\.6 is available/);
+    assert.match(contents, /\[error\].*HTTP 403 from https:\/\/example\.test\/latest\.yml/);
+    assert.doesNotMatch(contents, /password|signed-value|private-response|private-token|01234567/);
+  } finally {
+    rmSync(logDirectory, { recursive: true, force: true });
+  }
   console.log("test-desktop-updater: all assertions passed");
 }
 
