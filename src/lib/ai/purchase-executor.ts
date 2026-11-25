@@ -25,7 +25,7 @@ type PurchaseResult = {
 export async function executePurchaseDraft(
   collectedData: Record<string, unknown>,
   organizationId: string,
-  currency: unknown = "PKR"
+  currency?: unknown
 ): Promise<PurchaseResult> {
   const errors: string[] = [];
 
@@ -96,7 +96,7 @@ export async function executePurchaseDraft(
   }
 }
 
-export function formatPurchaseSuccessMessage(result: { invoiceNumber?: string; supplierName?: string; productName?: string; quantity?: number; total?: number }, currency: unknown = "PKR"): string {
+export function formatPurchaseSuccessMessage(result: { invoiceNumber?: string; supplierName?: string; productName?: string; quantity?: number; total?: number }, currency?: unknown): string {
   const supplier = result.supplierName || "";
   const product = result.productName || "";
   const qty = result.quantity || 0;

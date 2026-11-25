@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
 import { requirePermission } from "@/lib/identity/authorization";
 import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
+import { aiCurrencyPromptLine, formatAiMoney } from "@/lib/ai/ai-money";
+import { RegionalPreferencesRepository } from "@/lib/regional/repository";
 
 export const runtime = "nodejs";
 
@@ -53,7 +55,8 @@ const buildLocalFallbackResult = (
   question: string,
   language: string,
   queryType: string,
-  businessSummary: any
+  businessSummary: any,
+  booksCurrency: unknown
 ): BusinessQueryResult => {
   const sales = getSummarySection(businessSummary, "sales");
   const purchases = getSummarySection(businessSummary, "purchases");
@@ -63,13 +66,14 @@ const buildLocalFallbackResult = (
   const tasks = getSummarySection(businessSummary, "tasks");
   const inventory = getSummarySection(businessSummary, "inventory");
   const marketIntelligence = getSummarySection(businessSummary, "market_intelligence");
+  const money = (value: unknown) => formatAiMoney(safeNumber(value), booksCurrency);
 
   const keyPoints = [
-    `Sales: ${safeNumber(sales.count)} invoice(s), total ${safeNumber(sales.total_amount).toLocaleString("en-PK")}.`,
-    `Purchases: ${safeNumber(purchases.count)} invoice(s), total ${safeNumber(purchases.total_amount).toLocaleString("en-PK")}.`,
-    `Customer payments: ${safeNumber(customerPayments.count)} payment(s), total ${safeNumber(customerPayments.total_amount).toLocaleString("en-PK")}.`,
-    `Supplier payments: ${safeNumber(supplierPayments.count)} payment(s), total ${safeNumber(supplierPayments.total_amount).toLocaleString("en-PK")}.`,
-    `Expenses: ${safeNumber(expenses.count)} entry/entries, total ${safeNumber(expenses.total_amount).toLocaleString("en-PK")}.`,
+    `Sales: ${safeNumber(sales.count)} invoice(s), total ${money(sales.total_amount)}.`,
+    `Purchases: ${safeNumber(purchases.count)} invoice(s), total ${money(purchases.total_amount)}.`,
+    `Customer payments: ${safeNumber(customerPayments.count)} payment(s), total ${money(customerPayments.total_amount)}.`,
+    `Supplier payments: ${safeNumber(supplierPayments.count)} payment(s), total ${money(supplierPayments.total_amount)}.`,
+    `Expenses: ${safeNumber(expenses.count)} entry/entries, total ${money(expenses.total_amount)}.`,
     `Tasks: ${safeNumber(tasks.pending)} pending, ${safeNumber(tasks.completed)} completed, ${safeNumber(tasks.overdue)} overdue.`,
   ];
 
@@ -127,6 +131,16 @@ async function runPost(request: NextRequest) {
       );
     }
 
+    let booksCurrency: unknown;
+    if (permission.actor?.organizationId) {
+      try {
+        const organization = await new RegionalPreferencesRepository().findById(permission.actor.organizationId);
+        booksCurrency = organization?.booksCurrency ?? organization?.settings?.accountingCurrency;
+      } catch (error) {
+        console.error("Unable to read books currency for AI business query:", error);
+      }
+    }
+    const currencyInstruction = aiCurrencyPromptLine(booksCurrency);
     const summaryText = safeText(JSON.stringify(businessSummary), 24000);
     const isAnalyticsExplainer = queryType === "analytics_explainer";
     const prompt = isAnalyticsExplainer
@@ -135,6 +149,7 @@ You are OP OWNER AI Analytics Explainer for a Pakistani wholesale/trading busine
 Answer ONLY from the provided analytics context. Do not invent numbers, percentages, product names, customer names, or causes.
 If the provided data is not enough to answer accurately, say exactly: "There is not enough recorded business data to answer this accurately."
 Do not execute actions or suggest that you changed records.
+${currencyInstruction}
 
 Language setting: ${language}
 Reply in the requested language. For Urdu or Roman Urdu, keep business terms understandable for Pakistani traders.
@@ -169,6 +184,7 @@ ${summaryText}
 You are Aankh Business Assistant for Pakistani wholesalers, traders, distributors, and general store suppliers.
 Answer only from the provided business_summary. Do not invent data. If data is missing, say it is not available.
 Do not execute actions or suggest that you changed records.
+${currencyInstruction}
 
 Language setting: ${language}
 If language is auto, reply in the same language style as the question. For Urdu or Roman Urdu, keep business terms understandable for Pakistani traders.
@@ -217,7 +233,7 @@ ${summaryText}
           ok: true,
           provider: "local_fallback",
           model: "local_summary",
-          result: buildLocalFallbackResult(question, language, queryType, businessSummary),
+          result: buildLocalFallbackResult(question, language, queryType, businessSummary, booksCurrency),
           raw: { attempts: routerResult.attempts, fallback: true },
         });
       }

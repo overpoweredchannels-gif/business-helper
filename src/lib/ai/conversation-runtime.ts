@@ -39,6 +39,7 @@ import type { PreferenceStore } from "../brain/learning/preference-store";
 import { checkActionPermission, verifyIdentity } from "../identity/permissions";
 import type { PermissionContext } from "../identity/permissions";
 import { logAuditEvent } from "../identity/audit";
+import { normalizeOptionalDate } from "../sales/validation";
 import {
   isSkipPhrase,
   isTodayWord,
@@ -171,7 +172,7 @@ export class ConversationRuntime {
   }
 
   private orgCurrency(): string {
-    return this.store?.meta?.currency || "PKR";
+    return this.store?.meta?.currency ?? "";
   }
 
   setPrefs(prefs: PreferenceStore): void {
@@ -642,6 +643,12 @@ export class ConversationRuntime {
         this.sessions.set(sessionId, context);
         return { response: question, state: context.state, actionType: context.actionType };
       }
+      if (context.actionType === "create_sale" && currentField === "invoice_date" && !extracted.found) {
+        const question = "Please enter the invoice date as YYYY-MM-DD, or say today.";
+        context = addConversationMessage(context, "assistant", "question", question, currentField);
+        this.sessions.set(sessionId, context);
+        return { response: question, state: context.state, actionType: context.actionType };
+      }
       if (extracted.found) {
         // `found` with a NULL value is a real answer (an explicit skip),
         // not a miss — store the NULL, never the raw phrase. The old code
@@ -909,6 +916,10 @@ export class ConversationRuntime {
     if (isSkipPhrase(message)) return { found: true, value: null };
     if (def.inputType === "date" && isTodayWord(message)) {
       return { found: true, value: todayInTimezone(this.orgTimeZone()) };
+    }
+    if (context.actionType === "create_sale" && fieldKey === "invoice_date") {
+      const date = normalizeOptionalDate(message);
+      return { found: date !== null, value: date };
     }
 
     if (def.validation) {

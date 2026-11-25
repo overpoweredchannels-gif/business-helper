@@ -27,7 +27,7 @@ type SaleResult = {
 export async function executeSaleDraft(
   collectedData: Record<string, unknown>,
   organizationId: string,
-  currency: unknown = "PKR"
+  currency?: unknown
 ): Promise<SaleResult> {
   const errors: string[] = [];
 
@@ -104,7 +104,7 @@ export async function executeSaleDraft(
   }
 }
 
-export function formatSaleSuccessMessage(result: { invoiceNumber?: string; customerName?: string; productName?: string; quantity?: number; total?: number }, currency: unknown = "PKR"): string {
+export function formatSaleSuccessMessage(result: { invoiceNumber?: string; customerName?: string; productName?: string; quantity?: number; total?: number }, currency?: unknown): string {
   const customer = result.customerName || "";
   const product = result.productName || "";
   const qty = result.quantity || 0;

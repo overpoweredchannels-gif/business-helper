@@ -3,6 +3,10 @@ import { createSupabaseService } from "@/lib/supabase/server";
 import { resolveActor, buildOrganizationContext } from "@/lib/identity/api-context";
 import { InvoiceNumberService } from "@/lib/invoices/invoice-number-service";
 import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
+import { isTodayWord, todayInTimezone } from "@/lib/ai/confirmation-content";
+import { RegionalPreferencesRepository } from "@/lib/regional/repository";
+import { sanitizeRegionalSettings } from "@/lib/regional/settings";
+import { normalizeOptionalDate } from "@/lib/sales/validation";
 
 export const runtime = "nodejs";
 
@@ -58,6 +62,16 @@ async function runPost(req: NextRequest) {
 
     const supabase = createSupabaseService();
     const now = new Date().toISOString();
+    const useToday = invoice_date == null || invoice_date === "" || isTodayWord(invoice_date);
+    let saleDate = normalizeOptionalDate(invoice_date);
+    if (useToday) {
+      const preferences = await new RegionalPreferencesRepository().findById(organizationId);
+      const { timeZone } = sanitizeRegionalSettings(preferences?.settings);
+      saleDate = todayInTimezone(timeZone, new Date(now));
+    }
+    if (!saleDate) {
+      return NextResponse.json({ ok: false, error: "invoice_date must be YYYY-MM-DD or today" }, { status: 400 });
+    }
 
     // Server-side, per-organization, atomically generated invoice number
     // (SAL-000001, SAL-000002, ...). Never trust a client-supplied number.
@@ -68,8 +82,6 @@ async function runPost(req: NextRequest) {
       const message = numberErr instanceof Error ? numberErr.message : "Failed to generate invoice number";
       return NextResponse.json({ ok: false, error: message }, { status: 500 });
     }
-
-    const saleDate = invoice_date || now;
 
     const productRes = await supabase
       .from("products")

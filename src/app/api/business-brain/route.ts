@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
+import { aiCurrencyPromptLine } from "@/lib/ai/ai-money";
 import { cleanChatHistoryForPrompt } from "@/lib/ai/chat-history-hygiene";
 import { sanitizeMessage, sanitizeHistory } from "@/lib/brain/sanitize";
 import { checkRateLimit } from "@/lib/brain/rate-limit";
@@ -49,10 +50,7 @@ async function runPost(req: NextRequest) {
     const conversationHistory: Array<{ role: "user" | "assistant"; text: string }> = body.conversationHistory ?? [];
     // Books currency drives money formatting in the answer (the org's
     // header-selected currency, e.g. EUR — never a hardcoded PKR).
-    const booksCurrency =
-      typeof body.booksCurrency === "string" && /^[A-Z]{3}$/.test(body.booksCurrency.trim())
-        ? body.booksCurrency.trim()
-        : "PKR";
+    const currencyInstruction = aiCurrencyPromptLine(body.booksCurrency);
 
     const sanitized = sanitizeMessage(body.message);
     if (!sanitized.ok) {
@@ -80,7 +78,7 @@ async function runPost(req: NextRequest) {
       `Never fabricate numbers. If the context lacks data, say so.`,
       `If a prior assistant message reports a failure, a timeout, or asks for a yes/no confirmation, it is a stale error — ignore it and answer the user's current question from the Business Memory context only.`,
       `Keep answers concise (2–5 sentences unless a detailed breakdown is asked).`,
-      `Use ${booksCurrency} currency formatting.`,
+      currencyInstruction,
       `If the user greets you, greet back briefly and offer to help.`,
       ``,
       `─── BUSINESS MEMORY CONTEXT ───`,

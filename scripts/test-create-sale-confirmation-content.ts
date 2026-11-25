@@ -343,6 +343,10 @@ async function main(): Promise<void> {
     check(!summary.includes("no batch") && !summary.includes("no expiry"), "no skip phrase text survives in the confirmation");
     const noCurrency = formatConfirmationSummary(saleContext());
     check(noCurrency.includes("Selling Price: 100") && !noCurrency.includes("100 EUR"), "without org currency the price renders bare (no invented currency)");
+    const purchaseContext = createConversationContext("probe-purchase", ORG_ID, PROFILE_ID);
+    purchaseContext.actionType = "create_purchase";
+    purchaseContext.collectedData.purchase_price = 125;
+    check(formatConfirmationSummary(purchaseContext, { currency: "EUR" }).includes("125 EUR"), "purchase confirmation labels its price with the books currency");
     const hintContext = createConversationContext("probe", ORG_ID, PROFILE_ID);
     hintContext.actionType = "create_sale";
     hintContext.collectedData = {

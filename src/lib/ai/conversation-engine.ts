@@ -1370,7 +1370,9 @@ export function formatConfirmationSummary(
     const value = context.collectedData[field];
     if (value !== undefined && value !== null && value !== "") {
       let rendered = String(value);
-      if (field === "selling_price" && currency) rendered = `${rendered} ${currency}`;
+      if ((field === "selling_price" || field === "purchase_price") && currency) {
+        rendered = `${rendered} ${currency}`;
+      }
       summary = summary.replace(new RegExp(`\\{${field}\\}`, "g"), rendered);
     }
   }
