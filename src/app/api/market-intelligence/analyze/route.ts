@@ -58,7 +58,7 @@ type AnalysisResult = {
   market_category: string;
   impact_direction: string;
   impact_level: string;
-  confidence_level: string;
+  confidence_level: string | null;
   affected_area: string;
   suggested_action: string;
   risks: string;
@@ -68,7 +68,7 @@ type AnalysisResult = {
   risk_score: number;
   opportunity_score: number;
   urgency: string;
-  confidence: string;
+  confidence: string | null;
   affected_business_areas: string[];
   affected_products: string[];
   affected_categories: string[];
@@ -108,13 +108,14 @@ const safeStringArray = (value: unknown, allowed?: string[]) => {
     .slice(0, 12);
 };
 
-const sanitizeAnalysis = (analysis: any): AnalysisResult => ({
+const sanitizeAnalysis = (analysis: Record<string, unknown> | null | undefined): AnalysisResult => ({
   summary: safeText(analysis?.summary) || "No clear summary was returned.",
   reasoning: safeText(analysis?.reasoning) || "No reasoning was returned.",
   market_category: pickAllowed(analysis?.market_category, marketCategories, "general_fmcg"),
   impact_direction: pickAllowed(analysis?.impact_direction, impactDirections, "neutral"),
   impact_level: pickAllowed(analysis?.impact_level, impactLevels, "medium"),
-  confidence_level: pickAllowed(analysis?.confidence_level, confidenceLevels, "medium"),
+  confidence_level: pickAllowed(analysis?.confidence_level, confidenceLevels, "") ||
+    (pickAllowed(safeText(analysis?.confidence).toLowerCase(), confidenceLevels, "") || null),
   affected_area: pickAllowed(analysis?.affected_area, affectedAreas, "business"),
   suggested_action: safeText(analysis?.suggested_action) || "Review this signal before taking action.",
   risks: safeText(analysis?.risks) || "AI analysis may be incomplete or incorrect.",
@@ -124,7 +125,8 @@ const sanitizeAnalysis = (analysis: any): AnalysisResult => ({
   risk_score: safeScore(analysis?.risk_score),
   opportunity_score: safeScore(analysis?.opportunity_score),
   urgency: pickAllowed(analysis?.urgency, urgencyLevels, "Monitor"),
-  confidence: pickAllowed(analysis?.confidence, ["High", "Medium", "Low"], "Medium"),
+  confidence: pickAllowed(analysis?.confidence, ["High", "Medium", "Low"], "") ||
+    pickAllowed(analysis?.confidence_level, confidenceLevels, "") || null,
   affected_business_areas: safeStringArray(analysis?.affected_business_areas, businessImpactAreas),
   affected_products: safeStringArray(analysis?.affected_products),
   affected_categories: safeStringArray(analysis?.affected_categories),

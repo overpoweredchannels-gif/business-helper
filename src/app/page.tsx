@@ -9281,7 +9281,8 @@ export default function Home() {
       riskScore,
       opportunityScore,
       urgency,
-      confidence: String(advisory?.confidence ?? "").trim() || item.confidence_level || "medium",
+      confidence: String(advisory?.confidence ?? "").trim() ||
+        (latestAnalysis ? latestAnalysis.ai_confidence_level : item.confidence_level),
       affectedBusinessAreas,
       affectedProducts,
       affectedCategories,
@@ -20353,7 +20354,7 @@ export default function Home() {
         ai_market_category: analysis.market_category ?? "general_fmcg",
         ai_impact_direction: analysis.impact_direction ?? "neutral",
         ai_impact_level: analysis.impact_level ?? "medium",
-        ai_confidence_level: analysis.confidence_level ?? "medium",
+        ai_confidence_level: analysis.confidence_level ?? null,
         ai_affected_area: analysis.affected_area ?? "business",
         ai_suggested_action: safeTextOrNull(analysis.suggested_action),
         ai_risks: safeTextOrNull(analysis.risks),
@@ -20434,7 +20435,7 @@ export default function Home() {
     setMarketRelatedProductId("");
     setMarketImpactDirection(analysis.ai_impact_direction ?? "neutral");
     setMarketImpactLevel(analysis.ai_impact_level ?? "medium");
-    setMarketConfidenceLevel(analysis.ai_confidence_level ?? "medium");
+    setMarketConfidenceLevel(analysis.ai_confidence_level ?? "");
     setMarketAffectedArea(analysis.ai_affected_area ?? "business");
     setMarketSuggestedAction(analysis.ai_suggested_action ?? "");
     setMarketNewsDate(toDateInputValue(new Date()));
@@ -30501,7 +30502,9 @@ export default function Home() {
                           </div>
                         )}
                         <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
-                          <div>{t('page.confidenceLabel')} {getMarketLabel(marketConfidenceOptionsT, analysis.ai_confidence_level)}</div>
+                          {analysis.ai_confidence_level && (
+                            <div>{t('page.confidenceLabel')} {getMarketLabel(marketConfidenceOptionsT, analysis.ai_confidence_level)}</div>
+                          )}
                           <div>{t('page.lblAffectedArea')} {getMarketLabel(marketAffectedAreaOptions, analysis.ai_affected_area)}</div>
                           <div>{t('page.lblReviewed')} {formatDateTime(analysis.reviewed_at)}</div>
                           <div>{t('page.lblImportQueue')} {analysis.market_import_queue_id ?? "-"}</div>
@@ -30787,10 +30790,12 @@ export default function Home() {
                               <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxOpportunityScore')}</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{advisory.opportunityScore}</div>
                             </div>
-                            <div className="rounded border border-border bg-card p-3">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxConfidenceHdr')}</div>
-                              <div className="mt-1 text-lg font-semibold text-foreground">{advisory.confidence}</div>
-                            </div>
+                            {advisory.confidence && (
+                              <div className="rounded border border-border bg-card p-3">
+                                <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.jsxConfidenceHdr')}</div>
+                                <div className="mt-1 text-lg font-semibold text-foreground">{advisory.confidence}</div>
+                              </div>
+                            )}
                             <div className="rounded border border-border bg-card p-3">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground/80">{t('page.urgencyLabel')}</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{urgencyLabelByValue[advisory.urgency] ?? advisory.urgency}</div>
