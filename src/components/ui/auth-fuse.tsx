@@ -21,6 +21,7 @@ import {
 } from "@/lib/offline/desktop-auth-callback";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { LanguageSwitcher } from "@/components/regional/LanguageSwitcher";
+import { rememberOAuthReturnPath, safeSignInReturnPath } from "@/lib/identity/sign-in-return-path";
 
 type LoginMethod = "email" | "staff";
 
@@ -358,11 +359,9 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
       }
 
       const staffRoles = ["salesman", "field_officer", "collection_officer", "delivery_rider", "supervisor", "warehouse_staff"];
-      if (role && staffRoles.includes(role)) {
-        router.push("/salesman");
-      } else {
-        router.push("/");
-      }
+      const defaultPath = role && staffRoles.includes(role) ? "/salesman" : "/";
+      const returnPath = safeSignInReturnPath(new URLSearchParams(window.location.search).get("redirect"));
+      router.replace(returnPath ?? defaultPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.signInFailed'));
     } finally {
@@ -776,6 +775,7 @@ function GoogleButton() {
         setLoading(false);
         return;
       }
+      rememberOAuthReturnPath(safeSignInReturnPath(new URLSearchParams(window.location.search).get("redirect")));
       // Desktop only: the local server binds a random loopback port
       // per launch, so the web redirectTo (window.location.origin) is
       // a per-launch origin Supabase cannot match — after Google the
@@ -809,6 +809,7 @@ function GoogleButton() {
       });
       if (oauthError) throw oauthError;
     } catch (err) {
+      rememberOAuthReturnPath(null);
       setError(err instanceof Error ? err.message : t('auth.googleFailed'));
       setLoading(false);
     }

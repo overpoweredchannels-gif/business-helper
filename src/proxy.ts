@@ -138,8 +138,10 @@ export async function proxy(request: NextRequest) {
 
   if (!user) {
     const url = request.nextUrl.clone();
+    const returnPath = pathname + url.search;
     url.pathname = "/login";
-    url.searchParams.set("redirect", pathname);
+    url.search = "";
+    url.searchParams.set("redirect", returnPath);
     return NextResponse.redirect(url);
   }
 

@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { isDesktopApp } from "@/lib/offline/identity-cache";
 import { resolveDesktopCallbackRoute, shouldRunProvision } from "@/lib/offline/desktop-provision";
+import { consumeOAuthReturnPath } from "@/lib/identity/sign-in-return-path";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const savedReturnPath = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -23,6 +25,8 @@ export default function AuthCallbackPage() {
         router.replace("/reset");
         return;
       }
+      if (savedReturnPath.current === undefined) savedReturnPath.current = consumeOAuthReturnPath();
+      const returnPath = savedReturnPath.current;
 
       const token = session.access_token;
 
@@ -58,11 +62,13 @@ export default function AuthCallbackPage() {
             "Desktop auth callback: profile read failed, routing home:",
             profileError.message,
           );
-          router.push("/");
+          router.push(returnPath ?? "/");
           return;
         }
 
-        router.push(resolveDesktopCallbackRoute(Boolean(profile?.organization_id)));
+        router.push(profile?.organization_id && returnPath
+          ? returnPath
+          : resolveDesktopCallbackRoute(Boolean(profile?.organization_id)));
         return;
       }
 
@@ -80,7 +86,7 @@ export default function AuthCallbackPage() {
         if (provisionBody.needsOnboarding) {
           router.push("/onboarding");
         } else {
-          router.push("/");
+          router.push(returnPath ?? "/");
         }
       } catch {
         router.push("/login");
