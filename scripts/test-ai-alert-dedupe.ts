@@ -291,7 +291,8 @@ function main(): void {
   const uiReadStart = pageSource.indexOf("const fetchAiAlerts");
   const uiReadEnd = pageSource.indexOf("\n  };", uiReadStart);
   const uiReadBody = pageSource.slice(uiReadStart, uiReadEnd);
-  check(uiReadBody.includes(".limit(100)"), "the UI read still caps at 100 newest rows (unchanged — only the dedupe read is uncapped)");
+  check(uiReadBody.includes(".limit(100)"), "the UI retains a bounded read for recent history");
+  check(uiReadBody.includes(".range(offset, offset + pageSize - 1)"), "the UI reads all visible statuses across pages");
 
   console.log("(h) the stale-state veto must not block regeneration (37→36, 2026-11-23)");
   // Production evidence: the NATURA payable alert was resolved by a

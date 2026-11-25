@@ -141,6 +141,7 @@ import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/li
 import { dayKeyedAlertEntityId } from "@/lib/ai/ai-alert-entity-ids";
 import { aiAlertDedupeKey, buildActiveAiAlertKeySet, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";
 import { aiAlertThresholdsRelative } from "@/lib/ai/ai-alert-thresholds";
+import { formatVisibleAiAlertsContext, rankVisibleAiAlerts } from "@/lib/ai/ai-alert-presentation";
 import { buildRecentActivities } from "@/lib/dashboard/recent-activity";
 import { acquireBrowserLocation, getBrowserLocationErrorMessage } from "@/lib/location/browser-geolocation";
 import { getGateway } from "@/lib/conversation";
@@ -1048,6 +1049,11 @@ export default function Home() {
   const [aiConversationMessage, setAiConversationMessage] = useState<string | null>(null);
   const [aiConversationError, setAiConversationError] = useState<string | null>(null);
   const [activeMissingField, setActiveMissingField] = useState("");
+  const [aiAlerts, setAiAlerts] = useState<AiAlert[]>([]);
+  const visibleAiAlerts = useMemo(
+    () => rankVisibleAiAlerts(aiAlerts.filter((alert) => alert.organization_id === currentOrganizationId)),
+    [aiAlerts, currentOrganizationId]
+  );
 
   // Server-routed chat (AI chat fix, 2026-11-16): the browser must never call
   // the LLM provider router directly — server-only API keys are invisible in
@@ -1072,7 +1078,7 @@ export default function Home() {
     const result = await chatWithBusinessBrain({
       message,
       organizationName: brain.getMemorySnapshot().organizationName,
-      businessContext: brain.getBusinessContext(),
+      businessContext: [brain.getBusinessContext(), formatVisibleAiAlertsContext(visibleAiAlerts)].join("\n\n"),
       conversationHistory: context?.history,
       booksCurrency: booksCurrencyRef.current,
     });
@@ -1084,7 +1090,7 @@ export default function Home() {
         ? { ...result, error: t("offline.internetRequired") }
         : result;
     return buildChatResponse(mappedResult, { conversationId, correlationId });
-  }, []);
+  }, [visibleAiAlerts]);
   const [isVoiceAnswerListening, setIsVoiceAnswerListening] = useState(false);
   const [voiceAnswerMessage, setVoiceAnswerMessage] = useState<string | null>(null);
   const [voiceAnswerError, setVoiceAnswerError] = useState<string | null>(null);
@@ -1128,7 +1134,6 @@ export default function Home() {
   const aiVoiceAutoSendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiVoiceFinalTranscriptRef = useRef("");
   const aiVoiceLastAutoSentRef = useRef<{ text: string; sentAt: number }>({ text: "", sentAt: 0 });
-  const [aiAlerts, setAiAlerts] = useState<AiAlert[]>([]);
   const [realNotifications, setRealNotifications] = useState<NotificationItem[]>([]);
   const [notificationHistory, setNotificationHistory] = useState<NotificationItem[]>([]);
   const [notificationFilter, setNotificationFilter] = useState<"all" | "unread" | "draft_sale" | "approval">("all");
@@ -1686,15 +1691,34 @@ export default function Home() {
       return [];
     }
 
-    setAiAlerts(data ?? []);
-    return data ?? [];
+    // Retain the recent history, and include unresolved alerts even when
+    // newer history would otherwise push them out of the latest 100 rows.
+    const history = (data ?? []).filter((alert) => !SHOWN_AI_ALERT_STATUSES.includes(alert.status));
+    const rows = new Map(history.map((alert) => [alert.id, alert]));
+    const pageSize = 100;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: activeRows, error: activeError } = await supabase
+        .from("ai_alerts")
+        .select("*")
+        .eq("organization_id", orgId)
+        .in("status", [...SHOWN_AI_ALERT_STATUSES])
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(offset, offset + pageSize - 1);
+      if (activeError) {
+        console.error("Supabase fetch visible AI alerts error:", activeError);
+        return [];
+      }
+      for (const alert of activeRows ?? []) rows.set(alert.id, alert);
+      if ((activeRows?.length ?? 0) < pageSize) break;
+    }
+    const alerts = [...rows.values()].sort((left, right) => right.created_at.localeCompare(left.created_at));
+    setAiAlerts(alerts);
+    return alerts;
   };
 
-  // Dedupe-only read of ai_alerts: key columns only, NO limit, active
-  // rows only. The UI fetch above caps at the 100 newest rows, so an
-  // active alert older than the newest 100 was invisible to the dedupe
-  // and got re-inserted as a duplicate (Fanta, 2026-11-23). This read
-  // deliberately does NOT touch rendered state (no setAiAlerts) — it
+  // Dedupe-only read of ai_alerts: key columns only, active rows only.
+  // This read deliberately does NOT touch rendered state (no setAiAlerts) — it
   // exists only for the generator's dedupe. Returns null (NOT an empty
   // set) on error, so the caller can tell "no active alerts" apart
   // from "the read failed": the caller falls back to rendered state
@@ -17726,9 +17750,8 @@ export default function Home() {
     // display text, NOT identity: the old Fanta row's title was 29
     // chars vs the new row's 28 (one trailing space), so the old
     // title match missed it and a duplicate was inserted (2026-11-23).
-    // The server read is key-only with NO limit: the UI fetch caps at
-    // 100 newest rows, so an older active alert was invisible to the
-    // dedupe and got re-inserted too.
+    // The server read is key-only and avoids relying on when the UI
+    // last fetched its visible alerts.
     //
     // Rendered state is NOT a second input (37→36, 2026-11-23): the
     // old union of state + server keys vetoed the fresh candidate
@@ -21539,11 +21562,12 @@ export default function Home() {
             section: n.category === "draft_sale" ? ("sales" as const) : ("notifications" as const),
             time: formatDateTime(n.created_at),
           })),
-          ...aiAlerts.filter((a) => a.status === "active" || a.status === "new").slice(0, 5).map((a) => ({
+          ...visibleAiAlerts.map((a) => ({
             id: a.id,
             title: a.title,
             description: a.summary ?? undefined,
-            severity: (a.severity === "critical" || a.severity === "warning" ? a.severity : "info") as "info" | "warning" | "critical",
+            severity: a.severity === "critical" ? "critical" as const
+              : ["high", "warning", "medium"].includes(a.severity) ? "warning" as const : "info" as const,
             time: formatDateTime(a.created_at),
           })),
           ...(lowStockProducts.length > 0 ? [{
@@ -21851,7 +21875,7 @@ export default function Home() {
               },
             ]}
             aiInsight={(() => {
-              const latestAlert = aiAlerts.filter((a) => a.status === "active" || a.status === "new").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+              const latestAlert = visibleAiAlerts[0];
               const kind = dashboardAiInsightKind({
                 hasActiveAlert: latestAlert !== undefined,
                 outOfStockCount: businessIntelligenceAnalytics.outOfStockProducts.length,
