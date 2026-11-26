@@ -27,12 +27,29 @@
   border-radius: .875rem;
   box-shadow: var(--shadow-workspace-card);
 }
-.report-screen :where(.report-controls) {
+.report-screen :where(.report-controls, .records-export-controls) {
   border: 1px solid var(--color-border);
   border-radius: .875rem;
   padding: 1rem;
   background: var(--color-muted);
 }
+.report-screen .records-export-controls { align-items: end; margin-top: 1rem; }
+.report-screen .records-export-controls label { display: grid; gap: .25rem; font-size: .875rem; }
+.report-screen .records-export-controls input,
+.report-screen .records-export-controls button {
+  padding: .5rem .75rem;
+  border: 1px solid var(--color-input);
+  border-radius: .5rem;
+  background: var(--color-card);
+  font-size: .875rem;
+}
+.report-screen .records-export-controls .records-export-submit {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+.report-screen .records-export-controls .records-export-submit:hover { background: var(--color-primary-hover); }
+.report-screen .records-export-controls .records-export-submit:disabled { opacity: .5; }
 .report-screen th {
   background: var(--color-muted);
   color: var(--color-muted-foreground);

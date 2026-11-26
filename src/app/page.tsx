@@ -22492,7 +22492,7 @@ export default function Home() {
           <p className="mt-2 text-sm text-muted-foreground">
             {t('records.sectionHint')}
           </p>
-          <BusinessRecordsExport reportLayout />
+          <BusinessRecordsExport />
         </section>
         )}
 
