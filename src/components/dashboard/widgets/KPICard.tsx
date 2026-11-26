@@ -60,22 +60,23 @@ export function KPICard({ title, value, readStatus = "successful-populated", las
   const Component = onClick && readComplete ? "button" : "div";
   return (
     <Component
+      type={Component === "button" ? "button" : undefined}
       onClick={readComplete ? onClick : undefined}
       data-tone={tone}
       className={cn(
         "aankh-card aankh-metric group h-full min-h-32 min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5",
-        onClick && readComplete && "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        onClick && readComplete && "w-full cursor-pointer text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
     >
-      <div className="mb-4 flex min-h-9 items-start justify-between gap-3">
-        <span className="pt-1 text-xs font-medium leading-relaxed text-body">{title}</span>
+      <div className="mb-3 flex min-h-8 items-center gap-2">
         {icon && <div aria-hidden="true" className="aankh-metric-icon flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">{icon}</div>}
+        <span className="text-sm font-medium leading-snug text-body">{title}</span>
       </div>
       <div className="flex items-end justify-between">
         <div className="min-w-0">
           <div role="status" aria-live="polite" className="break-words text-xl sm:text-[28px] font-semibold tracking-tight tabular-nums leading-tight text-foreground font-heading"><bdi key={shownValue} className="metric-value">{shownValue}</bdi></div>
           {readComplete && definition && (
-            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{definition}</p>
+            <p className="mt-1 text-xs leading-snug text-muted-foreground">{definition}</p>
           )}
           {readStatus === "failed" && lastSuccessfulAt && (
             <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(language === 'es' ? 'es-ES' : language === 'it' ? 'it-IT' : language === 'ur' ? 'ur-PK' : 'en-US')}</p>

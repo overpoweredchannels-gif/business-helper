@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, ArrowRight, Lightbulb } from "lucide-react";
+import { Sparkles, ArrowRight } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
 interface AIInsightCardProps {
@@ -15,34 +15,26 @@ interface AIInsightCardProps {
 export function AIInsightCard({ insight, updatedLabel, action, onLearnMore, reason }: AIInsightCardProps) {
   const { t } = useRegional();
   return (
-    <div className="aankh-card rounded-xl border border-border bg-primary-light p-5 transition-all duration-200">
-      <div className="flex items-start gap-3">
-        <div className="size-10 rounded-xl bg-warning flex items-center justify-center shrink-0 shadow-sm">
-          <Lightbulb className="size-5 text-warning-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="size-3.5 text-primary" />
-            <span className="text-xs font-semibold text-primary uppercase tracking-wider">{t('dashboard.aiRecommendation')}</span>
-          </div>
-          <p className="text-sm text-foreground font-medium leading-relaxed">{insight}</p>
-          {reason && <p className="text-xs text-light-text mt-1.5 leading-relaxed">{reason}</p>}
-          <div className="flex flex-wrap items-center gap-3 mt-3">
-            {updatedLabel && (
-              <span className="text-xs text-light-text">{updatedLabel}</span>
-            )}
-            {action && (
-              <button
-                onClick={onLearnMore}
-                className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-xs font-medium text-primary hover:text-primary-hover transition-colors"
-              >
-                {action}
-                <ArrowRight className="size-3" />
-              </button>
-            )}
-          </div>
-        </div>
+    <section className="aankh-card flex flex-wrap items-center gap-4 rounded-xl border border-border bg-primary-light p-5">
+      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-card text-primary">
+        <Sparkles aria-hidden="true" className="size-5" />
       </div>
-    </div>
+      <div className="min-w-0 flex-1 basis-44">
+        <h3 className="mb-1 text-sm font-semibold text-primary">{t('dashboard.aiRecommendation')}</h3>
+        <p className="text-sm text-foreground font-medium leading-relaxed">{insight}</p>
+        {reason && <p className="text-xs text-light-text mt-1.5 leading-relaxed">{reason}</p>}
+        {updatedLabel && <p className="mt-1.5 text-xs text-light-text">{updatedLabel}</p>}
+      </div>
+      {action && (
+        <button
+          type="button"
+          onClick={onLearnMore}
+          className="inline-flex min-h-11 min-w-11 items-center gap-2 rounded-lg border border-input bg-card px-3 text-sm font-semibold text-primary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {action}
+          <ArrowRight aria-hidden="true" className="size-4" />
+        </button>
+      )}
+    </section>
   );
 }

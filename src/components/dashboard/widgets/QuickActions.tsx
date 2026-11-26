@@ -33,11 +33,12 @@ export function QuickActions({ actions = defaultActions, onAction }: QuickAction
   const { t } = useRegional();
   return (
     <div className="aankh-card rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="mb-4 flex items-center justify-between"><h3 className="text-sm font-semibold text-foreground">{t('quickaction.heading')}</h3><div aria-hidden="true" className="aankh-object"><span /><span /><span /></div></div>
+      <h3 className="mb-3 text-sm font-semibold text-foreground">{t('quickaction.heading')}</h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {actions.map((a) => (
           <button
             key={a.label}
+            type="button"
             onClick={() => onAction?.(a.label)}
             data-help-id="dashboard-quick-actions"
             aria-label={a.labelKey ? t(a.labelKey) : a.label}

@@ -258,39 +258,39 @@ export function DashboardView({
   type Card = { id: DashboardWidgetId; node: React.ReactNode; width: "full" | "half" | "metric"; label?: string };
   const cards: Card[] = [
     ...(setupContent ? [{ id: "setup-import" as const, node: setupContent, width: "full" as const }] : []),
-    ...(quickSaleContent ? [{ id: "quick-sale" as const, node: quickSaleContent, width: "half" as const }] : []),
+    ...(quickSaleContent ? [{ id: "quick-sale" as const, node: quickSaleContent, width: "full" as const }] : []),
     ...(exportContent ? [{ id: "business-records-export" as const, node: exportContent, width: "half" as const }] : []),
     { id: "quick-actions", node: <QuickActions onAction={onQuickAction} />, width: "full" },
     ...kpiCards.map(card => ({ ...card, width: "metric" as const })),
     ...chartCards.map(card => ({ ...card, width: "half" as const })),
-    ...(recentActivities.length ? [{ id: "recent-activity" as const, node: <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />, width: "half" as const }] : []),
-    ...(aiInsight ? [{ id: "ai-insight" as const, node: <AIInsightCard {...aiInsight} />, width: "half" as const }] : []),
+    ...(recentActivities.length ? [{ id: "recent-activity" as const, node: <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />, width: "full" as const }] : []),
+    ...(aiInsight ? [{ id: "ai-insight" as const, node: <AIInsightCard {...aiInsight} />, width: "full" as const }] : []),
     ...((taskList.length > 0 || allAlertReadsReady) ? [{ id: "needs-attention" as const, node: (<div className="aankh-card rounded-xl border border-border bg-card p-5">
-            <h2 className="text-sm font-semibold text-foreground mb-1">{t('dashboard.needsAttention')}</h2>
-            <p className="mb-3 text-xs text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
+            <h2 className="mb-1 text-base font-semibold text-foreground">{t('dashboard.needsAttention')}</h2>
+            <p className="mb-4 text-sm text-muted-foreground">{t('dashboard.needsAttentionHint')}</p>
             {taskList.length === 0 ? (
               <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t('dashboard.noAlerts')}</p>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2.5">
                 {taskList.map((task) => {
                   const stateLabel = task.status === "failed" ? t('dashboard.unavailable') : task.status === "loading" ? ui('loading') : task.status === "not-loaded" ? t('dashboard.notLoaded') : String(task.value);
                   const TaskIcon = task.icon;
                   const content = <>
-                    <TaskIcon className={cn("size-5", task.color)} />
-                    <div>
-                      <p className="text-lg font-semibold tabular-nums text-foreground">{stateLabel}</p>
-                      <p className="text-[11px] text-light-text">{task.label}</p>
-                    </div>
+                    <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
+                      <TaskIcon className={cn("size-5", task.color)} />
+                    </span>
+                    <span className="min-w-0 flex-1 break-words text-sm font-semibold text-foreground">{task.label}</span>
+                    <span className="text-end text-sm font-semibold tabular-nums text-muted-foreground">{stateLabel}</span>
                   </>;
                   return isReadSuccessful(task.status) ? (
                     <button
                       key={task.key}
                       type="button"
                       onClick={() => onKPIClick?.(task.key)}
-                      className={cn("flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", task.key === "Pending Approvals" ? "hover:bg-warning/10" : "hover:bg-primary/10")}
+                      className={cn("flex min-h-11 items-center gap-2.5 rounded-lg border border-border p-2 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", task.key === "Pending Approvals" ? "hover:bg-warning/10" : "hover:bg-primary/10")}
                     >{content}</button>
                   ) : (
-                    <div key={task.key} className="flex min-h-11 items-center gap-2.5 rounded-lg bg-muted p-3 text-left">
+                    <div key={task.key} className="flex min-h-11 flex-wrap items-center gap-2.5 rounded-lg border border-border p-2 text-start">
                       {content}
                       {(task.status === "failed" || task.status === "not-loaded") && onRetryFailedReads && <button type="button" onClick={onRetryFailedReads} className="min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retry')}</button>}
                     </div>

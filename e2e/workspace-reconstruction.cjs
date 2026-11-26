@@ -30,6 +30,14 @@ const { chromium } = require('@playwright/test');
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await page.getByRole('heading', { name: 'Quick sale', exact: true }).waitFor();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: dashboard fits`);
+      const activity = page.getByRole('region', { name: 'Recent Activity' });
+      assert.equal(await activity.locator('tbody tr').count(), 2);
+      assert.equal(await activity.getByText('€120.00', { exact: true }).count(), 1);
+      const profit = page.getByRole('region', { name: 'Profit Trend' });
+      assert.equal(await profit.locator('svg polygon').count(), 1);
+      assert.match(await profit.locator('svg title').textContent(), /-€24\.00/);
+      await activity.focus();
+      assert.equal(await activity.evaluate(element => getComputedStyle(element).outlineStyle), 'solid');
       if (width >= 1024) {
         const navigation = page.locator('aside:visible nav');
         assert.equal(await navigation.locator('[data-nav-id]').count(), 36);
@@ -38,6 +46,13 @@ const { chromium } = require('@playwright/test');
       const quickSaleY = await page.locator('[data-dashboard-widget="quick-sale"]').evaluate(el => el.getBoundingClientRect().top);
       const chartY = await page.locator('[data-dashboard-widget="chart-revenue"]').evaluate(el => el.getBoundingClientRect().top);
       assert.ok(quickSaleY < chartY, 'quick sale precedes analytics');
+      const visibleKpis = page.locator('.dashboard-cell-metric[data-dashboard-widget]');
+      assert.deepEqual(await visibleKpis.evaluateAll(items => items.map(item => item.dataset.dashboardWidget)), [
+        'kpi-today-sales', 'kpi-today-profit', 'kpi-receivables', 'kpi-payables', 'kpi-inventory-value', 'kpi-low-stock',
+      ]);
+      await activity.blur();
+      await page.keyboard.press('Control+Home');
+      await page.screenshot({ path: path.join(output, `dashboard-${width}.png`), fullPage: true, animations: 'disabled' });
       await page.getByRole('button', { name: 'Edit home', exact: true }).click();
       const before = await page.locator('.dashboard-grid > [data-dashboard-widget]').evaluateAll(els => els.map(el => el.dataset.dashboardWidget));
       await page.getByRole('button', { name: 'Move Quick sale up', exact: true }).click();
@@ -46,8 +61,6 @@ const { chromium } = require('@playwright/test');
       await page.reload();
       await page.getByRole('heading', { name: 'Quick sale', exact: true }).waitFor();
       assert.deepEqual(await page.locator('.dashboard-grid > [data-dashboard-widget]').evaluateAll(els => els.map(el => el.dataset.dashboardWidget)), after, 'saved order survives reload');
-      await page.keyboard.press('Control+Home');
-      await page.screenshot({ path: path.join(output, `dashboard-${width}.png`), fullPage: true });
       if (width < 1024) await page.locator('header button[aria-expanded]').first().click();
       const sidebar = page.locator('aside:visible');
       await sidebar.getByRole('searchbox', { name: 'Find a page' }).fill('sales');

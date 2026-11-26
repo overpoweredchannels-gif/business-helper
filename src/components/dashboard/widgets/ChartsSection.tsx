@@ -1,63 +1,70 @@
 "use client";
 
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { CHART_VALUE_LABEL_CLASS, trendAxisTicks } from "@/lib/dashboard/trends";
+import { CHART_VALUE_LABEL_CLASS } from "@/lib/dashboard/trends";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 
-interface BarChartProps {
-  data: { label: string; value: number; color?: string }[];
-  height?: number;
-  /**
-   * How a bar's value (and the axis ticks) are formatted. Defaults to
-   * books money; the dashboard passes its own formatDashboardMoney so
-   * the chart labels match the KPI figures.
-   */
+interface TrendChartProps {
+  data: { label: string; value: number }[];
+  label: string;
   formatValue?: (value: number) => string;
 }
 
-function BarChart({ data, height = 144, formatValue = formatBooksMoney }: BarChartProps) {
-  const max = Math.max(...data.map((d) => d.value), 1);
-  const ticks = trendAxisTicks(data);
-  const width = Math.max(data.length, 1) * 48;
-  const plotHeight = height - 24;
+function TrendChart({ data, label, formatValue = formatBooksMoney }: TrendChartProps) {
+  const fillId = useId();
+  const high = Math.max(0, ...data.map(point => point.value));
+  const low = Math.min(0, ...data.map(point => point.value));
+  const plotHeight = 144;
+  const formattedValues = data.map(point => formatValue(point.value));
+  const slot = Math.max(80, ...formattedValues.map(value => value.length * 8 + 12));
+  const width = data.length * slot;
+  const range = high - low || 1;
+  const y = (value: number) => high === low ? plotHeight - 4 : 4 + (high - value) / range * (plotHeight - 8);
+  const points = data.map((point, index) => ({ x: (index + 0.5) * slot, y: y(point.value) }));
+  const line = points.map(point => `${point.x},${point.y}`).join(" ");
+  const baseline = y(0);
+  const area = `${points[0].x},${baseline} ${line} ${points.at(-1)!.x},${baseline}`;
+
   return (
-    <div className="grid" style={{ gridTemplateColumns: "auto minmax(0, 1fr)" }}>
-    {/* Value labels, one per bar, in the same evenly-spaced cells as the
-        date labels below — the SVG's preserveAspectRatio="none" would
-        distort text drawn inside it, so values stay in HTML. No gap and
-        no truncation: with gap-2 the cells were narrower than the bar
-        slots (and misaligned with them), so the longest values clipped
-        to "€13…" / "€14…". With gap-0 each cell is exactly one bar slot
-        wide, centred on its bar, and the text never truncates. */}
-    <span aria-hidden="true" />
-    <div aria-hidden="true" className="flex">
-      {data.map((d) => (
-        <span key={d.label} title={formatValue(d.value)} className={CHART_VALUE_LABEL_CLASS}>{formatValue(d.value)}</span>
-      ))}
-    </div>
-    {/* Simple y-axis: max / half / 0, exactly plotHeight tall so the top
-        tick lines up with the top of the bars and 0 with their baseline. */}
-    <div aria-hidden="true" className="flex flex-col justify-between pr-2 text-right text-[11px] tabular-nums text-light-text" style={{ height: plotHeight }}>
-      <span>{formatValue(ticks.max)}</span>
-      <span>{formatValue(ticks.mid)}</span>
-      <span>{formatValue(0)}</span>
-    </div>
-    <svg viewBox={`0 0 ${width} ${plotHeight}`} height={plotHeight} preserveAspectRatio="none" className="w-full" role="img">
-      <title>{data.map(d => `${d.label}: ${formatValue(d.value)}`).join('; ')}</title>
-      {data.map((d, index) => {
-        const barHeight = Math.max(0, d.value / max) * plotHeight;
-        return <g key={d.label}>
-          <rect x={index * 48 + 8} y={0} width={32} height={plotHeight} rx={3} fill="var(--color-muted)" />
-          <rect className="aankh-chart-bar" x={index * 48 + 8} y={plotHeight - barHeight} width={32} height={barHeight} rx={3} fill={d.color || 'var(--color-primary)'} />
-        </g>;
-      })}
-    </svg>
-    <span aria-hidden="true" />
-    <div aria-hidden="true" className="mt-2 flex gap-2">
-      {data.map(d => <span key={d.label} title={d.label} className="min-w-0 flex-1 truncate text-center text-[11px] text-light-text">{d.label}</span>)}
-    </div>
+    <div className="dashboard-table-scroll overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)]" style={{ minWidth: data.length * slot + 60 }}>
+        <span aria-hidden="true" />
+        <div aria-hidden="true" className="flex">
+          {data.map((point, index) => (
+            <span key={point.label} title={formattedValues[index]} className={CHART_VALUE_LABEL_CLASS}>{formattedValues[index]}</span>
+          ))}
+        </div>
+        <div aria-hidden="true" className="flex flex-col justify-between pe-3 text-end text-xs tabular-nums text-muted-foreground" style={{ height: plotHeight }}>
+          <span>{formatValue(high)}</span>
+          <span>{formatValue((high + low) / 2)}</span>
+          <span>{formatValue(low)}</span>
+        </div>
+        <svg viewBox={`0 0 ${width} ${plotHeight}`} height={plotHeight} preserveAspectRatio="none" className="w-full" role="img">
+          <title>{data.map((point, index) => `${point.label}: ${formattedValues[index]}`).join("; ")}</title>
+          <defs>
+            <linearGradient id={fillId} x2="0" y2="1">
+              <stop offset="0" stopColor="var(--color-primary)" stopOpacity={0.24} />
+              <stop offset="1" stopColor="var(--color-primary)" stopOpacity={0.04} />
+            </linearGradient>
+          </defs>
+          {[4, plotHeight / 2, plotHeight - 4].map(tick => (
+            <path key={tick} d={`M0 ${tick}H${width}`} stroke="var(--color-border)" vectorEffect="non-scaling-stroke" />
+          ))}
+          <polygon points={area} fill={`url(#${fillId})`} />
+          <polyline points={line} fill="none" stroke="var(--color-primary)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          {points.map((point, index) => (
+            <circle key={data[index].label} cx={point.x} cy={point.y} r={3}
+              fill="var(--color-card)" stroke="var(--color-primary)" vectorEffect="non-scaling-stroke" />
+          ))}
+        </svg>
+        <span aria-hidden="true" />
+        <div aria-hidden="true" className="mt-2 flex">
+          {data.map(point => <span key={point.label} className="flex-1 text-center text-xs text-muted-foreground">{point.label}</span>)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -113,7 +120,7 @@ export function RevenueTrendCard({ data, formatValue }: { data: TrendPoint[]; fo
       {data.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('dashboard.revenueTrendNoData')}</p>
       ) : (
-        <BarChart data={data} formatValue={formatValue} />
+        <TrendChart data={data} label={t('dashboard.revenueTrend')} formatValue={formatValue} />
       )}
     </div>
   );
@@ -128,7 +135,7 @@ export function ProfitTrendCard({ data, formatValue, unknownCostLines, unknownCo
         <p className="text-sm text-muted-foreground">{t('dashboard.profitTrendNoData')}</p>
       ) : (
         <>
-          <BarChart data={data} formatValue={formatValue} />
+          <TrendChart data={data} label={t('dashboard.profitTrend')} formatValue={formatValue} />
           {unknownCostLines != null && unknownCostLines > 0 && unknownCostAmount && (
             <p className="mt-2 text-sm text-muted-foreground">{t('dashboard.profitTrendExcludesUnknownCost').replace('{amount}', unknownCostAmount).replace('{count}', String(unknownCostLines))}</p>
           )}

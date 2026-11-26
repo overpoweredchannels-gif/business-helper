@@ -51,16 +51,37 @@ export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
           </button>
         )}
       </div>
-      <ul className="divide-y divide-border">
-        {activities.slice(0, 5).map(a => {
-          const Icon = activityIcons[a.type];
-          return <li key={a.id} className="flex min-h-16 items-center gap-3 py-3">
-            <span aria-hidden="true" className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", typeStyles[a.type])}><Icon className="size-4" /></span>
-            <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-foreground"><bdi>{a.description}</bdi></p><p className="mt-1 text-[11px] text-muted-foreground">{t(typeLabels[a.type])} · {a.time}</p></div>
-            {a.amount && <span className="shrink-0 text-sm font-semibold tabular-nums"><bdi>{a.amount}</bdi></span>}
-          </li>;
-        })}
-      </ul>
+      <div className="dashboard-table-scroll overflow-x-auto rounded-xl border border-border"
+        role="region" aria-label={t('dashboard.recentActivity')} tabIndex={0}>
+        <table className="w-full table-auto text-start text-sm">
+          <thead className="bg-muted text-xs text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-3 py-3 text-start">{t('hist.typeLabel')}</th>
+              <th scope="col" className="px-3 py-3 text-start">{t('logs.colDescription')}</th>
+              <th scope="col" className="px-3 py-3 text-end">{t('money.amount')}</th>
+              <th scope="col" className="px-3 py-3 text-start">{t('logs.colTime')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {activities.slice(0, 5).map(activity => {
+              const Icon = activityIcons[activity.type];
+              return (
+                <tr key={activity.id}>
+                  <td className="px-3 py-3">
+                    <span className="flex items-center gap-2">
+                      <span aria-hidden="true" className={cn("grid size-8 shrink-0 place-items-center rounded-lg", typeStyles[activity.type])}><Icon className="size-4" /></span>
+                      {t(typeLabels[activity.type])}
+                    </span>
+                  </td>
+                  <td className="min-w-36 px-3 py-3 font-medium"><bdi>{activity.description}</bdi></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-end font-semibold tabular-nums"><bdi>{activity.amount ?? "—"}</bdi></td>
+                  <td className="whitespace-nowrap px-3 py-3 text-muted-foreground"><bdi>{activity.time}</bdi></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
