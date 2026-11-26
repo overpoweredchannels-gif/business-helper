@@ -5,14 +5,16 @@ import { businessReportHtml, type ReportSection } from "@/lib/print/business-rep
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { runBusinessRecordsExport } from "@/lib/dashboard/business-records-export";
 
-export function BusinessRecordsExport() {
+export function BusinessRecordsExport({ reportLayout = false }: { reportLayout?: boolean }) {
   const { t } = useRegional();
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
   const [from, setFrom] = useState(today); const [to, setTo] = useState(today); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   return <>
-    <div className="mt-2 flex flex-wrap items-center gap-2"><label>{t('records.from')} <input aria-label={t('records.startDate')} type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>{t('records.to')} <input aria-label={t('records.endDate')} type="date" value={to} onChange={e => setTo(e.target.value)} /></label>
-    {[1, 2, 3, 7].map(days => <button type="button" key={days} onClick={() => { const start = new Date(`${today}T12:00:00+05:00`); start.setUTCDate(start.getUTCDate() - days + 1); setFrom(start.toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" })); setTo(today); }}>{days === 1 ? t('records.today') : t('records.lastDays').replace('{days}', String(days))}</button>)}
-    <button type="button" className="rounded bg-primary px-3 py-2 text-white" disabled={busy || !from || !to || from > to} onClick={async () => {
+    <div className={reportLayout ? "report-controls mt-4 flex flex-wrap items-end gap-2" : "mt-2 flex flex-wrap items-center gap-2"}>
+    <label className={reportLayout ? "grid gap-1 text-sm" : undefined}>{t('records.from')} <input className={reportLayout ? "rounded-lg border border-input bg-card px-3 py-2" : undefined} aria-label={t('records.startDate')} type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
+    <label className={reportLayout ? "grid gap-1 text-sm" : undefined}>{t('records.to')} <input className={reportLayout ? "rounded-lg border border-input bg-card px-3 py-2" : undefined} aria-label={t('records.endDate')} type="date" value={to} onChange={e => setTo(e.target.value)} /></label>
+    {[1, 2, 3, 7].map(days => <button type="button" className={reportLayout ? "workspace-button-secondary" : undefined} key={days} onClick={() => { const start = new Date(`${today}T12:00:00+05:00`); start.setUTCDate(start.getUTCDate() - days + 1); setFrom(start.toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" })); setTo(today); }}>{days === 1 ? t('records.today') : t('records.lastDays').replace('{days}', String(days))}</button>)}
+    <button type="button" className={reportLayout ? "min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-50" : "rounded bg-primary px-3 py-2 text-white"} disabled={busy || !from || !to || from > to} onClick={async () => {
       setBusy(true); setError(""); setNotice("");
       const result = await runBusinessRecordsExport(from, to, {
         openPopup: () => window.open("", "_blank"),

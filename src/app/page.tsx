@@ -21932,16 +21932,16 @@ export default function Home() {
         {activeSection === "dashboard" && staffDashboardData.isStaff && !homeWidgets.isHidden("quick-sale") && <div className="workspace-flow">{quickSaleWidget}</div>}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
-        <section className="workspace-section">
+        <section className="workspace-section report-screen">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('bi.title')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('bi.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('bi.subtitle')}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={openAiAnalyticsFromBusinessIntelligence} className="rounded border border-primary bg-primary px-3 py-2 text-sm text-white hover:bg-primary/90">
+              <button type="button" onClick={openAiAnalyticsFromBusinessIntelligence} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover">
                 {t('bi.askAi')}
               </button>
               <button type="button" onClick={exportBiProductAnalyticsCsv} className="rounded border border-primary bg-card px-3 py-2 text-sm text-primary hover:bg-primary/5">
@@ -21962,7 +21962,7 @@ export default function Home() {
           {biMessage && <div className="mb-3 rounded border border-success/20 bg-success/5 px-3 py-2 text-sm text-success">{biMessage}</div>}
           {biError && <div className="mb-3 rounded border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">{biError}</div>}
 
-          <div className="mb-5 rounded border border-border bg-card p-4">
+          <div className="report-controls mb-5">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="flex flex-col gap-1 text-sm text-foreground/80">
                 <span>{t('bi.dateRange')}</span>
@@ -22057,10 +22057,11 @@ export default function Home() {
                 <button
                   key={view.value}
                   type="button"
+                  aria-pressed={biMetricView === view.value}
                   onClick={() => setBiMetricView(view.value)}
                   className={`rounded border px-3 py-2 text-sm ${
                     biMetricView === view.value
-                      ? "border-foreground bg-foreground text-white"
+                      ? "border-primary bg-primary text-primary-foreground"
                       : "border-border bg-card text-foreground/80 hover:bg-muted/30"
                   }`}
                 >
@@ -22096,8 +22097,8 @@ export default function Home() {
               [t('bi.unknownCostRevenue'), formatBooksMoney(businessIntelligenceAnalytics.overview.unknownCostRevenue)],
             ].map(([label, value]) => (
               <div key={String(label)} className="workspace-panel rounded-xl border border-border bg-card p-4 shadow-sm">
-                <div className="text-sm text-muted-foreground/80">{label}</div>
-                <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
+                <div className="text-sm text-muted-foreground">{label}</div>
+                <div className="mt-2 text-2xl font-semibold tabular-nums text-foreground [overflow-wrap:anywhere]">{value}</div>
               </div>
             ))}
           </div>
@@ -22453,8 +22454,8 @@ export default function Home() {
                           <span>{month.label}</span>
                           <span>{formatBooksMoney(month.value)}</span>
                         </div>
-                        <div className="h-2 rounded bg-muted">
-                          <div className="h-2 rounded bg-primary/80" style={{ width: getBiBarWidth(month.value, maxValue) }} />
+                        <div className="report-bar h-2.5" aria-hidden="true">
+                          <span style={{ width: getBiBarWidth(month.value, maxValue) }} />
                         </div>
                       </div>
                     );
@@ -22486,19 +22487,19 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "business-records" && (
-        <section className="workspace-section">
-          <h2 className="text-xl font-medium text-foreground">{t('records.title')}</h2>
+        <section className="workspace-section report-screen">
+          <h2 className="text-2xl font-semibold text-foreground">{t('records.title')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {t('records.sectionHint')}
           </p>
-          <BusinessRecordsExport />
+          <BusinessRecordsExport reportLayout />
         </section>
         )}
 
         {activeSectionAllowed && activeSection === "profit-loss" && (
-        <section className="workspace-section">
+        <section className="workspace-section report-screen">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('profit.title')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('profit.title')}</h2>
             <button
               type="button"
               onClick={handleExportProfitLossCsv}
@@ -22508,7 +22509,7 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="report-controls grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('profit.startDate')}</span>
               <input
@@ -22645,7 +22646,7 @@ export default function Home() {
                 <p className="text-sm text-muted-foreground">{t('profit.noExpensesInPeriod')}</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm tabular-nums">
                     <thead className="text-xs uppercase text-muted-foreground/80">
                       <tr>
                         <th className="py-2 pr-3">{t('expenses.type')}</th>
@@ -22653,13 +22654,16 @@ export default function Home() {
                         <th className="py-2 text-right">{t('sell.totalAmount')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-border">
                       {expenseCategoryBreakdown.map((category) => (
                         <tr key={category.expenseType}>
                           <td className="py-2 pr-3 font-medium text-foreground">{category.expenseType}</td>
                           <td className="py-2 pr-3 text-foreground/80">{category.entryCount}</td>
                           <td className="py-2 text-right font-medium text-foreground">
                             {formatBooksMoney(category.totalAmount)}
+                            <div aria-hidden="true" className="report-bar mt-1.5 ml-auto h-2 w-24 max-w-full">
+                              <span style={{ width: `${totalRecordedExpenses > 0 ? Math.max(0, Math.min(100, category.totalAmount / totalRecordedExpenses * 100)) : 0}%` }} />
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -30058,10 +30062,10 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "market-intelligence" && (
-        <section className="workspace-section">
+        <section className="workspace-section report-screen">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('mi.title')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('mi.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('mi.subtitle')}
               </p>
@@ -30104,17 +30108,17 @@ export default function Home() {
             </p>
           )}
 
-          <div className="rounded border border-success/20 bg-success/5 p-4">
+          <div className="report-card rounded-xl border border-border bg-card p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-medium text-success/90">{t('mi.summary')}</h3>
-                <p className="mt-1 text-sm text-success/80">
+                <h3 className="text-lg font-semibold text-foreground">{t('mi.summary')}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Professional advisory output for executive summary, business impact, risk, opportunity, owner actions, and health impact.
                 </p>
               </div>
-              <div className="rounded border border-success/20 bg-card p-3 text-sm text-success/80">
+              <div className="report-card rounded-xl border border-border bg-card p-3 text-sm text-warning-text">
                 <div className="font-medium">{t('mi.highRiskAlerts')}</div>
-                <div className="mt-1 text-2xl font-semibold text-success/90">{marketV2Summary.highRisk}</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">{marketV2Summary.highRisk}</div>
               </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -30142,10 +30146,11 @@ export default function Home() {
               <button
                 key={tab.value}
                 type="button"
+                aria-pressed={marketIntelligenceTab === tab.value}
                 onClick={() => setMarketIntelligenceTab(tab.value)}
                 className={`rounded-full border px-3 py-1.5 text-sm ${
                   marketIntelligenceTab === tab.value
-                    ? "border-success bg-success text-white"
+                    ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-card text-foreground/80 hover:bg-muted/30"
                 }`}
               >
@@ -30914,7 +30919,26 @@ export default function Home() {
         )}
 
 {activeSectionAllowed && (activeSection === "ai-voice-operator" || activeSection === "ai-analytics" || activeSection === "ai-business-query" || activeSection === "ai-assistant") && (
-        <section className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <>
+        {activeSection === "ai-analytics" && isOwnerOrAdmin() && (
+          <section className="workspace-section report-screen">
+            <h2>{t('ai.suggested.alertsLabel')}</h2>
+            {activeAiAlerts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('page.noActiveAlerts')}</p>
+            ) : (
+              <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {activeAiAlerts.map((alert) => (
+                  <li key={alert.id} className="report-card rounded-xl border border-border bg-card p-4">
+                    <h3 className="font-semibold text-foreground [overflow-wrap:anywhere]">{alert.title}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">{alert.summary}</p>
+                    {alert.recommended_action && <p className="mt-2 text-sm text-foreground [overflow-wrap:anywhere]">{alert.recommended_action}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+        <section className={`flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm ${activeSection === "ai-analytics" ? "report-screen" : ""}`}>
           {aiSectionKind(activeSection) === "voice" ? (
             <AiVoiceOperator
               isListening={isAiVoiceListening}
@@ -30955,6 +30979,7 @@ export default function Home() {
             <AIAssistant onChat={onBrainChat} brainAvailable={brainReady} />
           )}
         </section>
+        </>
         )}
 
 

@@ -10,6 +10,45 @@
 .workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
 .workspace-section :where(tbody td) { padding-block: .875rem; }
 
+.report-screen {
+  border-radius: .875rem;
+  box-shadow: var(--shadow-workspace-card);
+}
+.report-screen :where(button, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
+  min-height: 44px;
+}
+.report-screen :where(button, summary) { min-width: 44px; min-height: 44px; }
+.report-screen :where(button, input, select, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.report-screen :where(.workspace-panel, .report-card) {
+  min-width: 0;
+  border-radius: .875rem;
+  box-shadow: var(--shadow-workspace-card);
+}
+.report-screen :where(.report-controls) {
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  padding: 1rem;
+  background: var(--color-muted);
+}
+.report-screen th {
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+}
+.report-screen :where(th, td) { padding-inline: .75rem; }
+.report-screen .report-bar {
+  border-radius: 999px;
+  background: var(--color-primary-light);
+}
+.report-screen .report-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+}
+
 .catalog-screen :where(button, summary, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
   min-height: 44px;
 }
