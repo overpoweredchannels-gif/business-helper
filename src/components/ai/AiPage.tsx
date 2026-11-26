@@ -70,7 +70,7 @@ export function AiQueryPanel({ question, onQuestion, onAsk, busy, error, result,
           disabled={busy}
         />
         <button type="submit" disabled={busy || !question.trim()} className="rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-          {busy ? t("ai.assistant.thinking") : t("bi.askAi")}
+          {busy ? t("ai.assistant.thinking") : t("ai.voiceOperator.send")}
         </button>
       </form>
       <div className="flex flex-wrap gap-2">

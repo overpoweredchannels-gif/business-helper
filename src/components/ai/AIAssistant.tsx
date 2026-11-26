@@ -253,6 +253,7 @@ export function AIAssistant({ onChat, brainAvailable, workspaceLayout = false }:
           </div>
           <button
             onClick={handleSend}
+            aria-label={t('ai.voiceOperator.send')}
             disabled={!input.trim() || isWaiting}
             className="flex size-[42px] shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
