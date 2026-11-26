@@ -25826,9 +25826,10 @@ export default function Home() {
               >
                 {t('buy.exportBalancesCsv')}
               </button>
-            <div {...entryNavigationHandlers}>
+              <div {...entryNavigationHandlers} />
             </div>
           </div>
+          <div>
 <div className="trading-entry grid gap-4 sm:grid-cols-4">
              <label className="flex flex-col gap-1 text-xs text-foreground/80">
                <span>{t('buy.selectSupplier')}</span>
