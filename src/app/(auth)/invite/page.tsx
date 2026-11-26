@@ -100,7 +100,7 @@ function InviteContent() {
   );
 
   const passwordInputClass =
-    "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-10 text-sm text-foreground transition-all placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring";
+    "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-12 text-sm text-foreground transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,164 +144,158 @@ function InviteContent() {
   const showPasswordField = Boolean(info) || loadError;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-panel p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border border-border p-8 shadow-lg">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-2 mb-4">
-            <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
-            <span className="font-bold text-xl text-foreground">Aankh</span>
-          </div>
-          <h1 className="font-bold text-2xl text-foreground">{t('auth.invite.title')}</h1>
-          <p className="text-sm text-body mt-1.5">
-            Set your password to start using Aankh. You do not need an email address.
-          </p>
+    <div className="aankh-auth-card">
+      <div className="text-center mb-6">
+        <h1 className="font-bold text-2xl text-foreground">{t('auth.invite.title')}</h1>
+        <p className="text-sm text-body mt-1.5">
+          Set your password to start using Aankh. You do not need an email address.
+        </p>
+      </div>
+
+      {success ? (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <CheckCircle2 className="size-12 text-success" />
+          <p className="text-sm text-success text-center">{success}</p>
+          <p className="text-xs text-body">{t('auth.invite.redirecting')}</p>
         </div>
-
-        {success ? (
-          <div className="flex flex-col items-center gap-3 py-6">
-            <CheckCircle2 className="size-12 text-success" />
-            <p className="text-sm text-success text-center">{success}</p>
-            <p className="text-xs text-body">{t('auth.invite.redirecting')}</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="grid gap-4">
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-foreground">{t('auth.invite.codeLabel')}</label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                  <Lock className="size-4" />
-                </div>
-                <input
-                  className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder={t('auth.invite.codePlaceholder')}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  required
-                />
+      ) : (
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-foreground">{t('auth.invite.codeLabel')}</label>
+            <div className="relative">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                <Lock className="size-4" />
               </div>
+              <input
+                className="flex h-11 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder={t('auth.invite.codePlaceholder')}
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                required
+              />
             </div>
+          </div>
 
-            {code.trim() && !info && !loadError && (
-              <button
-                type="button"
-                disabled={loadingInfo}
-                onClick={() => loadInvite(code)}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 text-sm font-medium text-primary-on-dark hover:bg-primary/10 disabled:opacity-50"
-              >
-                {loadingInfo ? <Loader2 className="size-4 animate-spin" /> : null}
-                {loadingInfo ? t('auth.invite.checking') : t('auth.invite.checkInvitation')}
-              </button>
-            )}
-
-            {loadError && (
-              <div className="flex items-start gap-2 rounded-lg bg-destructive-bg p-3 text-sm text-destructive">
-                <AlertCircle className="size-4 mt-0.5 shrink-0" />
-                <span>{loadError}</span>
-              </div>
-            )}
-
-            {info && (
-              <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-4">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t('auth.invite.detailsProvided').replace('{org}', info.organizationName || t('auth.invite.managerFallback'))}
-                </p>
-                {lockedField(t('auth.invite.employeeName'), info.fullName, User)}
-                {lockedField(t('auth.profileId'), info.loginId, Hash)}
-                <div className="grid grid-cols-2 gap-3">
-                  {lockedField(t('auth.invite.organization'), info.organizationName, Building2)}
-                  {lockedField(
-                    t('auth.invite.designation'),
-                    info.designation ? info.designation.replace(/_/g, " ") : t('auth.invite.designationFallback'),
-                    Briefcase,
-                  )}
-                </div>
-                {info.phone ? lockedField(t('auth.invite.mobileNumber'), info.phone, Phone) : null}
-              </div>
-            )}
-
-            {showPasswordField && (
-              <>
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-foreground">{t('auth.invite.createPassword')}</label>
-                  <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                      <Lock className="size-4" />
-                    </div>
-                    <input
-                      className={passwordInputClass}
-                      type={showPassword ? "text" : "password"}
-                      placeholder={t('auth.invite.passwordHint')}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((s) => !s)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                      aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
-                    >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-foreground">{t('auth.invite.confirmPassword')}</label>
-                  <div className="relative">
-                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                      <Lock className="size-4" />
-                    </div>
-                    <input
-                      className={passwordInputClass}
-                      type={showConfirm ? "text" : "password"}
-                      placeholder={t('auth.invite.confirmPlaceholder')}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirm((s) => !s)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                      aria-label={showConfirm ? t('auth.hidePassword') : t('auth.showPassword')}
-                    >
-                      {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg bg-destructive-bg p-3 text-sm text-destructive">
-                <AlertCircle className="size-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || loadingInfo}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium shadow-sm transition-all hover:shadow-md disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-              {loading ? t('auth.invite.activating') : t('auth.invite.activate')}
-            </button>
-
+          {code.trim() && !info && !loadError && (
             <button
               type="button"
-              onClick={() => router.push("/login")}
-              className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mx-auto"
+              disabled={loadingInfo}
+              onClick={() => loadInvite(code)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 text-sm font-medium text-primary-on-dark hover:bg-primary/10 disabled:opacity-50"
             >
-              <ArrowLeft className="size-4" />
-              Back to sign in
+              {loadingInfo ? <Loader2 className="size-4 animate-spin" /> : null}
+              {loadingInfo ? t('auth.invite.checking') : t('auth.invite.checkInvitation')}
             </button>
-          </form>
-        )}
-      </div>
+          )}
+
+          {loadError && (
+            <div className="flex items-start gap-2 rounded-lg bg-destructive-bg p-3 text-sm text-destructive">
+              <AlertCircle className="size-4 mt-0.5 shrink-0" />
+              <span>{loadError}</span>
+            </div>
+          )}
+
+          {info && (
+            <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t('auth.invite.detailsProvided').replace('{org}', info.organizationName || t('auth.invite.managerFallback'))}
+              </p>
+              {lockedField(t('auth.invite.employeeName'), info.fullName, User)}
+              {lockedField(t('auth.profileId'), info.loginId, Hash)}
+              <div className="grid grid-cols-2 gap-3">
+                {lockedField(t('auth.invite.organization'), info.organizationName, Building2)}
+                {lockedField(
+                  t('auth.invite.designation'),
+                  info.designation ? info.designation.replace(/_/g, " ") : t('auth.invite.designationFallback'),
+                  Briefcase,
+                )}
+              </div>
+              {info.phone ? lockedField(t('auth.invite.mobileNumber'), info.phone, Phone) : null}
+            </div>
+          )}
+
+          {showPasswordField && (
+            <>
+              <div className="grid gap-1.5">
+                <label htmlFor="invite-password" className="text-sm font-medium text-foreground">{t('auth.invite.createPassword')}</label>
+                <div className="relative" data-auth-private>
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                    <Lock className="size-4" />
+                  </div>
+                  <input
+                    id="invite-password"
+                    className={passwordInputClass}
+                    type={showPassword ? "text" : "password"}
+                    placeholder={t('auth.invite.passwordHint')}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute inset-y-0 end-0 grid min-h-11 min-w-11 place-items-center rounded-lg text-muted-foreground hover:text-foreground"
+                    aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <label htmlFor="invite-confirm-password" className="text-sm font-medium text-foreground">{t('auth.invite.confirmPassword')}</label>
+                <div className="relative" data-auth-private>
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                    <Lock className="size-4" />
+                  </div>
+                  <input
+                    id="invite-confirm-password"
+                    className={passwordInputClass}
+                    type={showConfirm ? "text" : "password"}
+                    placeholder={t('auth.invite.confirmPlaceholder')}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((s) => !s)}
+                    className="absolute inset-y-0 end-0 grid min-h-11 min-w-11 place-items-center rounded-lg text-muted-foreground hover:text-foreground"
+                    aria-label={showConfirm ? t('auth.hidePassword') : t('auth.showPassword')}
+                  >
+                    {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-destructive-bg p-3 text-sm text-destructive">
+              <AlertCircle className="size-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || loadingInfo}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium shadow-sm transition-all hover:shadow-md disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+            {loading ? t('auth.invite.activating') : t('auth.invite.activate')}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/login")}
+            className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mx-auto"
+          >
+            <ArrowLeft className="size-4" />
+            Back to sign in
+          </button>
+        </form>
+      )}
     </div>
   );
 }

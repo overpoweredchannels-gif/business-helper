@@ -4,8 +4,8 @@ import * as React from "react";
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Mail, Lock, User, Eye, EyeOff, Loader2, Shield,
-  BarChart3, Users, CheckCircle2, AlertCircle,
+  Mail, Lock, User, Eye, EyeOff, Loader2,
+  CheckCircle2, AlertCircle,
   ArrowLeft
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
@@ -111,7 +111,7 @@ function Field({ label, icon, error, className, id, ...props }: {
         <input
           id={inputId}
           className={cn(
-            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
+            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 text-sm text-foreground transition-all placeholder:text-muted-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             icon && "pl-10",
@@ -142,7 +142,7 @@ function PasswordField({ label, error, ...props }: {
   return (
     <div className="grid gap-1.5">
       <label htmlFor={generatedId} className="text-sm font-medium text-foreground">{label}</label>
-      <div className="relative">
+      <div className="relative" data-auth-private>
         <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
           <Lock className="size-4" />
         </div>
@@ -150,7 +150,7 @@ function PasswordField({ label, error, ...props }: {
           id={generatedId}
           type={show ? "text" : "password"}
           className={cn(
-            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-10 text-sm text-foreground transition-all placeholder:text-muted-foreground/60",
+            "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 pr-12 text-sm text-foreground transition-all placeholder:text-muted-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             error && "border-destructive focus-visible:ring-destructive",
@@ -161,8 +161,7 @@ function PasswordField({ label, error, ...props }: {
         <button
           type="button"
           onClick={() => setShow(s => !s)}
-          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-          tabIndex={-1}
+          className="absolute inset-y-0 end-0 grid min-h-11 min-w-11 place-items-center rounded-lg text-muted-foreground hover:text-foreground"
           aria-label={show ? t('auth.hidePassword') : t('auth.showPassword')}
         >
           {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -185,10 +184,10 @@ function Checkbox({ label, checked, onChange }: {
 }) {
   const id = React.useId();
   return (
-    <label htmlFor={id} className="flex items-center gap-2 cursor-pointer group">
+    <label htmlFor={id} className="group flex min-h-11 cursor-pointer items-center gap-2 rounded-md has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring">
       <div className={cn(
         "size-4 rounded border-2 flex items-center justify-center transition-colors shrink-0",
-        checked ? "bg-primary border-primary" : "border-muted-foreground/40 group-hover:border-muted-foreground/60"
+        checked ? "bg-primary border-primary" : "border-input group-hover:border-muted-foreground"
       )}>
         {checked && <CheckCircle2 className="size-3 text-primary-foreground" />}
       </div>
@@ -227,63 +226,6 @@ function TrustBadges() {
       <span>{t('auth.socBadge')}</span>
       <span className="text-muted-light">·</span>
       <span>99.9% uptime</span>
-    </div>
-  );
-}
-
-function LeftPanel() {
-  const { t } = useRegional();
-  return (
-    <div className="hidden lg:flex w-[45%] min-h-screen bg-panel p-10 xl:p-14 flex-col justify-between">
-      <div>
-        <div className="flex items-center gap-2.5 mb-10">
-          <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
-          <span className="font-brand font-bold text-xl text-foreground">Aankh</span>
-        </div>
-
-        <h2 className="font-heading font-bold text-3xl xl:text-4xl text-foreground leading-tight mb-4">
-          Business Operating System
-        </h2>
-        <p className="text-body text-base leading-relaxed max-w-md">
-          Streamline your wholesale and retail operations with real-time analytics, 
-          smart inventory management, and enterprise-grade security.
-        </p>
-
-        <div className="grid gap-4 mt-10">
-          {[
-            { icon: BarChart3, title: t('auth.featureAnalytics'), desc: t('auth.featureAnalyticsDesc') },
-            { icon: Users, title: t('auth.featureInventory'), desc: t('auth.featureInventoryDesc') },
-            { icon: Shield, title: t('auth.featureSecurity'), desc: t('auth.featureSecurityDesc') },
-          ].map((item, i) => (
-            <div
-              key={item.title}
-              className="flex items-start gap-3.5 p-4 rounded-xl bg-muted border border-border animate-fadeIn"
-              style={{ animationDelay: `${200 + i * 100}ms` }}
-            >
-              <div className="size-9 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-                <item.icon className="size-4.5 text-primary" />
-              </div>
-              <div>
-                <p className="font-medium text-sm text-foreground">{item.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-6 pt-8 border-t border-border">
-        {[
-          { value: "10K+", label: t('auth.statBusinesses') },
-          { value: "99.9%", label: t('auth.statUptime') },
-          { value: "24/7", label: t('auth.statSupport') },
-        ].map((stat) => (
-          <div key={stat.label}>
-            <p className="font-heading font-bold text-lg text-foreground">{stat.value}</p>
-            <p className="text-xs text-muted-foreground">{stat.label}</p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -385,6 +327,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           <button
             key={tab.key}
             type="button"
+            aria-pressed={method === tab.key}
             onClick={() => { setMethod(tab.key); setError(null); }}
             className={cn(
               "rounded-md px-3 py-2 text-sm font-medium transition-colors",
@@ -434,7 +377,7 @@ function SignInForm({ onNavigate }: { onNavigate: (view: AuthView, data?: { emai
           error={error && !error.includes("email") && !error.includes(t('auth.email')) && !error.includes("Profile ID") && !error.includes(t('auth.profileId')) ? error : null}
         />
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
           <Checkbox label={t('auth.keepSignedIn')} checked={rememberMe} onChange={setRememberMe} />
           {/* Sunday small fix — password recovery does not work from
               the desktop (Slice 1b is not on production): hide the
@@ -850,49 +793,30 @@ export function AuthUI({ defaultMode = "signin" }: AuthUIProps) {
   }, []);
 
   return (
-    <div className="min-h-screen flex">
+    <div className="grid gap-4">
       <style>{`
         input[type="password"]::-ms-reveal,
         input[type="password"]::-ms-clear { display: none; }
       `}</style>
 
-      <LeftPanel />
-
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8 relative">
-        <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
-          <LanguageSwitcher />
-        </div>
-        <div className="w-full max-w-[420px]">
-          <div className="lg:hidden text-center mb-8 animate-fadeIn">
-            <div className="inline-flex items-center gap-2">
-              <img src="/aankh-app-eye.png" alt="Aankh logo" width={36} height={36} className="size-9 shrink-0 rounded-xl" />
-              <span className="font-brand font-bold text-xl text-foreground">Aankh</span>
-            </div>
+      <div className="flex justify-end"><LanguageSwitcher /></div>
+      <div key={view} className="aankh-auth-card">
+        {/* Slice S1 (desktop only): a cold start with no prior sign-in
+            shows this instead of a sign-in form that cannot work —
+            signing in needs the server. The message clears itself when
+            the network returns. */}
+        {isDesktopApp() && !online && (
+          <div className="mb-4">
+            <Alert variant="warning">{t('offline.internetRequired')}</Alert>
           </div>
-
-          <div
-            key={view}
-            className="bg-card rounded-[18px] border border-border p-6 sm:p-8 shadow-overlay"
-          >
-            {/* Slice S1 (desktop only): a cold start with no prior sign-in
-                shows this instead of a sign-in form that cannot work —
-                signing in needs the server. The message clears itself when
-                the network returns. */}
-            {isDesktopApp() && !online && (
-              <div className="mb-4">
-                <Alert variant="warning">{t('offline.internetRequired')}</Alert>
-              </div>
-            )}
-            {view === "signin" && <SignInForm onNavigate={handleNavigate} />}
-            {view === "signup" && <SignUpForm onNavigate={handleNavigate} />}
-            {view === "forgot" && <ForgotPasswordForm onNavigate={handleNavigate} initialEmail={email} />}
-            {view === "verify" && <VerifyEmail email={email} onNavigate={handleNavigate} />}
-            {view === "reset-sent" && <ResetSent email={email} onNavigate={handleNavigate} />}
-          </div>
-
-          <TrustBadges />
-        </div>
+        )}
+        {view === "signin" && <SignInForm onNavigate={handleNavigate} />}
+        {view === "signup" && <SignUpForm onNavigate={handleNavigate} />}
+        {view === "forgot" && <ForgotPasswordForm onNavigate={handleNavigate} initialEmail={email} />}
+        {view === "verify" && <VerifyEmail email={email} onNavigate={handleNavigate} />}
+        {view === "reset-sent" && <ResetSent email={email} onNavigate={handleNavigate} />}
       </div>
+      <TrustBadges />
     </div>
   );
 }

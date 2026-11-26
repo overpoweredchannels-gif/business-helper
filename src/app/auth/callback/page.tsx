@@ -91,8 +91,8 @@ export default function AuthCallbackPage() {
   }, [router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p className="text-muted-foreground">Completing sign in...</p>
-    </div>
+    <main className="grid min-h-dvh place-items-center bg-card px-4">
+      <p role="status" className="aankh-auth-card w-full max-w-[380px] text-center text-sm text-muted-foreground">Completing sign in...</p>
+    </main>
   );
 }

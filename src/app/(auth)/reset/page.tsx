@@ -59,88 +59,90 @@ function ResetForm() {
   };
 
   const inputClass =
-    "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "flex h-11 w-full rounded-lg border bg-card px-3.5 py-2.5 pl-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-panel p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border border-border p-8 shadow-lg">
-        <div className="text-center mb-6">
-          <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
-            <Lock className="size-6 text-primary" />
-          </div>
-          <h1 className="font-bold text-2xl text-foreground">{t('auth.reset.title')}</h1>
-          <p className="text-sm text-body mt-1.5">{t('auth.reset.subtitle')}</p>
+    <div className="aankh-auth-card">
+      <div className="text-center mb-6">
+        <div className="mx-auto mb-4 size-14 rounded-full bg-primary-light flex items-center justify-center">
+          <Lock className="size-6 text-primary" />
         </div>
-
-        {success ? (
-          <div className="flex flex-col items-center gap-3 py-6">
-            <CheckCircle2 className="size-12 text-success" />
-            <p className="text-sm text-success text-center">{success}</p>
-            <p className="text-xs text-body">{t('auth.reset.redirecting')}</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="grid gap-4">
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-foreground">{t('team.resetPlaceholder')}</label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                  <Lock className="size-4" />
-                </div>
-                <input
-                  className={inputClass}
-                  type="password"
-                  placeholder={t('auth.reset.passwordPlaceholder')}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <label className="text-sm font-medium text-foreground">{t('auth.reset.confirmPassword')}</label>
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                  <Lock className="size-4" />
-                </div>
-                <input
-                  className={inputClass}
-                  type="password"
-                  placeholder={t('auth.reset.confirmPlaceholder')}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg bg-destructive-bg p-3 text-sm text-destructive">
-                <AlertCircle className="size-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium shadow-sm transition-all hover:shadow-md disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="size-4 animate-spin" /> : null}
-              {loading ? t('team.resetting') : t('auth.reset.resetPassword')}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push("/login")}
-              className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mx-auto"
-            >
-              <ArrowLeft className="size-4" />
-              {t('auth.backToSignIn')}
-            </button>
-          </form>
-        )}
+        <h1 className="font-bold text-2xl text-foreground">{t('auth.reset.title')}</h1>
+        <p className="text-sm text-body mt-1.5">{t('auth.reset.subtitle')}</p>
       </div>
+
+      {success ? (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <CheckCircle2 className="size-12 text-success" />
+          <p className="text-sm text-success text-center">{success}</p>
+          <p className="text-xs text-body">{t('auth.reset.redirecting')}</p>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <div className="grid gap-1.5">
+            <label htmlFor="reset-password" className="text-sm font-medium text-foreground">{t('team.resetPlaceholder')}</label>
+            <div className="relative" data-auth-private>
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                <Lock className="size-4" />
+              </div>
+              <input
+                id="reset-password"
+                className={inputClass}
+                type="password"
+                autoComplete="new-password"
+                placeholder={t('auth.reset.passwordPlaceholder')}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <label htmlFor="reset-confirm-password" className="text-sm font-medium text-foreground">{t('auth.reset.confirmPassword')}</label>
+            <div className="relative" data-auth-private>
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                <Lock className="size-4" />
+              </div>
+              <input
+                id="reset-confirm-password"
+                className={inputClass}
+                type="password"
+                autoComplete="new-password"
+                placeholder={t('auth.reset.confirmPlaceholder')}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-destructive-bg p-3 text-sm text-destructive">
+              <AlertCircle className="size-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium shadow-sm transition-all hover:shadow-md disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+            {loading ? t('team.resetting') : t('auth.reset.resetPassword')}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/login")}
+            className="flex items-center justify-center gap-1.5 text-sm text-body hover:text-foreground transition-colors mx-auto"
+          >
+            <ArrowLeft className="size-4" />
+            {t('auth.backToSignIn')}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

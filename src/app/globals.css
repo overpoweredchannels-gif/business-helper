@@ -78,6 +78,40 @@ html { zoom: var(--app-zoom, 1); }
   --shadow-overlay: 0 1px 2px rgba(23,43,77,0.06), 0 8px 24px rgba(23,43,77,0.10);
 }
 
+.aankh-auth-eye > img {
+  transform: translate(var(--auth-gaze-x, 0), var(--auth-gaze-y, 0));
+  transition: transform 160ms ease-out;
+}
+.aankh-auth-card a {
+  display: inline-flex;
+  align-items: center;
+}
+.aankh-auth-frame:has([data-auth-private]:focus-within) .aankh-auth-eye > img {
+  transform: translateX(-22px);
+}
+@media (hover: hover) {
+  .aankh-auth-frame:has([data-auth-private]:hover) .aankh-auth-eye > img {
+    transform: translateX(-22px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aankh-auth-eye > img { transition: none; }
+}
+.aankh-auth-card {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-card);
+  box-shadow: var(--shadow-workspace-card);
+  padding: clamp(1rem, 5vw, 1.75rem);
+}
+.aankh-auth-card :where(button, a, input:not([type="checkbox"]), select) {
+  min-height: 44px;
+}
+.aankh-auth-card :where(button, a, input, select):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
