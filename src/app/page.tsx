@@ -23508,9 +23508,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "sales" && (
-        <div className="workspace-flow">
+        <div className="workspace-flow trading-screen">
         <div className="workspace-tabs">
-          {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary text-white" : "border border-border bg-card"}`}>{({ invoice: t('sell.tabCreateInvoice'), history: t('sell.tabLedger'), orders: t('sell.tabOrders'), returns: t('sell.tabReturns'), report: t('sell.tabReport'), loadform: t('sell.tabLoadForm'), invoices: t('sell.tabInvoiceGenerator') } as Record<string, string>)[tool.id] ?? tool.label}</button>)}
+          {salesTools.filter(tool => canUseSalesTool(tool.id)).map(tool => <button key={tool.id} type="button" aria-pressed={salesTab === tool.id} onClick={() => setSalesTab(tool.id)} className={`rounded px-4 py-2 text-sm font-medium ${salesTab === tool.id ? "bg-primary" : "border border-border bg-card"}`}>{({ invoice: t('sell.tabCreateInvoice'), history: t('sell.tabLedger'), orders: t('sell.tabOrders'), returns: t('sell.tabReturns'), report: t('sell.tabReport'), loadform: t('sell.tabLoadForm'), invoices: t('sell.tabInvoiceGenerator') } as Record<string, string>)[tool.id] ?? tool.label}</button>)}
         </div>
         {!canUseSalesTool(salesTab) && <p className="text-sm text-muted-foreground">{t('sell.selectPermittedOption')}</p>}
         {salesTab === "history" && canUseSalesTool("history") && !isOwnerOrAdmin() && <MySalesPerformance />}
@@ -23547,7 +23547,9 @@ export default function Home() {
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onQuickAddCustomer={() => setQuickAddCustomerOpen(true)} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onNotes={setSalesNotes} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
             <QuickAddCustomerDialog key={quickAddCustomerOpen ? "quick-add-open" : "quick-add-closed"} open={quickAddCustomerOpen} busy={quickAddCustomerBusy} error={quickAddCustomerError} onClose={() => { if (!quickAddCustomerBusy) setQuickAddCustomerOpen(false); }} onSubmit={(fields) => void handleQuickAddCustomer(fields)} />
             <div className={quickSaleMode ? "hidden" : "space-y-4"}>
-            <button type="button" onClick={() => setQuickSaleMode(true)} className="min-h-11 rounded-lg border border-primary px-4 text-primary">{t('sell.openRetailPos')}</button>
+            <div className="trading-entry">
+              <button type="button" onClick={() => setQuickSaleMode(true)} className="trading-pos-entry min-h-11 rounded-lg px-4">{t('sell.openRetailPos')}</button>
+            </div>
             <section className="scanner-panel" data-help-topic="barcode" onKeyDown={event => {
               // Barcode skip (PC-test finding 1): Esc in the barcode box
               // moves focus to the customer selection, same as the Skip
@@ -25363,7 +25365,7 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "customer-payments" && (
-        <section className="workspace-section">
+        <section className="workspace-section trading-screen">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('payments.title')}</h2>
             <div className="flex flex-wrap gap-2">
@@ -25395,7 +25397,7 @@ export default function Home() {
               </button>
             </div>
           </div>
-<div {...entryNavigationHandlers}>
+<div className="trading-entry" {...entryNavigationHandlers}>
 <div className="grid gap-4 sm:grid-cols-4">
              <label className="flex flex-col gap-1 text-xs text-foreground/80">
                <span>{t('payments.selectCustomer')}</span>
@@ -25802,7 +25804,7 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "supplier-payments" && (
-        <section className="workspace-section">
+        <section className="workspace-section trading-screen">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('buy.supplierPayments')}</h2>
             <div className="flex flex-wrap gap-2">
@@ -25827,7 +25829,7 @@ export default function Home() {
             <div {...entryNavigationHandlers}>
             </div>
           </div>
-<div className="grid gap-4 sm:grid-cols-4">
+<div className="trading-entry grid gap-4 sm:grid-cols-4">
              <label className="flex flex-col gap-1 text-xs text-foreground/80">
                <span>{t('buy.selectSupplier')}</span>
                <select
@@ -26172,7 +26174,7 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="workspace-section">
+        <section className="workspace-section trading-screen">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('buy.supplierLedger')}</h2>
             <div className="flex flex-wrap gap-2">
@@ -26197,7 +26199,7 @@ export default function Home() {
             {t('buy.allocateHint')}
           </p>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="trading-entry grid gap-4 sm:grid-cols-3">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('buy.supplier')}</span>
               <select
@@ -26370,9 +26372,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "expenses" && (
-        <section id="expense-management" className="workspace-section">
+        <section id="expense-management" className="workspace-section trading-screen">
           <h2 className="mb-4 text-xl font-medium text-foreground">{t('expenses.title')}</h2>
-          <form onSubmit={saveExpense} className="space-y-4" {...entryNavigationHandlers}>
+          <form onSubmit={saveExpense} className="trading-entry space-y-4" {...entryNavigationHandlers}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('expenses.type')}</span>
@@ -26483,7 +26485,7 @@ export default function Home() {
               type="submit"
               data-entry-add
               disabled={expenseLoading}
-              className="rounded bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:bg-primary/30"
+              className="rounded bg-primary px-4 py-2 text-primary-foreground hover:bg-primary-hover disabled:bg-primary/30"
             >
               {expenseLoading ? t('common.saving') : t('expenses.save')}
             </button>
@@ -26524,7 +26526,7 @@ export default function Home() {
                   const formattedAmount = formatBooksMoney(Number(expense.amount || 0));
 
                   return (
-                    <li key={expense.id} className="rounded border border-border bg-card px-3 py-3 text-sm text-foreground/80">
+                    <li key={expense.id} className="trading-record border border-border bg-card text-sm text-foreground/80">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <div className="font-medium text-foreground">{expense.expense_type}</div>
@@ -26553,7 +26555,7 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "customer-credit" && (
-        <section className="workspace-section">
+        <section className="workspace-section trading-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('credit.title')}</h2>
             {canImportExport && (
@@ -26571,46 +26573,40 @@ export default function Home() {
           {customers.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('credit.noCustomers')}</p>
           ) : (
-            <ul className="space-y-3">
+            <CatalogTable label={t('credit.title')} columns={[t('sell.customer'), t('credit.creditSales'), t('credit.paymentsApplied'), t('credit.returns'), t('credit.outstanding')]}>
               {receivablesStats.map((r) => (
-                <li key={r.customerId} className="flex items-center justify-between rounded border border-border bg-card p-4">
-                  <div>
+                <tr key={r.customerId}>
+                  <td>
                     <div className="font-medium text-foreground">{r.customerName}</div>
-                    <div className="text-xs text-muted-foreground">{r.shopName ?? ""}</div>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-foreground/80 tabular-nums">
-                    <div>{t('credit.creditSales')}: {r.totalSales}</div>
-                    <div>{t('credit.paymentsApplied')}: {r.paymentsReceived}</div>
-                    <div>{t('credit.returns')}: {r.returnsCredited}</div>
-                    <div className="font-semibold tabular-nums text-foreground">{t('credit.outstanding')}: {r.outstanding}</div>
-                  </div>
-                </li>
+                    {r.shopName && <div className="text-xs text-muted-foreground">{r.shopName}</div>}
+                  </td>
+                  <td className="whitespace-nowrap tabular-nums">{formatBooksMoney(r.totalSales)}</td>
+                  <td className="whitespace-nowrap tabular-nums">{formatBooksMoney(r.paymentsReceived)}</td>
+                  <td className="whitespace-nowrap tabular-nums">{formatBooksMoney(r.returnsCredited)}</td>
+                  <td className="whitespace-nowrap font-semibold tabular-nums text-warning-text">{formatBooksMoney(r.outstanding)}</td>
+                </tr>
               ))}
-            </ul>
+            </CatalogTable>
           )}
         </section>
         )}
 
         {activeSectionAllowed && activeSection === "supplier-ledger" && (
-        <section className="workspace-section">
+        <section className="workspace-section trading-screen">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.payablesDashboard')}</h2>
           {suppliers.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('buy.noSuppliers')}</p>
           ) : (
-            <ul className="space-y-3">
+            <CatalogTable label={t('buy.payablesDashboard')} columns={[t('buy.supplier'), t('buy.totalPurchases'), t('buy.paymentsWord'), t('buy.remainingPayable')]}>
               {payablesStats.map((p) => (
-                <li key={p.supplierId} className="flex items-center justify-between rounded border border-border bg-card p-4">
-                  <div>
-                    <div className="font-medium text-foreground">{p.supplierName}</div>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-foreground/80 tabular-nums">
-                    <div>{t('buy.totalPurchases')}: {p.totalPurchases}</div>
-                    <div>{t('buy.paymentsWord')}: {p.paymentsMade}</div>
-                    <div className="font-semibold tabular-nums text-foreground">{t('buy.remainingPayable')}: {p.remainingPayable}</div>
-                  </div>
-                </li>
+                <tr key={p.supplierId}>
+                  <td className="font-medium">{p.supplierName}</td>
+                  <td className="whitespace-nowrap tabular-nums">{formatBooksMoney(p.totalPurchases)}</td>
+                  <td className="whitespace-nowrap tabular-nums">{formatBooksMoney(p.paymentsMade)}</td>
+                  <td className="whitespace-nowrap font-semibold tabular-nums text-warning-text">{formatBooksMoney(p.remainingPayable)}</td>
+                </tr>
               ))}
-            </ul>
+            </CatalogTable>
           )}
         </section>
         )}
@@ -28259,14 +28255,15 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "purchases" && (
-        <div className="workspace-flow">
+        <div className="workspace-flow trading-screen">
         <div className="workspace-tabs">
           <button
             type="button"
+            aria-pressed={purchaseTab === "invoice"}
             onClick={() => setPurchaseTab("invoice")}
             className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
               purchaseTab === "invoice"
-                ? "bg-primary text-white"
+                ? "bg-primary"
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
             }`}
           >
@@ -28274,10 +28271,11 @@ export default function Home() {
           </button>
           <button
             type="button"
+            aria-pressed={purchaseTab === "orders"}
             onClick={() => setPurchaseTab("orders")}
             className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
               purchaseTab === "orders"
-                ? "bg-primary text-white"
+                ? "bg-primary"
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
             }`}
           >
@@ -28285,10 +28283,11 @@ export default function Home() {
           </button>
           <button
             type="button"
+            aria-pressed={purchaseTab === "returns"}
             onClick={() => setPurchaseTab("returns")}
             className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
               purchaseTab === "returns"
-                ? "bg-primary text-white"
+                ? "bg-primary"
                 : "border border-border bg-card text-foreground/80 hover:bg-muted/30"
             }`}
           >
