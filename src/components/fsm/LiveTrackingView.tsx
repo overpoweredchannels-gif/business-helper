@@ -219,7 +219,7 @@ export default function LiveTrackingView({ compact = false }: { compact?: boolea
                 : "";
             const placeLabel = labelKey ? liveLabel[labelKey] : undefined;
             return (
-              <div key={emp.profileId} className="rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
+              <div key={emp.profileId} className="operations-card rounded-2xl border border-border bg-card overflow-hidden flex flex-col">
                 {/* Listing header */}
                 <div className="px-4 py-3 flex items-start justify-between gap-2">
                   <div className="min-w-0">

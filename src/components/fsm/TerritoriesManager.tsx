@@ -159,19 +159,11 @@ export default function TerritoriesManager() {
   };
 
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-        }}
-      >
+    <div className="operations-section py-4">
+      <div className="operations-toolbar">
         <div>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>{t('fsm.territories.title')}</h2>
-          <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0 0" }}>
+          <p style={{ fontSize: "0.875rem", color: "var(--color-muted-foreground)", margin: "0.25rem 0 0" }}>
             Sales areas used to organize customers, routes, and field staff assignments.
           </p>
         </div>
@@ -236,7 +228,7 @@ export default function TerritoriesManager() {
       ) : territories.length === 0 ? (
         <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.territories.empty')}</p>
       ) : (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
+        <div className="operations-card overflow-hidden rounded-xl border border-border bg-card">
           {territories.map((territory, index) => {
             const memberCount = customers.filter((customer) => customer.assigned_territory_id === territory.id).length;
             const query = customerSearch.trim().toLowerCase();
@@ -283,7 +275,7 @@ export default function TerritoriesManager() {
                     <div><div style={{ fontSize: "0.875rem", fontWeight: 600 }}>{t('fsm.territories.customersIn').replace('{name}', territory.name)}</div><div style={{ fontSize: "0.72rem", color: "#6b7280" }}>{t('fsm.territories.customersAvailable')}</div></div>
                     <input style={{ ...inputStyle, minWidth: "240px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('fsm.territories.searchPlaceholder')} />
                   </div>
-                  <div style={{ maxHeight: "300px", overflowY: "auto", display: "grid", gap: "0.4rem", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+                  <div style={{ maxHeight: "300px", overflowY: "auto", display: "grid", gap: "0.4rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))" }}>
                     {visibleCustomers.map((customer) => (
                       <label key={customer.id} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "0.55rem", background: "#fff", fontSize: "0.78rem" }}>
                         <input type="checkbox" checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />

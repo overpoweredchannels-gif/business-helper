@@ -11,13 +11,13 @@ const CATEGORY_STYLES: Record<string, string> = {
   approval: "bg-primary/10 text-primary border-primary/30",
   target: "bg-primary/10 text-primary border-primary/30",
   route: "bg-success/10 text-success border-success/30",
-  duty: "bg-success/10 text-success border-success/30",
+  duty: "bg-primary/10 text-primary border-primary/30",
   off_route: "bg-destructive/10 text-destructive border-destructive/30",
   missed_customer: "bg-warning/10 text-warning-text border-warning/30",
   inventory: "bg-warning/10 text-warning-text border-warning/30",
   attendance: "bg-primary/10 text-primary border-primary/30",
   leave: "bg-muted text-muted-foreground border-border",
-  collection: "bg-success/10 text-success border-success/30",
+  collection: "bg-success-light text-success border-success/30",
   general: "bg-muted text-muted-foreground border-border",
 };
 
@@ -130,7 +130,7 @@ export default function NotificationCenter({
     filter === "all" ? notifications.length : filter === "unread" ? unreadCount : notifications.filter((n) => n.category === filter).length;
 
   return (
-    <div className="p-5">
+    <div className="operations-section p-1 sm:p-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-medium text-foreground">{t('fsm.notifications.title')}</h2>
@@ -171,6 +171,7 @@ export default function NotificationCenter({
             <button
               key={option.id}
               type="button"
+              aria-pressed={active}
               onClick={() => {
                 setFilter(option.id);
                 setMaxVisible(30);

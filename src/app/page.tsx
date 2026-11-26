@@ -156,6 +156,7 @@ import { getBusinessBrain } from "@/lib/brain";
 import { chatWithBusinessBrain, buildChatResponse, SERVER_CHAT_UNREACHABLE_ERROR } from "@/lib/ai/server-chat";
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
+import { version as appVersion } from "../../package.json";
 import { AIAssistant } from "@/components/ai/AIAssistant";
 import { AiPage, AiQueryPanel, type AiQueryMetric } from "@/components/ai/AiPage";
 import { AiVoiceOperator } from "@/components/ai/AiVoiceOperator";
@@ -29721,10 +29722,10 @@ export default function Home() {
         )}
         </div>)}
         {activeSectionAllowed && activeSection === "staff-permissions" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('staff.title')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('staff.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('staff.subtitle')}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -31009,10 +31010,10 @@ export default function Home() {
 
 
         {activeSectionAllowed && activeSection === "staff-duty" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('sections.staffDuty')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('sections.staffDuty')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('sections.staffDutyHint')}
               </p>
@@ -31285,10 +31286,10 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "mobile-app" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('sections.mobileApp')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('sections.mobileApp')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('sections.mobileAppHint')}
               </p>
@@ -31361,9 +31362,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "employees" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('sections.employees')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('sections.employees')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="employees"
@@ -31381,9 +31382,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "territories" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('sections.territories')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('sections.territories')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="territories"
@@ -31401,9 +31402,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "routes" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('sections.routes')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('sections.routes')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="routes"
@@ -31421,7 +31422,7 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "notifications" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <NotificationCenter
             notifications={visibleNotifications}
             unreadCount={unreadNotificationCount}
@@ -31439,9 +31440,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "live-tracking" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-5">
-            <h2 className="text-xl font-medium text-foreground">{t('sections.liveTracking')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('sections.liveTracking')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {t('sections.liveTrackingHint')}
             </p>
@@ -31451,9 +31452,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "deployment" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-5">
-            <h2 className="text-xl font-medium text-foreground">{t('sections.deployment')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('sections.deployment')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {t('sections.deploymentHint')}
             </p>
@@ -31462,6 +31463,7 @@ export default function Home() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="workspace-panel rounded-xl border border-border bg-card p-4">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxAppBuildStatus')}</div>
+              <div className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{appVersion}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">{t('page.jsxManualBuildRequired')}</div>
               <p className="mt-1 text-xs text-muted-foreground/80">{t('page.jsxRunLocalBuild')}</p>
             </div>
@@ -31582,10 +31584,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "security-check" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('sections.securityCheck')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('sections.securityCheck')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('sections.securityCheckHint')}</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -31606,7 +31608,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           {securityCheckError && <p className="mb-4 whitespace-pre-wrap text-sm text-destructive">{securityCheckError}</p>}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-border bg-card p-3">
+            <div className="operations-card rounded-xl border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">{t('page.jsxTotalChecks')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{securityCheckSummary.total}</div>
             </div>
@@ -31700,7 +31702,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "security-check" && (
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="workspace-flow operations-screen mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded border border-border bg-card">
             <RoleManagement
               onRequestConfirm={setConfirmDialog}
@@ -31740,10 +31742,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "activity-logs" && (
-        <section className="workspace-section">
+        <section className="workspace-section operations-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-medium text-foreground">{t('logs.title')}</h2>
+              <h2 className="text-2xl font-semibold text-foreground">{t('logs.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('logs.subtitle')}</p>
             </div>
             <button
@@ -31756,19 +31758,19 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded border border-border bg-card p-3">
+            <div className="operations-card rounded-xl border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">{t('logs.totalLogs')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.total}</div>
             </div>
-            <div className="rounded border border-border bg-card p-3">
+            <div className="operations-card rounded-xl border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">{t('logs.todayActivity')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.today}</div>
             </div>
-            <div className="rounded border border-border bg-card p-3">
+            <div className="operations-card rounded-xl border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">{t('logs.creates')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.creates}</div>
             </div>
-            <div className="rounded border border-border bg-card p-3">
+            <div className="operations-card rounded-xl border border-border bg-card p-3">
               <div className="text-sm text-muted-foreground/80">{t('logs.updatesDeletes')}</div>
               <div className="mt-1 text-2xl font-semibold text-foreground">{auditLogSummary.updatesDeletes}</div>
             </div>
@@ -31913,8 +31915,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "task-manager" && (
-        <section className="workspace-section">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('tasks.title')}</h2>
+        <section className="workspace-section operations-screen">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('tasks.title')}</h2>
 
           <div className="workspace-panel rounded-xl border border-border bg-card p-4">
             <h3 className="mb-3 text-lg font-medium text-foreground">{t('tasks.create')}</h3>
@@ -32233,11 +32235,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY`}</pre>
         )}
 
         {activeSectionAllowed && activeSection === "business-settings" && (
-        <section className="workspace-section">
-          <h2 className="mb-4 text-xl font-medium text-foreground">{t('settings.title')}</h2>
+        <section className="workspace-section operations-screen">
+          <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('settings.title')}</h2>
           <RegionalSettingsPanel key={searchScopeKey} request={authorizedFetch} canEdit={currentProfile?.role === 'owner' && currentProfile?.is_active === true} />
           {currentProfile?.role === 'owner' && currentProfile?.is_active === true && <FxRatesPanel />}
-          <div className="space-y-4">
+          <div className="operations-controls space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('settings.businessName')}</span>

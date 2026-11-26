@@ -10,6 +10,46 @@
 .workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
 .workspace-section :where(tbody td) { padding-block: .875rem; }
 
+.operations-screen.workspace-section,
+.operations-screen :where(.workspace-panel, .operations-card) {
+  border-radius: .875rem;
+  box-shadow: var(--shadow-workspace-card);
+}
+.operations-screen :where(button, summary, select, textarea, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])) {
+  min-height: 44px;
+}
+.operations-screen :where(button, summary) { min-width: 44px; }
+.operations-screen label:has(> :is(input[type="checkbox"], input[type="radio"])) { min-height: 44px; }
+.operations-screen :where(button, a, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.operations-screen :where(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  border-color: var(--color-input);
+  background: var(--color-card);
+}
+.operations-screen :where(button.bg-primary) { color: var(--color-primary-foreground); }
+.operations-screen :where(button.bg-success) { color: var(--color-success-foreground); }
+.operations-screen :where(button.bg-destructive) { color: var(--color-destructive-foreground); }
+.operations-screen :where(thead) { background: var(--color-muted); color: var(--color-muted-foreground); }
+.operations-screen :where(th) { text-align: start; }
+.operations-screen .operations-controls {
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  padding: 1rem;
+  background: var(--color-muted);
+}
+.operations-screen .operations-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+.operations-screen .operations-toolbar h2 { font-size: 1.25rem; font-weight: 600; }
+.operations-screen .operations-toolbar p { font-size: .875rem; color: var(--color-muted-foreground); }
+.operations-screen .operations-section { min-width: 0; }
+
 .ai-workspace { max-width: 64rem; }
 .ai-workspace .ai-panel { border-radius: .875rem; box-shadow: var(--shadow-workspace-card); }
 .ai-workspace :where(button, input, textarea, select) { min-height: 44px; }

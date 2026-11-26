@@ -324,19 +324,11 @@ export default function EmployeeManagement() {
   const formatMoney = (value: number) => formatBooksMoney(value);
 
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-        }}
-      >
+    <div className="operations-section py-4">
+      <div className="operations-toolbar">
         <div>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>{t('fsm.employees.title')}</h2>
-          <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0 0" }}>
+          <p style={{ fontSize: "0.875rem", color: "var(--color-muted-foreground)", margin: "0.25rem 0 0" }}>
             Field sales team, delivery riders, and supervisors.
           </p>
         </div>
@@ -418,7 +410,7 @@ export default function EmployeeManagement() {
           {assignmentScope === "selected" && form.assigned_territory_id && (
             <div style={{ gridColumn: "1 / -1", border: "1px solid #e5e7eb", borderRadius: "0.4rem", padding: "0.75rem" }}>
               <div style={{ fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.5rem" }}>Choose customers from {form.assigned_route_id ? "this route" : "this territory"}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                 {eligibleCustomers.map((customer) => <label key={customer.id} style={{ display: "flex", gap: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", padding: "0.45rem", fontSize: "0.75rem" }}><input type="checkbox" checked={selectedCustomerIds.includes(customer.id)} onChange={(event) => setSelectedCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} /><span>{customer.customer_name}{customer.shop_name ? ` · ${customer.shop_name}` : ""}</span></label>)}
                 {eligibleCustomers.length === 0 && <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>{t('fsm.employees.noCustomersAvailable')}</span>}
               </div>
@@ -486,7 +478,7 @@ export default function EmployeeManagement() {
           No employees yet. Add your first field sales team member above.
         </p>
       ) : (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
+        <div className="operations-card overflow-hidden rounded-xl border border-border bg-card">
           {employees.map((emp, index) => (
             <div
               key={emp.id}
@@ -593,7 +585,7 @@ export default function EmployeeManagement() {
         </div>
       )}
       </> : (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
+        <div className="operations-card overflow-hidden rounded-xl border border-border bg-card">
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: "980px", borderCollapse: "collapse", fontSize: "0.78rem" }}>
               <thead><tr style={{ background: "#f9fafb", textAlign: "left", color: "#4b5563" }}><th style={{ padding: "0.7rem" }}>{t('fsm.employees.colEmployee')}</th><th>{t('fsm.employees.colTerritoryRoute')}</th><th>{t('fsm.employees.colCustomers')}</th><th>{t('fsm.employees.colInvoices')}</th><th>{t('fsm.employees.colTotalSales')}</th><th>{t('fsm.employees.colRemaining')}</th><th>{t('fsm.employees.colUnpaid')}</th><th>{t('fsm.employees.colActions')}</th></tr></thead>

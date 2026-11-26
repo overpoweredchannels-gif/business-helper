@@ -511,19 +511,11 @@ export default function RoutesManager() {
   };
 
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-        }}
-      >
+    <div className="operations-section py-4">
+      <div className="operations-toolbar">
         <div>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: "0" }}>{t('fsm.routes.title')}</h2>
-          <p style={{ fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0 0" }}>
+          <p style={{ fontSize: "0.875rem", color: "var(--color-muted-foreground)", margin: "0.25rem 0 0" }}>
             {t('fsm.routes.subtitle')}
           </p>
         </div>
@@ -591,7 +583,7 @@ export default function RoutesManager() {
                   <div><strong style={{ fontSize: "0.82rem" }}>{t('fsm.routes.routeCustomers')}</strong><div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{t('fsm.routes.onlyTerritoryCustomers')}</div></div>
                   <input style={{ ...inputStyle, minWidth: "220px" }} value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('fsm.routes.searchTerritoryCustomers')} />
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                   {selectedTerritoryCustomers.filter((customer) => !customerSearch.trim() || [customer.customer_name, customer.shop_name, customer.area].some((value) => String(value ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase()))).map((customer) => (
                     <label key={customer.id} style={{ display: "flex", gap: "0.45rem", padding: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", fontSize: "0.76rem" }}>
                       <input type="checkbox" checked={selectedRouteCustomerIds.includes(customer.id)} onChange={(event) => {
@@ -630,7 +622,7 @@ export default function RoutesManager() {
       ) : routes.length === 0 ? (
         <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>{t('fsm.routes.noRoutes')}</p>
       ) : (
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", overflow: "hidden" }}>
+        <div className="operations-card overflow-hidden rounded-xl border border-border bg-card">
           {routes.map((route, index) => (
             <div key={route.id}>
               <div
@@ -709,7 +701,7 @@ export default function RoutesManager() {
                   <div style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: "0.375rem", padding: "0.75rem", marginBottom: "0.75rem" }}>
                     <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>{t('fsm.routes.customersOnRoute')}</div>
                     <div style={{ fontSize: "0.7rem", color: "#6b7280", marginBottom: "0.5rem" }}>{t('fsm.routes.onlyAssignedCustomers').replace('{territory}', territories.find((territory) => territory.id === route.territory_id)?.name ?? t('fsm.routes.thisTerritory'))}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "0.4rem", maxHeight: "220px", overflowY: "auto" }}>
                       {customers.filter((customer) => customer.is_active !== false && customer.assigned_territory_id === route.territory_id).map((customer) => (
                         <label key={customer.id} style={{ display: "flex", gap: "0.45rem", padding: "0.45rem", border: "1px solid #e5e7eb", borderRadius: "0.35rem", fontSize: "0.76rem" }}>
                           <input type="checkbox" checked={selectedRouteCustomerIds.includes(customer.id)} onChange={(event) => setSelectedRouteCustomerIds((current) => event.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))} />
