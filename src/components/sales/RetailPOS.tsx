@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { ScanLine } from "lucide-react";
 import { BarcodeInput } from "@/components/invoices/BarcodeInput";
 import { useScannerCapture } from "@/components/invoices/scanner-capture";
 import { ProductSearchSelect } from "@/components/invoices/ProductSearchSelect";
@@ -623,15 +624,24 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
     event.stopPropagation();
     attemptSave();
   };
-  return <div className="space-y-4" data-context-help-skip>
-    <div className="flex flex-wrap items-center justify-between gap-3">
+  const emptyBasket = (
+    <div className="retail-pos-empty">
+      <span className="surface-icon" aria-hidden="true"><ScanLine className="size-5" /></span>
+      <p>{t("pos.emptyBasket")}</p>
+      <button type="button" disabled={busy} className="workspace-button-secondary" onClick={() => focusVisible("[data-pos-product-search] input")}>
+        {t("pos.findProduct")}
+      </button>
+    </div>
+  );
+  return <div className="retail-pos-workspace space-y-4" data-context-help-skip>
+    <div className="retail-pos-header flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">{t("pos.scanHint").replace("{action}", owner || staffDirectSale ? t("pos.hintPayAndSave") : t("pos.sendForApproval"))}</p>
       <button type="button" disabled={busy} onClick={onAdvanced} className="min-h-11 rounded-lg border px-4 text-sm font-medium">{t("pos.wholesaleButton")}</button>
       {onDrawerNoSale && <button type="button" disabled={busy} onClick={openNoSaleDialog} className="min-h-11 rounded-lg border px-4 text-sm font-medium disabled:opacity-40">{t("drawer.openDrawer")}</button>}
     </div>
-    <fieldset disabled={busy} className="grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
+    <fieldset disabled={busy} className="retail-pos-entry grid min-w-0 gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
       <div data-pos-barcode-box><BarcodeInput compact label={t("inventory.import.field.barcode")} autoFocus disabled={busy} focusSignal={focusSignal} clearSignal={clearSignal} onScan={handleScannedCode} canAutoSubmit={code => hasExactBarcodeMatch(products, code)} /></div>
-      <div className="space-y-3"><label className="block text-sm font-medium">{t("pos.findProduct")}</label><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onBarcodeEnter={text => {
+      <div className="space-y-3"><label className="block text-sm font-medium">{t("pos.findProduct")}</label><div data-pos-product-search><ProductSearchSelect key={searchKey} value="" products={productOptions} rankedFields={productRankFields} onBarcodeEnter={text => {
         // Every Enter text is offered to the shared scan choke point
         // first: an exact saved barcode adds through the scan path instead
         // of needing a dropdown pick. Plain search text reports no error
@@ -640,7 +650,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         // error there, and ProductSearchSelect blocks its fuzzy fallback
         // so a near-match stranger is never added instead.
         return handleScannedCode(text, { reportNotFound: isBarcodeShaped(text) });
-      }} onChange={id => { if (id) { const picked = products.find(item => String(item.id) === id); if (picked && hasSubunit(picked)) setFocusUnitFor(sale.lines.length); else setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} />
+      }} onChange={id => { if (id) { const picked = products.find(item => String(item.id) === id); if (picked && hasSubunit(picked)) setFocusUnitFor(sale.lines.length); else setFocusQuantityFor(sale.lines.length); onAdd(id); setSearchKey(key => key + 1); } }} /></div>
         <label className="flex items-center gap-3 text-sm">{t("pos.addOne")}<select data-pos-scan-unit value={scanUnit} onChange={event => onUnit(event.target.value as "main" | "subunit")} className="min-h-11 rounded border border-input bg-background px-3"><option value="subunit">{t("pos.scanUnitPiece")}</option><option value="main">{t("pos.scanUnitBox")}</option></select></label>
         <label className="block text-sm font-medium">{t("pos.customer")}</label><ProductSearchSelect label={t("pos.customer")} value={sale.customerId ?? ""} rankedFields={customerRankFields} products={customerOptions} onChange={onCustomer} />
         {onQuickAddCustomer && <button type="button" onClick={onQuickAddCustomer} className="min-h-11 self-start rounded border border-primary px-3 py-2 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">+ {t("pos.newCustomer")}</button>}
@@ -660,7 +670,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         </td>)}
         <td className="p-3 font-medium tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">{t("sell.unavailable")}</span> : formatBooksMoney(lineTotal)}</td>
         <td className="p-2"><button type="button" disabled={busy} aria-label={t("pos.ariaRemove").replace("{product}", productName)} onClick={() => onRemove(index)} className="min-h-11 rounded border border-destructive/40 px-3 text-destructive">{t("sell.remove")}</button></td>
-      </tr>)}{!sale.lines.length && <tr><td colSpan={7} className="p-10 text-center text-muted-foreground">{t("pos.emptyBasket")}</td></tr>}</tbody></table></div>
+      </tr>)}{!sale.lines.length && <tr><td colSpan={7} className="p-3">{emptyBasket}</td></tr>}</tbody></table></div>
     <div data-pos-mobile-basket className="space-y-3 sm:hidden" aria-label={t("pos.basketLabel")}>
       {saleRows.map(({ line, index, product, lineTotal, productName, subunitCaption }) => <article data-pos-mobile-row key={index} className="rounded-xl border border-border bg-card p-3">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium [overflow-wrap:anywhere]">{productName}</p>{Number(line.bonus) > 0 && <small className="block">{t("pos.bonusFree").replace("{count}", String(line.bonus))}</small>}{bonusIssue(index) && <small className="block text-destructive" role="alert">{bonusIssue(index)}</small>}</div><p className="shrink-0 font-semibold tabular-nums">{lineTotal === null ? <span className="text-muted-foreground">{t("sell.unavailable")}</span> : formatBooksMoney(lineTotal)}</p></div>
@@ -677,7 +687,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
           </details>
         </div>
       </article>)}
-      {!sale.lines.length && <p className="rounded-xl border bg-card p-10 text-center text-muted-foreground">{t("pos.emptyBasket")}</p>}
+      {!sale.lines.length && emptyBasket}
     </div>
     {draftResult.issues.filter(issue => issue.field === "invoice_discount").map(issue => <p key={issue.message} className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{issue.message}</p>)}
     <div data-pos-payment-bar className="sticky bottom-4 z-20 flex flex-col gap-4 rounded-xl border border-primary/30 bg-card p-4 shadow-lg">
@@ -686,7 +696,7 @@ export function RetailPOS({ scope, sale, products, customers, busy, owner, produ
         {sale.paymentType === "credit" && <span className="text-sm font-medium text-muted-foreground">{t("sell.paymentCredit")}</span>}
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div><span className="text-sm text-muted-foreground">{t("pos.totalPayable").replace("{method}", sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash"))}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg text-muted-foreground">{t("sell.unavailable")}</span> : formatBooksMoney(total)}</div>{total === null && <p className="mt-1 text-sm text-destructive">{t("pos.totalHint")}</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>{t("pos.taxNote")}</small>}
+      <div className="min-w-0"><div className="retail-pos-total"><span className="text-sm">{t("pos.totalPayable").replace("{method}", sale.paymentType === "card" ? t("sell.paymentCard") : sale.paymentType === "credit" ? t("sell.paymentCredit") : t("sell.paymentCash"))}</span><div className="text-3xl font-bold tabular-nums">{total === null ? <span className="text-lg">{t("sell.unavailable")}</span> : formatBooksMoney(total)}</div></div>{total === null && <p className="mt-1 text-sm text-destructive">{t("pos.totalHint")}</p>}{draftResult.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received" && issue.field !== "invoice_discount").map(issue => <p key={issue.field + issue.message} className="mt-1 text-sm text-destructive" role="alert">{issue.message}</p>)}{Number(sale.tax) > 0 && <small>{t("pos.taxNote")}</small>}
       {owner && <div className="mt-3 flex flex-wrap items-center gap-3">
         <label htmlFor="pos-invoice-discount" className="text-sm font-medium">{t("sell.totalBillDiscount")}</label>
         <select id="pos-invoice-discount-type" data-pos-invoice-discount-type aria-label={t("pos.discountTypeAria")} value={sale.discountType} disabled={busy} onFocus={openSelectPicker} onBlur={clearPosPickerOpen} onKeyDown={event => handleDiscountTypeSelectKeyDown("#pos-invoice-discount", event)} onChange={event => onDiscountType(event.target.value as "flat" | "percent")} className="min-h-11 rounded border border-input bg-background px-3 text-base">

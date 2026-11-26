@@ -66,6 +66,49 @@
   .document-preview-paper { overflow-x: auto; }
 }
 
+.retail-pos-workspace :where(.retail-pos-header, .retail-pos-entry, .retail-pos-empty, [data-pos-desktop-table], [data-pos-mobile-row], [data-pos-payment-bar]) {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  background: var(--color-card);
+  box-shadow: var(--shadow-workspace-card);
+}
+.retail-pos-workspace .retail-pos-header { padding: .75rem 1rem; }
+.retail-pos-workspace .retail-pos-entry { padding: clamp(.75rem, 2vw, 1.25rem); }
+.retail-pos-workspace [data-pos-desktop-table] thead {
+  background: var(--color-primary-light);
+  color: var(--color-foreground);
+}
+.retail-pos-workspace [data-pos-desktop-table] th {
+  border-bottom: 2px solid var(--color-primary);
+}
+.retail-pos-workspace .retail-pos-empty {
+  display: grid;
+  justify-items: center;
+  gap: .75rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  text-align: center;
+  color: var(--color-muted-foreground);
+}
+.retail-pos-workspace .retail-pos-empty > span { background: var(--color-primary-light); color: var(--color-foreground); }
+.retail-pos-workspace [data-pos-payment-bar] { border-color: var(--color-border); }
+.retail-pos-workspace:has(.retail-pos-empty) [data-pos-payment-bar] { position: static; }
+.retail-pos-workspace .retail-pos-total {
+  min-width: 0;
+  border-radius: .75rem;
+  padding: .875rem 1rem;
+  background: var(--color-foreground);
+  color: var(--color-background);
+  overflow-wrap: anywhere;
+}
+.retail-pos-workspace :where(button, summary, select, textarea, input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])) { min-height: 44px; }
+.retail-pos-workspace :where(button, summary) { min-width: 44px; }
+.retail-pos-workspace summary { align-content: center; }
+.retail-pos-workspace :where(button, a, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 .operations-screen.workspace-section,
 .operations-screen :where(.workspace-panel, .operations-card) {
   border-radius: .875rem;
