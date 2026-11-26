@@ -37,11 +37,17 @@ import type { MemoryWriterRawData } from "../src/lib/brain/contracts/memory";
 // Fixture (J1 inventory §(c), extended with a voided payment and a
 // cancelled return on EACH side). Fixed now = 2026-11-24, EUR org.
 // Hand-computed expectations (the definition, not any implementation):
-//   A1: 1000 − 50 confirmed return − 400 explicit − 100 legacy pool = 450
+//   A1 (credit): 1000 − 50 confirmed return − 400 explicit − 100 legacy pool = 450
 //       (cancelled €30 return deducts nothing; voided €500 payment and
 //       its €500 allocation row count toward nothing)
-//   B1 (cash): 200 − 0 − 0 − 200 pool = 0
+//   B1 (cash): payable 0 — paid at entry under the cash rule (2026-11-25);
+//       the pool is not consumed by a cash invoice
 //   Payables total = 450; supplier A overdue 450 (due 2026-11-09)
+//   Mixed cash-rule case (supplier D, added on the 6e3c542 rebase):
+//       D1 cash 300 − 50 confirmed return, €100 explicit allocation
+//       ignored, pool untouched; D2 credit 400 − 150 explicit − 50
+//       pool = 200 payable (a cash invoice consuming the pool would
+//       leave 250). Supplier D payable 200, overdue 0.
 //   S1: 500 − 50 confirmed return − 200 explicit − 0 pool = 250
 //       (cancelled €30 return deducts nothing; voided €300 payment and
 //       its €300 allocation row count toward nothing)
@@ -289,8 +295,55 @@ const a1Net = netPurchaseInvoiceAllocation({
   returnedAmount: 50,
   explicitAllocatedAmount: 400,
   legacyPoolAvailable: 100,
+  paymentType: "credit",
 });
 check(a1Net.remainingPayableAmount === 450, `A1 net remaining 450, got ${a1Net.remainingPayableAmount}`);
+
+// ─── Cash rule (2026-11-25): only an explicit credit invoice is a payable ───
+//
+// The tile engine's input carries the invoice's payment_type. Cash/card
+// (and an unknown/missing type) are paid at entry: remaining 0, the
+// legacy pool untouched, paidAmount = total − confirmed returns, and
+// explicit allocations against the invoice reported as ignored (the
+// money was already counted at entry).
+const d1CashNet = netPurchaseInvoiceAllocation({
+  purchaseTotal: 300,
+  returnedAmount: 50,
+  explicitAllocatedAmount: 100,
+  legacyPoolAvailable: 50,
+  paymentType: "cash",
+});
+check(
+  d1CashNet.remainingPayableAmount === 0,
+  `cash invoice remaining 0, got ${d1CashNet.remainingPayableAmount}`
+);
+check(d1CashNet.paidAtEntry === true, "cash invoice is paid at entry");
+check(
+  d1CashNet.legacyPoolRemaining === 50,
+  `cash invoice must not consume the pool (50 left), got ${d1CashNet.legacyPoolRemaining}`
+);
+check(
+  d1CashNet.paidAmount === 250,
+  `cash invoice paid-at-entry net 250 (300 − 50 return), got ${d1CashNet.paidAmount}`
+);
+check(
+  d1CashNet.ignoredAllocatedAmount === 100,
+  `cash invoice ignored allocation 100, got ${d1CashNet.ignoredAllocatedAmount}`
+);
+const unknownTypeNet = netPurchaseInvoiceAllocation({
+  purchaseTotal: 400,
+  returnedAmount: 0,
+  explicitAllocatedAmount: 0,
+  legacyPoolAvailable: 0,
+});
+check(
+  unknownTypeNet.remainingPayableAmount === 0,
+  `missing payment_type: remaining 0, got ${unknownTypeNet.remainingPayableAmount}`
+);
+check(
+  unknownTypeNet.paidAtEntry === true,
+  "missing payment_type is paid at entry, never silently a payable"
+);
 
 const creditAllocations = computeCreditAllocationsByTransaction(
   [
@@ -345,7 +398,7 @@ check(
 );
 check(
   supplierB?.payableAmount === 0,
-  `supplier B payable 0 (cash invoice covered by its pool), got ${supplierB?.payableAmount}`
+  `supplier B payable 0 (cash: paid at entry), got ${supplierB?.payableAmount}`
 );
 check(
   supplierB?.paidAmount === 200,
@@ -541,54 +594,136 @@ check(
   `customer C2 invoice amounts 189,187, got ${customerC2?.invoices.map((inv) => inv.amount).join(",")}`
 );
 
-// ─── Cash-invoice treatment: parity, not definition ───
+// ─── Mixed cash-rule fixture: credit + cash, partial payments, returns, void ───
 //
-// The tile engine runs over ALL purchase transactions (cash included),
-// so an unpaid cash invoice counts as payable until a payment covers
-// it. Parity means the brain does the same — whether a cash purchase
-// SHOULD be payable is a write-path question (the atomic purchase
-// flow records the payment), not a J1b question. Assert the brain
-// equals the shared engine here, whatever that value is.
+// Supplier D carries the cash-rule case the old "parity, not definition"
+// section deliberately left open (the cash rule, 2026-11-25, settled it:
+// cash is paid at entry, only credit is a payable):
+//   D1 (cash, 2026-11-05): 3 × 100 = 300, confirmed return 50,
+//       explicit allocation 100 (ignored), voided payment 500 with its
+//       allocation row (counts toward nothing), cancelled return 30
+//       (offsets nothing). Payable 0; paid-at-entry net 250.
+//   D2 (credit, 2026-11-10): 4 × 100 = 400, explicit allocation 150
+//       (partial payment), due 2026-12-10 (not overdue).
+//   Pool: non-voided payments 300 − explicit 250 = 50. D1 (cash) must
+//       NOT consume it, so D2 gets the 50: 400 − 150 − 50 = 200 payable.
+//       (If a cash invoice consumed the pool, D2 would read 250.)
+//   Supplier D: payable 200, overdue 0, paid 300 (voided 500 excluded).
+//   Financial ledger: payables 200; ignoredCashPurchasePayments 1 / 100
+//       (D1's allocation — money recorded twice, reported not hidden).
+// Discount/tax stay covered by the S3/S4 section above (sales side;
+// purchase totals carry no discount/tax in either engine).
 
-const cashOnlyData: MemoryWriterRawData = {
+const mixedCashRuleData: MemoryWriterRawData = {
   ...buildFixture(),
-  suppliers: [{ id: "sup-c", supplier_name: "Supplier C", credit_days: 30 }],
+  suppliers: [{ id: "sup-d", supplier_name: "Supplier D", credit_days: 30 }],
   purchaseTransactions: [
     {
-      id: "pt-c1",
-      supplier_id: "sup-c",
-      invoice_number: "INV-C1",
-      created_at: "2026-11-20T10:00:00.000Z",
-      purchase_date: "2026-11-20",
+      id: "pt-d1",
+      supplier_id: "sup-d",
+      invoice_number: "INV-D1",
+      created_at: "2026-11-05T10:00:00.000Z",
+      purchase_date: "2026-11-05",
       payment_type: "cash",
+    },
+    {
+      id: "pt-d2",
+      supplier_id: "sup-d",
+      invoice_number: "INV-D2",
+      created_at: "2026-11-10T10:00:00.000Z",
+      purchase_date: "2026-11-10",
+      payment_type: "credit",
     },
   ],
   purchaseItems: [
     {
-      id: "pi-c1",
-      purchase_transaction_id: "pt-c1",
+      id: "pi-d1",
+      purchase_transaction_id: "pt-d1",
       product_id: 1,
-      quantity: 2,
+      quantity: 3,
       purchase_price: 100,
       selling_price: 120,
-      created_at: "2026-11-20T10:00:00.000Z",
+      created_at: "2026-11-05T10:00:00.000Z",
+    },
+    {
+      id: "pi-d2",
+      purchase_transaction_id: "pt-d2",
+      product_id: 1,
+      quantity: 4,
+      purchase_price: 100,
+      selling_price: 120,
+      created_at: "2026-11-10T10:00:00.000Z",
     },
   ],
-  purchaseReturns: [],
-  purchaseReturnItems: [],
-  supplierPayments: [],
-  supplierPaymentAllocations: [],
+  supplierPayments: [
+    {
+      id: "sp-d1",
+      supplier_id: "sup-d",
+      amount: 300,
+      payment_date: "2026-11-06",
+      voided_at: null,
+      created_at: "2026-11-06T10:00:00.000Z",
+    },
+    {
+      id: "sp-d2",
+      supplier_id: "sup-d",
+      amount: 500,
+      payment_date: "2026-11-08",
+      voided_at: "2026-11-12T09:00:00.000Z",
+      created_at: "2026-11-08T10:00:00.000Z",
+    },
+  ],
+  purchaseReturns: [
+    { id: "pr-d1", purchase_transaction_id: "pt-d1", status: "confirmed" },
+    { id: "pr-d2", purchase_transaction_id: "pt-d1", status: "cancelled" },
+  ],
+  purchaseReturnItems: [
+    { id: "pri-d1", purchase_return_id: "pr-d1", quantity: 1, unit_price: 50 },
+    { id: "pri-d2", purchase_return_id: "pr-d2", quantity: 1, unit_price: 30 },
+  ],
+  supplierPaymentAllocations: [
+    { id: "spa-d1", supplier_payment_id: "sp-d1", purchase_transaction_id: "pt-d1", amount: 100 },
+    { id: "spa-d2", supplier_payment_id: "sp-d1", purchase_transaction_id: "pt-d2", amount: 150 },
+    { id: "spa-d3", supplier_payment_id: "sp-d2", purchase_transaction_id: "pt-d1", amount: 500 },
+  ],
 } as MemoryWriterRawData;
-const cashEngineRemaining = netPurchaseInvoiceAllocation({
-  purchaseTotal: 200,
-  returnedAmount: 0,
-  explicitAllocatedAmount: 0,
-  legacyPoolAvailable: 0,
-}).remainingPayableAmount;
-const cashLedger = buildSupplierLedger(cashOnlyData, NOW);
+
+const mixedSupplierLedger = buildSupplierLedger(mixedCashRuleData, NOW);
+const supplierD = mixedSupplierLedger.byId.get("sup-d");
+check(supplierD !== undefined, "supplier D entry exists");
 check(
-  cashLedger.byId.get("sup-c")?.payableAmount === cashEngineRemaining,
-  `unpaid cash invoice: brain ${cashLedger.byId.get("sup-c")?.payableAmount} must equal tile engine ${cashEngineRemaining}`
+  supplierD?.payableAmount === 200,
+  `supplier D payable 200 (D1 cash 0 + D2 credit 200), got ${supplierD?.payableAmount}`
+);
+check(
+  supplierD?.overdueAmount === 0,
+  `supplier D overdue 0 (D2 due 2026-12-10), got ${supplierD?.overdueAmount}`
+);
+check(
+  supplierD?.paidAmount === 300,
+  `supplier D paid 300 (voided 500 excluded), got ${supplierD?.paidAmount}`
+);
+check(
+  mixedSupplierLedger.totals.totalPayable === 200,
+  `mixed fixture brain payables total 200, got ${mixedSupplierLedger.totals.totalPayable}`
+);
+check(
+  mixedSupplierLedger.totals.suppliersOwing === 1,
+  `mixed fixture suppliers owing 1, got ${mixedSupplierLedger.totals.suppliersOwing}`
+);
+
+const mixedFinancialLedger = buildFinancialLedger(mixedCashRuleData, NOW);
+check(
+  mixedFinancialLedger.payables.total === 200,
+  `mixed fixture financial ledger payables 200, got ${mixedFinancialLedger.payables.total}`
+);
+check(
+  mixedFinancialLedger.cash.ignoredCashPurchasePayments.count === 1,
+  `mixed fixture ignored cash-purchase payments 1, got ${mixedFinancialLedger.cash.ignoredCashPurchasePayments.count}`
+);
+check(
+  mixedFinancialLedger.cash.ignoredCashPurchasePayments.amount === 100,
+  `mixed fixture ignored cash-purchase payments €100, got ${mixedFinancialLedger.cash.ignoredCashPurchasePayments.amount}`
 );
 
 // ─── Missing J1b collections must not change behaviour ───
