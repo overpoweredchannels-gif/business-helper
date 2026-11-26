@@ -11,6 +11,7 @@ import type { MessageKey } from "@/lib/regional/messages";
 import { allPages } from "@/lib/supabase/all-pages";
 import { highlightSearchMatches, rankSearchResults, rankSearchResultsWithTiers, type SearchRankFields } from "@/lib/products/search-rank";
 import { ProductCatalogState, ProductCatalogErrorBanner } from "@/components/products/ProductCatalogState";
+import { CatalogIdentity, CatalogTable } from "@/components/products/CatalogPresentation";
 import { CustomerCatalogState, CustomerCatalogErrorBanner } from "@/components/customers/CustomerCatalogState";
 import { InvoiceLineNavigation } from "@/components/invoices/InvoiceLineNavigation";
 import { enteredInvoiceLines } from "@/lib/invoices/entry-lines";
@@ -115,7 +116,7 @@ import type { SuggestionStatus } from "@/components/search/SuggestionPopover";
 import { MyPendingSales } from "@/components/salesman/MyPendingSales";
 import { MySalesPerformance } from "@/components/salesman/MySalesPerformance";
 import { withSessionRetry } from "@/lib/supabase/session-retry";
-import { Bell, X } from "lucide-react";
+import { Bell, X, Package as CatalogPackageIcon, Shapes as CatalogCategoryIcon, Tags as CatalogBrandIcon } from "lucide-react";
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { cloudFetch, cloudFetchAi, fetchStaffMe, provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
@@ -22715,9 +22716,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "brands" && (
-        <section className="workspace-section">
+        <section className="workspace-section catalog-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('brands.title')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('brands.title')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="brands"
@@ -22730,7 +22731,7 @@ export default function Home() {
               />
             )}
           </div>
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <div className="workspace-form grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('brands.name')}</span>
               <input
@@ -22744,7 +22745,7 @@ export default function Home() {
               type="button"
               onClick={handleAddBrand}
               disabled={brandsLoading}
-              className="h-12 rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
+              className="h-12 rounded bg-primary px-4 py-2 text-primary-foreground transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary/30"
             >
               {t('brands.add')}
             </button>
@@ -22760,17 +22761,17 @@ export default function Home() {
             ) : brands.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('brands.none')}</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="catalog-named-grid">
                 {brands.map((brand) => (
                   <li
                     key={brand.id}
-                    className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
+                    className="catalog-named-card flex flex-col gap-4"
                   >
-                    <span>{brand.name}</span>
+                    <CatalogIdentity title={brand.name} icon={<CatalogBrandIcon className="size-5" />} />
                     <button
                       type="button"
                       onClick={() => handleDeleteBrand(brand.id)}
-                      className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
+                      className="workspace-button-secondary self-start text-destructive hover:bg-destructive/5"
                     >
                       {t('common.delete')}
                     </button>
@@ -22783,7 +22784,7 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "inventory" && (
-        <section className="workspace-section">
+        <section className="workspace-section catalog-screen">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-2xl font-semibold text-foreground">{t('stock.inventory')}</h2>
@@ -22806,6 +22807,7 @@ export default function Home() {
           <div className="workspace-tabs">
             <button
               type="button"
+              aria-pressed={inventoryTab === "dashboard"}
               onClick={() => setInventoryTab("dashboard")}
               className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "dashboard"
@@ -22817,6 +22819,7 @@ export default function Home() {
             </button>
             <button
               type="button"
+              aria-pressed={inventoryTab === "adjustments"}
               onClick={() => setInventoryTab("adjustments")}
               className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "adjustments"
@@ -22828,6 +22831,7 @@ export default function Home() {
             </button>
             <button
               type="button"
+              aria-pressed={inventoryTab === "ledger"}
               onClick={() => setInventoryTab("ledger")}
               className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "ledger"
@@ -22839,6 +22843,7 @@ export default function Home() {
             </button>
             <button
               type="button"
+              aria-pressed={inventoryTab === "import"}
               onClick={() => setInventoryTab("import")}
               className={`min-h-11 rounded px-4 py-2 text-sm font-medium ${
                 inventoryTab === "import"
@@ -22852,47 +22857,43 @@ export default function Home() {
 
           {inventoryTab === "dashboard" && (
           <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded border border-destructive/20 bg-destructive/5 p-5">
+            <div className="catalog-summary grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="aankh-card rounded-xl border border-border bg-card p-4">
                 <div className="text-2xl font-semibold tabular-nums text-destructive">{inventorySummaryCounts.outOfStock}</div>
-                <div className="text-sm text-destructive/80">{t('stock.outOfStock')}</div>
+                <div className="text-sm text-muted-foreground">{t('stock.outOfStock')}</div>
               </div>
-              <div className="rounded border border-warning/20 bg-warning/5 p-5">
+              <div className="aankh-card rounded-xl border border-border bg-card p-4">
                 <div className="text-2xl font-semibold tabular-nums text-warning-text">{inventorySummaryCounts.urgentReorder}</div>
-                <div className="text-sm text-warning-text/80">{t('inventory.urgentReorder')}</div>
+                <div className="text-sm text-muted-foreground">{t('inventory.urgentReorder')}</div>
               </div>
-              <div className="rounded border border-border bg-card p-5">
+              <div className="aankh-card rounded-xl border border-border bg-card p-4">
                 <div className="text-2xl font-semibold tabular-nums text-foreground">{inventorySummaryCounts.missingReorderLevel}</div>
                 <div className="text-sm text-muted-foreground">{t('inventory.missingReorderLevel')}</div>
               </div>
-              <div className="rounded border border-success/20 bg-success/5 p-5">
+              <div className="aankh-card rounded-xl border border-border bg-card p-4">
                 <div className="text-2xl font-semibold tabular-nums text-success">{inventorySummaryCounts.healthy}</div>
-                <div className="text-sm text-success/80">{t('stock.healthy')}</div>
+                <div className="text-sm text-muted-foreground">{t('stock.healthy')}</div>
               </div>
             </div>
 
             {products.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('inventory.noProducts')}</p>
             ) : (
-              <ul className="space-y-2">
-                {inventoryStats.map((s) => (
-                  <li
-                    key={s.productId}
-                    className="flex items-center justify-between rounded border border-border bg-card p-4"
-                  >
-                    <div>
-                      <div className="font-medium text-foreground">{s.productName}</div>
-                      <div className="text-xs text-muted-foreground">{t('inventory.defaultPrice')}: {s.defaultSellingPrice ?? "-"}</div>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-foreground/80 tabular-nums">
-                      <div>{t('inventory.purchased')}: {s.purchasedQty}</div>
-                      <div>{t('inventory.sold')}: {s.soldQty}</div>
-                      <div>{t('products.stock')}: {s.currentStock}</div>
+              <CatalogTable label={t('stock.inventory')} columns={[t('products.name'), t('inventory.defaultPrice'), t('inventory.purchased'), t('inventory.sold'), t('products.stock'), t('sell.statusLabel')]}>
+                {inventoryStats.map((item) => (
+                  <tr key={item.productId}>
+                    <td><CatalogIdentity title={item.productName} icon={<CatalogPackageIcon className="size-5" />} /></td>
+                    <td className="whitespace-nowrap tabular-nums">{item.defaultSellingPrice == null ? "—" : formatBooksMoney(Number(item.defaultSellingPrice))}</td>
+                    <td className="tabular-nums">{item.purchasedQty}</td>
+                    <td className="tabular-nums">{item.soldQty}</td>
+                    <td className="font-semibold tabular-nums">{item.currentStock}</td>
+                    <td>
                       {(() => {
                         const snapshot = inventorySnapshots.find(
-                          (item) => String(item.productId) === String(s.productId)
+                          (entry) => String(entry.productId) === String(item.productId)
                         );
-                        if (!snapshot || snapshot.status === "healthy") return null;
+                        if (!snapshot) return "—";
+                        if (snapshot.status === "healthy") return <span className="catalog-badge bg-success-light text-success">{t('stock.healthy')}</span>;
                         const label =
                           snapshot.status === "out_of_stock"
                             ? t('inventory.badgeOutOfStock')
@@ -22906,13 +22907,13 @@ export default function Home() {
                               ? "bg-warning/10 text-warning-text"
                               : "bg-muted/50 text-muted-foreground";
                         return (
-                          <span className={`rounded px-2 py-1 text-xs font-semibold ${badgeClass}`}>{label}</span>
+                          <span className={`catalog-badge ${badgeClass}`}>{label}</span>
                         );
                       })()}
-                    </div>
-                  </li>
+                    </td>
+                  </tr>
                 ))}
-              </ul>
+              </CatalogTable>
             )}
 
             <div className="rounded border border-border bg-card p-5">
@@ -26615,9 +26616,9 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "categories" && (
-        <section className="workspace-section">
+        <section className="workspace-section catalog-screen">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-medium text-foreground">{t('categories.title')}</h2>
+            <h2 className="text-2xl font-semibold text-foreground">{t('categories.title')}</h2>
             {canImportExport && (
               <ImportExportSection
                 entityKey="categories"
@@ -26630,7 +26631,7 @@ export default function Home() {
               />
             )}
           </div>
-          <div className="space-y-4" {...entryNavigationHandlers}>
+          <div className="workspace-form grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_auto]" {...entryNavigationHandlers}>
             <label className="flex flex-col gap-2 text-sm text-foreground/80">
               <span>{t('categories.name')}</span>
               <input
@@ -26675,7 +26676,7 @@ export default function Home() {
               data-entry-add
               onClick={handleAddCategory}
               disabled={categoriesLoading}
-              className="w-full rounded bg-primary px-4 py-2 text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/30"
+              className="w-full rounded bg-primary px-4 py-2 text-primary-foreground transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary/30"
             >
               {t('categories.add')}
             </button>
@@ -26691,25 +26692,25 @@ export default function Home() {
             ) : categories.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('categories.noneFound')}</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="catalog-named-grid">
                 {categories.map((category) => {
                   const parentCategory = categories.find((c) => c.id === category.parent_category_id);
                   return (
                     <li
                       key={category.id}
-                      className="flex items-center justify-between rounded border border-border bg-card px-3 py-2"
+                      className="catalog-named-card flex flex-col gap-4"
                     >
-                      <div className="flex flex-col">
-                        <span>{category.name}</span>
+                      <CatalogIdentity title={category.name} icon={<CatalogCategoryIcon className="size-5" />}>
                         {parentCategory && (
-                          <span className="text-xs text-muted-foreground/80">{t('categories.parentPrefix')}: {parentCategory.name}</span>
+                          <p>{t('categories.parentPrefix')}: {parentCategory.name}</p>
                         )}
-                        <span className="text-xs text-muted-foreground/80">
+                        <p>
                           {t('categories.oversellingPrefix')}: {category.overselling_policy === "block" ? t('categories.blocked') : category.overselling_policy === "allow" ? t('categories.allowed') : t('categories.inherit')}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
+                        </p>
+                      </CatalogIdentity>
+                      <div className="flex flex-wrap items-center gap-2">
                         <select
+                          aria-label={`${t('categories.oversellingPolicy')}: ${category.name}`}
                           value={category.overselling_policy ?? "inherit"}
                           onChange={(e) => handleCategoryPolicyChange(category.id, e.target.value)}
                           className="rounded border border-border px-2 py-1 text-sm focus:border-ring focus:outline-none"
@@ -26721,7 +26722,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleDeleteCategory(category.id)}
-                          className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90"
+                          className="workspace-button-secondary text-destructive hover:bg-destructive/5"
                         >
                           {t('common.delete')}
                         </button>
@@ -26736,11 +26737,11 @@ export default function Home() {
         )}
 
         {activeSectionAllowed && activeSection === "products" && (
-        <div className="workspace-flow">
+        <div className="workspace-flow catalog-screen">
         {currentProfile?.role === "owner" && <SetupReview entity="products" onSaved={() => { void fetchProducts(); }} />}
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-xl font-medium text-foreground">
-            {editingProductId ? `${t('products.editProduct')}: ${name}` : t('stock.addProduct')}
+          <h2 className="text-2xl font-semibold text-foreground">
+            {t('stock.products')}
           </h2>
           <div className="flex items-center gap-2">
             {canImportExport && (
@@ -26769,7 +26770,24 @@ export default function Home() {
         {message && <p className="mb-4 text-sm text-success">{message}</p>}
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
-<details className="workspace-form" open={Boolean(editingProductId) || productEditorOpen} onToggle={event => setProductEditorOpen(event.currentTarget.open)}><summary className="cursor-pointer text-sm font-semibold text-primary">{editingProductId ? t('products.editProduct') : t('stock.addProduct')}</summary>
+        {(productsReadStatus === "successful-populated" || productsReadStatus === "successful-empty") && (
+          <dl className="catalog-summary mb-4 grid grid-cols-3 gap-3">
+            <div className="aankh-card rounded-xl border border-border bg-card p-3 sm:p-4">
+              <dt className="text-xs text-muted-foreground">{t('stock.products')}</dt>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">{products.length}</dd>
+            </div>
+            <div className="aankh-card rounded-xl border border-border bg-card p-3 sm:p-4">
+              <dt className="text-xs text-muted-foreground">{t('products.active')}</dt>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">{products.filter(product => product.is_active !== false).length}</dd>
+            </div>
+            <div className="aankh-card rounded-xl border border-border bg-card p-3 sm:p-4">
+              <dt className="text-xs text-muted-foreground">{t('products.inactive')}</dt>
+              <dd className="mt-2 text-xl font-semibold tabular-nums">{products.filter(product => product.is_active === false).length}</dd>
+            </div>
+          </dl>
+        )}
+
+<details className="workspace-form" open={Boolean(editingProductId) || productEditorOpen} onToggle={event => setProductEditorOpen(event.currentTarget.open)}><summary className="cursor-pointer rounded-lg text-sm font-semibold text-primary">{editingProductId ? t('products.editProduct') : t('stock.addProduct')}</summary>
 <form onSubmit={handleSubmit} className="mt-5 space-y-4" onKeyDown={handleProductFormKeyDown}>
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground/80">
@@ -27376,17 +27394,14 @@ export default function Home() {
                   <ProductCatalogErrorBanner onRetry={retryProductsLoad} hasStaleData={products.length > 0} />
                 </div>
               )}
-              <ul className="space-y-2">
+              <CatalogTable label={t('products.existingTitle')} columns={[t('products.name'), t('products.sku'), t('stock.category'), t('products.sellingPrice'), t('products.stock'), t('sell.statusLabel'), t('tasks.colActions')]}>
               {filteredProducts.slice(start, end).map((product) => {
                 const brand = brands.find((b) => b.id === product.brand_id);
                 const category = categories.find((c) => c.id === product.category_id);
                 return (
-                  <li
-                    key={product.id}
-                    className="flex flex-col gap-2 rounded border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium text-foreground">
+                  <tr key={product.id}>
+                    <td className="min-w-52">
+                      <CatalogIdentity icon={<CatalogPackageIcon className="size-5" />} title={<>
                         {highlightSearchMatches(product.name, productSearch).map((segment, index) =>
                           segment.match ? (
                             <mark key={index} className="rounded-sm bg-primary/10 px-px text-inherit">
@@ -27396,32 +27411,38 @@ export default function Home() {
                             <span key={index}>{segment.text}</span>
                           ),
                         )}
-                        {product.is_active === false && (
-                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{t('products.inactive')}</span>
-                        )}
+                      </>}>
+                        <p>{t('products.brand')}: {brand?.name ?? t('common.none')}</p>
+                        <p>{t('products.unitType')}: {product.unit_type ?? t('common.none')}</p>
+                        {product.barcode && <p>{t('stock.barcode')}: {product.barcode}</p>}
+                      </CatalogIdentity>
+                    </td>
+                    <td>{product.sku ?? "—"}</td>
+                    <td>{category?.name ?? t('common.none')}</td>
+                    <td className="whitespace-nowrap tabular-nums">{product.default_selling_price == null ? "—" : formatBooksMoney(Number(product.default_selling_price))}</td>
+                    <td className="whitespace-nowrap font-semibold tabular-nums">{getAvailableStockForProduct(product.id)}</td>
+                    <td>
+                      <span className={`catalog-badge ${product.is_active === false ? "bg-muted text-muted-foreground" : "bg-success-light text-success"}`}>
+                        {product.is_active === false ? t('products.inactive') : t('products.active')}
+                      </span>
+                      <div className="mt-2 min-w-24 space-y-1 text-xs text-muted-foreground">
+                        <p>{t('products.trackBatch')}: {product.track_batch ? t('common.yes') : t('common.no')}</p>
+                        <p>{t('products.trackExpiry')}: {product.track_expiry ? t('common.yes') : t('common.no')}</p>
+                        <p>{t('products.reorderLevel')}: {product.reorder_level ?? 0}</p>
                       </div>
-                      <div className="text-xs text-muted-foreground/80">{t('products.brand')}: {brand?.name ?? t('common.none')}</div>
-                      <div className="text-xs text-muted-foreground/80">{t('stock.category')}: {category?.name ?? t('common.none')}</div>
-                      <div className="text-xs text-muted-foreground/80">{t('products.unitType')}: {product.unit_type ?? t('common.none')}</div>
-                      {product.sku && <div className="text-xs text-muted-foreground/80">{t('products.sku')}: {product.sku}</div>}
-                      {product.barcode && <div className="text-xs text-muted-foreground/80">{t('stock.barcode')}: {product.barcode}</div>}
-                      <div className="text-xs text-muted-foreground/80">{t('products.stock')}: {getAvailableStockForProduct(product.id)}</div>
-                      <div className="text-xs text-muted-foreground/80">{t('products.trackBatch')}: {product.track_batch ? t('common.yes') : t('common.no')}</div>
-                      <div className="text-xs text-muted-foreground/80">{t('products.trackExpiry')}: {product.track_expiry ? t('common.yes') : t('common.no')}</div>
-                      <div className="text-xs text-muted-foreground/80">{t('products.reorderLevel')}: {product.reorder_level ?? 0}</div>
-                    </div>
-                    <div className="flex shrink-0 gap-2">
+                    </td>
+                    <td><div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => setProductToView(product)}
-                        className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                        className="workspace-button-secondary"
                       >
                         {t('products.view')}
                       </button>
                       <button
                         type="button"
                         onClick={() => startEditProduct(product)}
-                        className="rounded border border-primary px-3 py-1 text-sm text-primary hover:bg-primary/5"
+                        className="workspace-button-secondary"
                       >
                         {t('common.edit')}
                       </button>
@@ -27429,15 +27450,15 @@ export default function Home() {
                         type="button"
                         onClick={() => handleArchiveProduct(product.id)}
                         disabled={product.is_active === false || archivingProductId === product.id}
-                        className="rounded bg-destructive px-3 py-1 text-sm text-white transition hover:bg-destructive/90 disabled:cursor-not-allowed disabled:bg-muted"
+                        className="workspace-button-secondary text-destructive hover:bg-destructive/5"
                       >
                         {archivingProductId === product.id ? t('products.archiving') : t('products.archive')}
                       </button>
-                    </div>
-                  </li>
+                    </div></td>
+                  </tr>
                 );
               })}
-            </ul>
+              </CatalogTable>
             </>
           ) : (
             <ProductCatalogState

@@ -9,6 +9,31 @@
 :is(.workspace-section, .workspace-form) :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) { border-color: var(--color-input); border-radius: .5rem; }
 .workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
 .workspace-section :where(tbody td) { padding-block: .875rem; }
+
+.catalog-screen :where(button, summary, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
+  min-height: 44px;
+}
+.catalog-screen :where(button, summary, a):not([hidden]) { min-width: 44px; }
+.catalog-screen :where(button, summary, a, input, select, textarea):focus-visible,
+.catalog-table-scroll:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.catalog-screen :where(summary) { align-content: center; }
+.catalog-screen :where(.workspace-section, .workspace-form, .catalog-named-card) {
+  border-radius: 14px;
+  box-shadow: var(--shadow-workspace-card);
+}
+.catalog-named-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 1rem; }
+.catalog-named-card { border: 1px solid var(--color-border); background: var(--color-card); padding: 1rem; }
+.catalog-table-scroll { overflow: auto; max-width: 100%; min-height: 44px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-card); }
+.catalog-screen .catalog-table, .catalog-table-scroll .catalog-table { display: table; width: 100%; min-width: 40rem; text-align: start; font-size: .875rem; }
+.catalog-table th, .catalog-table td { padding: .75rem 1rem; vertical-align: middle; text-align: start; }
+.catalog-table th { background: var(--color-muted); color: var(--color-muted-foreground); font-size: .75rem; font-weight: 600; }
+.catalog-table tbody tr + tr { border-block-start: 1px solid var(--color-border); }
+.catalog-table tbody tr:hover { background: var(--color-muted); }
+.catalog-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: .25rem .625rem; font-size: .75rem; font-weight: 600; }
+.catalog-screen .workspace-button-secondary.text-destructive { color: var(--color-destructive); }
 @media (min-width: 640px) { .workspace-section, .workspace-flow { width: calc(100% - 3rem); } .workspace-section, .workspace-form { padding: 1.5rem; } .workspace-flow > .workspace-section { width: 100%; } }
 @media (max-width: 374px) { .aankh-action { flex-direction: column; align-items: flex-start; gap: .5rem; } }
 
