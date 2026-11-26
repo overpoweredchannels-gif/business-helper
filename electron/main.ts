@@ -837,14 +837,20 @@ function createWindow(url: string | null, setupUpdaterWindow?: (window: BrowserW
 }
 
 const UPDATE_FIRST_CHECK_DELAY_MS = 3_000;
-const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 function setupAutoUpdater(): ((window: BrowserWindow) => void) | undefined {
   const currentVersion = app.getVersion();
   const unavailable: DesktopUpdateStatus = { currentVersion, phase: "unavailable", promptOpen: false };
   const unavailableCheck: DesktopUpdateCheckResult = { isUpdateAvailable: false, versionInfo: null };
-  const logger = app.isPackaged ? createUpdaterLogger(path.join(app.getPath("userData"), "logs", "main.log")) : null;
-  if (logger) autoUpdater.logger = logger;
+  let logger: ReturnType<typeof createUpdaterLogger> | null = null;
+  if (app.isPackaged) {
+    const logRoot = process.platform === "win32"
+      ? path.join(app.getPath("appData"), "Aankh")
+      : app.getPath("userData");
+    logger = createUpdaterLogger(path.join(logRoot, "logs", "main.log"));
+    autoUpdater.logger = logger;
+  }
   const log = (message: string, error?: unknown) => {
     if (error === undefined) logger?.info(message);
     else logger?.error(message, error);
