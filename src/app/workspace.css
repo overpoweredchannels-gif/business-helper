@@ -93,6 +93,9 @@
 .retail-pos-workspace .retail-pos-empty > span { background: var(--color-primary-light); color: var(--color-foreground); }
 .retail-pos-workspace [data-pos-payment-bar] { border-color: var(--color-border); }
 .retail-pos-workspace:has(.retail-pos-empty) [data-pos-payment-bar] { position: static; }
+@media (max-height: 560px) {
+  .retail-pos-workspace [data-pos-payment-bar] { position: static; }
+}
 .retail-pos-workspace .retail-pos-total {
   min-width: 0;
   border-radius: .75rem;
