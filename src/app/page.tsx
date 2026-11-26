@@ -21631,28 +21631,28 @@ export default function Home() {
       `}</style>
       {isPrintPreviewOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-foreground/10 p-4 print:static print:bg-card print:p-0">
-          <div className="mx-auto max-w-5xl rounded border border-border bg-card shadow-xl print:shadow-none">
+          <div className="mx-auto max-w-5xl rounded-xl border border-border bg-card shadow-xl print:shadow-none">
             <div className="print-preview-shell flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold text-foreground">{printPreviewTitle}</h2>
               <div className="print-preview-actions flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="rounded bg-primary px-4 py-2 text-sm text-white hover:bg-primary/90"
+                  className="min-h-11 min-w-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   {t('print.printButton')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsPrintPreviewOpen(false)}
-                  className="rounded border border-border px-4 py-2 text-sm text-foreground/80 hover:bg-muted/30"
+                  className="workspace-button-secondary"
                 >
                   {t('common.close')}
                 </button>
               </div>
             </div>
             <div
-              className="print-preview-content tradeos-print-document p-5"
+              className="print-preview-content document-preview-paper tradeos-print-document p-4 sm:p-6"
               dangerouslySetInnerHTML={{ __html: printPreviewHtml }}
             />
           </div>
@@ -23561,7 +23561,7 @@ export default function Home() {
               onAdd={id => { const product = activeProducts.find(product => String(product.id) === id); if (product) { clearCreditOverrideState(); setScannedProductNames(current => ({ ...current, [String(product.id)]: product.name })); setSalesLines(current => addBarcodeLine(current, product, saleScanUnit, selectedCustomerIdForSale ? recentCustomerPrices[`${selectedCustomerIdForSale}:${product.id}`] : undefined)); setSalesError(null); setSaleScanFocus(value => value + 1); } }}
               onUnit={setSaleScanUnit} onCustomer={handleSalesCustomerChange} onQuickAddCustomer={() => setQuickAddCustomerOpen(true)} onLine={handleSalesLineChange} onRemove={handleRemoveSalesLine} onSave={() => void handleCreateSalesInvoice()} onCashReceived={setPosCashReceived} onDiscount={value => { clearCreditOverrideState(); setSalesDiscountAmount(value); }} onDiscountType={value => { clearCreditOverrideState(); setSalesDiscountType(value); }} onNotes={setSalesNotes} onAdvanced={() => { setQuickSaleMode(false); setSaleScanFocus(value => value + 1); }} onRestore={restoreCounterSale} onClear={clearCounterSale} onPaymentType={handleSalesPaymentTypeChange} drawerNoSaleAllowed={drawerNoSaleOutcome === "allowed"} onDrawerNoSale={handleDrawerNoSale} onDrawerTestOpen={handleDrawerTestOpen} onDrawerConnect={handleDrawerConnect} onCustomizeReceipt={() => setShowPosReceiptCustomizer(true)} />}
             <QuickAddCustomerDialog key={quickAddCustomerOpen ? "quick-add-open" : "quick-add-closed"} open={quickAddCustomerOpen} busy={quickAddCustomerBusy} error={quickAddCustomerError} onClose={() => { if (!quickAddCustomerBusy) setQuickAddCustomerOpen(false); }} onSubmit={(fields) => void handleQuickAddCustomer(fields)} />
-            <div className={quickSaleMode ? "hidden" : "space-y-4"}>
+            <div className={quickSaleMode ? "hidden" : "document-composer space-y-4"}>
             <div className="trading-entry">
               <button type="button" onClick={() => setQuickSaleMode(true)} className="trading-pos-entry min-h-11 rounded-lg px-4">{t('sell.openRetailPos')}</button>
             </div>
@@ -23614,7 +23614,7 @@ export default function Home() {
               <label className="mt-3 block text-sm"><input type="checkbox" checked={quickSaleMode} onChange={event => setQuickSaleMode(event.target.checked)} /> {t('sell.keepQuickSale')}</label>
               {quickSaleMode && <label className="mt-2 block text-sm"><input type="checkbox" checked={keepSaleCustomer} onChange={event => setKeepSaleCustomer(event.target.checked)} /> {t('sell.keepCustomer')}</label>}
             </section>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="document-details grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.customer')}</span>
                 <ProductSearchSelect label={t('sell.customer')} searchPlaceholder={t('sell.searchCustomer')} value={selectedCustomerIdForSale ?? ""} onChange={handleSalesCustomerChange} rankedFields={customerSuggestionData.rankFields} products={invoiceCustomerOptions} focusSignal={saleCustomerFocus} inputRef={saleCustomerInputRef} />
@@ -23747,12 +23747,12 @@ export default function Home() {
               </div>
             )}
 
-            <div className="border-t pt-4">
+            <div className="document-lines">
               <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {salesLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
+                <p className="document-empty mb-4 text-sm">{t('sell.noProductLines')}</p>
               ) : (
                 <InvoiceLineNavigation onAddLine={handleAddSalesLine} onSkipLine={(index) => { handleRemoveSalesLine(index); requestAnimationFrame(() => { const save = document.querySelector("[data-sale-save]"); if (save instanceof HTMLButtonElement && !save.disabled) { save.focus(); return; } const add = document.querySelector("[data-sale-add-line]"); if (add instanceof HTMLButtonElement) add.focus(); }); }}>
                   {salesLines.map((line, index) => {
@@ -23760,7 +23760,7 @@ export default function Home() {
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} data-invoice-line className="rounded border border-border bg-card p-3">
+                    <div key={index} data-invoice-line className="document-line rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -23893,7 +23893,7 @@ export default function Home() {
             </div>
 
             {salesLines.length > 0 && (
-              <div className="workspace-panel rounded-xl border border-border bg-card p-4 text-sm text-foreground/80">
+              <div className="document-totals workspace-panel rounded-xl border border-border bg-card p-4 text-sm tabular-nums text-foreground">
                 {currentSaleDraft.issues.filter(issue => issue.lineIndex === undefined && issue.field !== "cash_received").map(issue => <p key={issue.field + issue.message} className="mb-2 text-destructive" role="alert">{issue.message}</p>)}
                 {/* Discount + Tax live below the product lines (2026-11-16):
                     the discount and tax only make sense once products are
@@ -23985,7 +23985,7 @@ export default function Home() {
                 {salesTaxRate.trim() !== "" && (
                   <div className="flex justify-between"><span>{t('sell.tax')} ({salesTaxRate}%)</span><span>{currentSaleAmounts ? formatBooksMoney(currentSaleAmounts.tax) : t('sell.unavailable')}</span></div>
                 )}
-                <div className="mt-1 flex justify-between border-t border-border pt-2 font-medium text-foreground">
+                <div className="document-total mt-2 flex justify-between font-semibold text-foreground">
                   <span>{t('sell.invoiceTotal')}</span>
                   <span>{currentSalesInvoiceTotal === undefined ? t('sell.unavailable') : formatBooksMoney(currentSalesInvoiceTotal)}</span>
                 </div>
@@ -24026,7 +24026,7 @@ export default function Home() {
               onClick={() => handleCreateSalesInvoice()}
               onKeyDown={handleSaleActionArrowKeys}
               disabled={salesInvoiceLoading || !salesLines.length || !selectedCustomerIdForSale || !currentSaleDraft.valid}
-              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="document-save w-full rounded-lg px-4 py-2 transition disabled:cursor-not-allowed"
             >
               {salesInvoiceLoading ? t('sell.saving') : staffSaleGateOutcome === "approval" ? t('sell.sendForApproval') : t('sell.saveInvoice')}
             </button>
@@ -24332,12 +24332,12 @@ export default function Home() {
 
         {salesTab === "orders" && canUseSalesTool("orders") && (
         <>
-        <section className="workspace-section">
+        <section className="workspace-section document-composer">
           <h2 className="mb-4 text-xl font-medium text-foreground">
             {soEditingId ? t('sell.editSalesOrder') : t('sell.newSalesOrder')}
           </h2>
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="document-details grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('sell.customer')}</span>
                 <select
@@ -24385,12 +24385,12 @@ export default function Home() {
               </label>
             </div>
 
-            <div className="border-t pt-4">
+            <div className="document-lines">
               <h3 className="mb-3 text-lg font-medium text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {soLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
+                <p className="document-empty mb-4 text-sm">{t('sell.noProductLines')}</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {soLines.map((line, index) => {
@@ -24398,7 +24398,7 @@ export default function Home() {
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="rounded border border-border bg-card p-3">
+                    <div key={index} className="document-line rounded border border-border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -24566,7 +24566,7 @@ export default function Home() {
               type="button"
               onClick={handleSaveSalesOrder}
               disabled={soLoading}
-              className="w-full rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="document-save w-full rounded-lg px-4 py-2 transition disabled:cursor-not-allowed"
             >
               {soLoading ? t('sell.saving') : soEditingId ? t('sell.updateSalesOrder') : t('sell.saveSalesOrder')}
             </button>
@@ -28313,7 +28313,7 @@ export default function Home() {
 
         {purchaseTab === "invoice" && (
         <>
-        <section className="workspace-section">
+        <section className="workspace-section document-composer">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-2xl font-semibold text-foreground">{t('buy.tabInvoice')}</h2>
             {canImportExport && (
@@ -28329,7 +28329,7 @@ export default function Home() {
             )}
           </div>
           <div className="space-y-6" {...entryNavigationHandlers}>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="document-details grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('buy.supplier')}</span>
                 <select
@@ -28381,12 +28381,12 @@ export default function Home() {
               </label>
             </div>
 
-            <div className="border-t pt-4">
+            <div className="document-lines">
               <h3 className="mb-3 text-lg font-semibold text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {purchaseLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
+                <p className="document-empty mb-4 text-sm">{t('sell.noProductLines')}</p>
               ) : (
                 <InvoiceLineNavigation onAddLine={handleAddPurchaseLine}>
                   {purchaseLines.map((line, index) => {
@@ -28394,7 +28394,7 @@ export default function Home() {
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} data-invoice-line className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
+                    <div key={index} data-invoice-line className="document-line workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -28520,7 +28520,7 @@ export default function Home() {
               type="button"
               onClick={handleCreatePurchaseInvoice}
               disabled={invoiceLoading}
-              className="w-full min-h-11 rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="document-save w-full rounded-lg px-4 py-2 transition disabled:cursor-not-allowed"
             >
               {invoiceLoading ? t('buy.creating') : t('buy.saveInvoice')}
             </button>
@@ -28924,10 +28924,10 @@ export default function Home() {
 
         {purchaseTab === "orders" && (
         <>
-        <section className="workspace-section">
+        <section className="workspace-section document-composer">
           <h2 className="mb-4 text-2xl font-semibold text-foreground">{t('buy.createOrder')}</h2>
           <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="document-details grid gap-4 sm:grid-cols-3">
               <label className="flex flex-col gap-2 text-sm text-foreground/80">
                 <span>{t('buy.supplier')}</span>
                 <select
@@ -28975,12 +28975,12 @@ export default function Home() {
               />
             </label>
 
-            <div className="border-t pt-4">
+            <div className="document-lines">
               <h3 className="mb-3 text-lg font-semibold text-foreground">{t('sell.productLines')}</h3>
               <p className="mb-3 text-sm text-muted-foreground">{t('sell.productLinesHint')}</p>
 
               {poLines.length === 0 ? (
-                <p className="mb-4 text-sm text-muted-foreground/80">{t('sell.noProductLines')}</p>
+                <p className="document-empty mb-4 text-sm">{t('sell.noProductLines')}</p>
               ) : (
                 <div className="mb-4 space-y-3">
                   {poLines.map((line, index) => {
@@ -28988,7 +28988,7 @@ export default function Home() {
                       ? activeProducts.find((p) => String(p.id) === String(line.product_id))
                       : null;
                     return (
-                    <div key={index} className="workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
+                    <div key={index} className="document-line workspace-panel rounded-xl border border-border bg-card p-4 tabular-nums">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-sm font-medium text-foreground/80">{t('sell.line')} {index + 1}</span>
                         <button
@@ -29095,7 +29095,7 @@ export default function Home() {
               type="button"
               onClick={handleCreatePurchaseOrder}
               disabled={poLoading}
-              className="w-full min-h-11 rounded bg-success px-4 py-2 text-white transition hover:bg-success/90 disabled:cursor-not-allowed disabled:bg-success/30"
+              className="document-save w-full rounded-lg px-4 py-2 transition disabled:cursor-not-allowed"
             >
               {poLoading ? t('buy.creating') : t('buy.saveOrder')}
             </button>

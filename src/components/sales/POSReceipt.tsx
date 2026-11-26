@@ -500,8 +500,8 @@ export function POSReceipt({ receipt, autoPrint = false, autoOpen = false, onDon
     {error && !open && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
     {open && createPortal(
       <div data-context-help-skip role="dialog" aria-modal="true" aria-label={t('receipt.dialogAria').replace('{number}', receipt.number)} className="fixed inset-0 z-[100] overflow-auto bg-black/30 p-4">
-        <div className="mx-auto max-w-md rounded-xl bg-white p-4 shadow-xl">
-          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-xl sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-end gap-2 border-b border-border pb-4">
             <label className="mr-auto flex min-h-11 items-center gap-2 text-sm">
               <span>{t('receipt.paperWidth')}</span>
               <select

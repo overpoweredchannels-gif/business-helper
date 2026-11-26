@@ -10,6 +10,62 @@
 .workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
 .workspace-section :where(tbody td) { padding-block: .875rem; }
 
+.document-composer :where(.document-details, .document-lines, .document-totals) {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  padding: clamp(.75rem, 2vw, 1.25rem);
+  background: var(--color-card);
+  box-shadow: var(--shadow-workspace-card);
+}
+.document-composer .document-details { background: var(--color-muted); }
+.document-composer .document-lines {
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  padding: clamp(.75rem, 2vw, 1.25rem);
+}
+.document-composer .document-line {
+  min-width: 0;
+  border-radius: .75rem;
+  background: var(--color-background);
+}
+.document-composer .document-line > :first-child {
+  gap: .5rem;
+  padding-block-end: .25rem;
+  border-block-end: 1px solid var(--color-border);
+}
+.document-composer .document-empty {
+  border: 1px dashed var(--color-input);
+  border-radius: .75rem;
+  padding: 1rem;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+}
+.document-composer .document-total {
+  gap: 1rem;
+  padding: .75rem;
+  border-radius: .5rem;
+  background: var(--color-muted);
+  font-size: 1rem;
+}
+.document-composer :where(button, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) { min-height: 44px; }
+.document-composer button { min-width: 44px; }
+.document-composer :where(button, input, select, textarea):focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+.document-composer .document-save {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-weight: 600;
+}
+.document-composer .document-save:hover:enabled { background: var(--color-primary-hover); }
+.document-composer .document-save:disabled { opacity: .55; }
+@media (min-width: 768px) {
+  .document-composer :is(.document-totals, .document-save) { margin-inline-start: auto; max-width: 36rem; }
+  .document-composer .document-save { display: block; }
+}
+@media screen {
+  .document-preview-paper { overflow-x: auto; }
+}
+
 .operations-screen.workspace-section,
 .operations-screen :where(.workspace-panel, .operations-card) {
   border-radius: .875rem;
