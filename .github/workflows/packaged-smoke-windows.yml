@@ -42,10 +42,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -76,7 +76,7 @@ jobs:
         run: node scripts/check-desktop-routes.mjs --smoke --standalone dist-electron/win-unpacked/resources/standalone/server.js --port 3101
 
       - name: Upload the installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: aankh-windows-installer-smoke
           path: dist-electron/*.exe
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload server.log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: aankh-server-log
           path: ${{ env.APPDATA }}\Aankh\server.log

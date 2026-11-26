@@ -44,10 +44,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -109,13 +109,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out the idempotency-test branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: hybrid-provision-idempotency-test
           path: idempotency
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -177,10 +177,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -255,7 +255,7 @@ jobs:
 
       - name: Upload flow screenshots + results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: slice1b-playwright-flows
           path: slice1b-playwright/
@@ -263,7 +263,7 @@ jobs:
 
       - name: Upload dev server log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: slice1b-dev-server-log
           path: dev-server.log
