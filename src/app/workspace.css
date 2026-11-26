@@ -10,6 +10,17 @@
 .workspace-section :where(thead th) { padding-block: .75rem; font-weight: 600; }
 .workspace-section :where(tbody td) { padding-block: .875rem; }
 
+.ai-workspace { max-width: 64rem; }
+.ai-workspace .ai-panel { border-radius: .875rem; box-shadow: var(--shadow-workspace-card); }
+.ai-workspace :where(button, input, textarea, select) { min-height: 44px; }
+.ai-workspace button { min-width: 44px; }
+.ai-workspace input[type="checkbox"] { min-height: 0; }
+.ai-workspace :where(button, input, textarea, select, a):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.ai-workspace .ai-mic { min-width: 56px; min-height: 56px; }
+
 .report-screen {
   border-radius: .875rem;
   box-shadow: var(--shadow-workspace-card);

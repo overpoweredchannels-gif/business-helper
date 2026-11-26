@@ -302,7 +302,7 @@ export function AiVoiceOperator(props: AiVoiceOperatorProps) {
                 : t("ai.voiceOperator.startListening")
             }
             aria-pressed={props.isListening}
-            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`ai-mic flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               props.isListening
                 ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 : "bg-primary text-primary-foreground hover:bg-primary-hover"

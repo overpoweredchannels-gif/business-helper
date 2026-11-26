@@ -157,6 +157,7 @@ import { chatWithBusinessBrain, buildChatResponse, SERVER_CHAT_UNREACHABLE_ERROR
 import type { ChatResponse } from "@/lib/conversation";
 import type { ChatContext } from "@/hooks/useAIChat";
 import { AIAssistant } from "@/components/ai/AIAssistant";
+import { AiPage, AiQueryPanel, type AiQueryMetric } from "@/components/ai/AiPage";
 import { AiVoiceOperator } from "@/components/ai/AiVoiceOperator";
 import {
   buildAssignableRoles,
@@ -1131,6 +1132,8 @@ export default function Home() {
   const [aiBusinessQueryLoading, setAiBusinessQueryLoading] = useState(false);
   const [aiBusinessQueryLogs, setAiBusinessQueryLogs] = useState<AiBusinessQueryLog[]>([]);
   const [aiBusinessQueryResult, setAiBusinessQueryResult] = useState<AiBusinessQueryResult | null>(null);
+  const [aiQueryMetrics, setAiQueryMetrics] = useState<AiQueryMetric[]>([]);
+  const [aiQueryScope, setAiQueryScope] = useState<string | null>(null);
   const [aiBusinessDateRange, setAiBusinessDateRange] = useState<{
     start: string;
     end: string;
@@ -18171,6 +18174,7 @@ export default function Home() {
     setAiBusinessQueryMessage(null);
     setAiBusinessQueryError(null);
     setAiBusinessQueryResult(null);
+    setAiQueryMetrics([]);
 
     if (!requireOrganization("ask AI business query")) {
       setAiBusinessQueryError(orgNotLoadedMessage);
@@ -18191,6 +18195,7 @@ export default function Home() {
     const queryType = detectAiBusinessQueryType(question);
     const language = detectAiBusinessLanguage(question);
     const summaryData = buildAiBusinessSummary(question, dateRange, queryType);
+    setAiQueryScope(`${currentOrganizationId}:${currentProfile?.id}`);
     setAiBusinessDateRange(dateRange);
     setAiBusinessQueryLoading(true);
 
@@ -18231,6 +18236,11 @@ export default function Home() {
       }
 
       setAiBusinessQueryResult(result.result);
+      setAiQueryMetrics([
+        { label: "bi.totalSales", value: summaryData.sales.total_amount },
+        { label: "bi.totalPurchases", value: summaryData.purchases.total_amount },
+        { label: "bi.expenses", value: summaryData.expenses.total_amount },
+      ]);
       if (autoReadAiBusinessAnswer && result.result?.answer) {
         window.setTimeout(() => speakAiBusinessAnswer(result.result.answer), 0);
       }
@@ -30938,7 +30948,8 @@ export default function Home() {
             )}
           </section>
         )}
-        <section className={`flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm ${activeSection === "ai-analytics" ? "report-screen" : ""}`}>
+        <AiPage kind={activeSection === "ai-analytics" ? null : activeSection === "ai-voice-operator" ? "voice" : activeSection === "ai-business-query" ? "query" : "assistant"}>
+        <section className={`flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm ${activeSection === "ai-analytics" ? "report-screen h-full" : "ai-panel"}`}>
           {aiSectionKind(activeSection) === "voice" ? (
             <AiVoiceOperator
               isListening={isAiVoiceListening}
@@ -30975,10 +30986,23 @@ export default function Home() {
               onEditBeforeSend={editAiVoiceBeforeSending}
               onRefreshHistory={handleRefreshAiVoiceHistory}
             />
+          ) : activeSection === "ai-business-query" && isOwnerOrAdmin() ? (
+            <AiQueryPanel
+              question={aiBusinessQuestion}
+              onQuestion={setAiBusinessQuestion}
+              onAsk={() => void askAiBusinessQuestion()}
+              busy={aiBusinessQueryLoading}
+              result={aiQueryScope === `${currentOrganizationId}:${currentProfile?.id}` ? aiBusinessQueryResult : null}
+              metrics={aiQueryMetrics}
+              period={aiBusinessDateRange?.label}
+              error={aiBusinessQueryError}
+              notice={aiBusinessQueryMessage}
+            />
           ) : (
-            <AIAssistant onChat={onBrainChat} brainAvailable={brainReady} />
+            <AIAssistant onChat={onBrainChat} brainAvailable={brainReady} workspaceLayout={activeSection !== "ai-analytics"} />
           )}
         </section>
+        </AiPage>
         </>
         )}
 

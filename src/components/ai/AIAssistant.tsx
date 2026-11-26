@@ -20,12 +20,14 @@ import { useAIChat, type ChatMessage, type ChatContext } from "@/hooks/useAIChat
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { SuggestedQuestions } from "./SuggestedQuestions";
+import { aiPromptKeys } from "./AiPage";
 import { extractBusinessCards, BusinessCard } from "./BusinessCard";
 import type { ChatResponse } from "@/lib/conversation";
 
 interface AIAssistantProps {
   onChat: (message: string, context?: ChatContext) => Promise<ChatResponse>;
   brainAvailable: boolean;
+  workspaceLayout?: boolean;
 }
 
 function ChatBubble({ message, onRetry }: { message: ChatMessage; onRetry: () => void }) {
@@ -115,7 +117,7 @@ function WaitingBubble() {
   );
 }
 
-function EmptyState({ onSelectQuestion }: { onSelectQuestion: (q: string) => void }) {
+function EmptyState({ onSelectQuestion, workspaceLayout }: { onSelectQuestion: (q: string) => void; workspaceLayout: boolean }) {
   const { t } = useRegional();
   return (
     <div className="flex flex-col items-center justify-center flex-1 px-4 py-16 text-center">
@@ -126,12 +128,18 @@ function EmptyState({ onSelectQuestion }: { onSelectQuestion: (q: string) => voi
       <p className="text-sm text-muted-foreground max-w-md mb-8">
         {t('ai.assistant.emptyHelp')}
       </p>
-      <SuggestedQuestions onSelect={onSelectQuestion} visible={true} />
+      {workspaceLayout ? (
+        <div className="flex flex-wrap justify-center gap-2">
+          {aiPromptKeys.map((key) => (
+            <button key={key} type="button" className="workspace-button-secondary" onClick={() => onSelectQuestion(t(key))}>{t(key)}</button>
+          ))}
+        </div>
+      ) : <SuggestedQuestions onSelect={onSelectQuestion} visible={true} />}
     </div>
   );
 }
 
-export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
+export function AIAssistant({ onChat, brainAvailable, workspaceLayout = false }: AIAssistantProps) {
   const { t } = useRegional();
   const { messages, isWaiting, sendMessage, retry, clearHistory } = useAIChat(onChat);
   const [input, setInput] = useState("");
@@ -216,7 +224,7 @@ export function AIAssistant({ onChat, brainAvailable }: AIAssistantProps) {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 && !isWaiting ? (
-          <EmptyState onSelectQuestion={handleSelectQuestion} />
+          <EmptyState onSelectQuestion={handleSelectQuestion} workspaceLayout={workspaceLayout} />
         ) : (
           <>
             {messages.map((msg) => (
