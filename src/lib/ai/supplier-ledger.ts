@@ -264,12 +264,15 @@ export function buildSupplierLedger(data: MemoryWriterRawData, now: Date = new D
     const allowOverLimit = Boolean(raw.allow_over_limit);
     const allowOverdueSales = Boolean(raw.allow_overdue_sales);
 
-    // J1b — shared engine over ALL of this supplier's invoices
-    // (page.tsx sorts every purchase transaction by created_at, cash
-    // included — a cash invoice with no covering payment counts as
-    // payable until one lands). The legacy pool is consumed oldest
-    // first, in the same order, so the brain and the tile can never
-    // disagree about what is still owed.
+    // J1b — shared engine over ALL of this supplier's invoices, in the
+    // tile's order (page.tsx sorts every purchase transaction by
+    // created_at). Cash rule (2026-11-25): the invoice's payment_type
+    // goes into the engine — only an explicit "credit" invoice can
+    // carry a remaining payable; cash/card (and an unknown/missing
+    // type) are paid at entry with remaining 0, and the pool is not
+    // consumed by them. The legacy pool is consumed oldest first, in
+    // the same order, so the brain and the tile can never disagree
+    // about what is still owed.
     const remainingByTx = new Map<string, number>();
     {
       let pool = legacyPoolBySupplier[supplierId] ?? 0;
@@ -285,6 +288,7 @@ export function buildSupplierLedger(data: MemoryWriterRawData, now: Date = new D
           returnedAmount: returnedByPurchaseTx[inv.transactionId] ?? 0,
           explicitAllocatedAmount: explicitByPurchaseTx[inv.transactionId] ?? 0,
           legacyPoolAvailable: pool,
+          paymentType: inv.paymentType,
         });
         pool = net.legacyPoolRemaining;
         remainingByTx.set(inv.transactionId, net.remainingPayableAmount);
