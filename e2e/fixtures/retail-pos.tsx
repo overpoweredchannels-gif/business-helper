@@ -4,6 +4,7 @@ import { RetailPOS, type CounterSale } from "../../src/components/sales/RetailPO
 import { POSReceipt, type Receipt } from "../../src/components/sales/POSReceipt";
 import { HelpCenter } from "../../src/components/help/HelpCenter";
 import { addBarcodeLine, findBarcodeProduct } from "../../src/lib/invoices/barcode";
+import { hasExactBarcodeMatch } from "../../src/lib/invoices/scan-submit";
 import { buildRetailDrawerSummary } from "../../src/lib/sales/retail-summary";
 import { validateSaleDraft } from "../../src/lib/sales/sale-draft";
 import type { Customer, Product } from "../../src/lib/tradeos/types";
@@ -22,9 +23,15 @@ const initialSale: CounterSale = search.has("long") ? { ...empty, lines: product
 function Fixture() {
   const [sale, setSale] = useState(initialSale); const [unit, setUnit] = useState<"main" | "subunit">("subunit"); const [saves, setSaves] = useState(0); const [employee, setEmployee] = useState(() => search.has("employee")); const [focus, setFocus] = useState(0); const [cashReceived, setCashReceived] = useState(""); const [receipt, setReceipt] = useState<Receipt | null>(null);
   const add = (id: string) => setSale(current => ({ ...current, lines: addBarcodeLine(current.lines, products.find(p => p.id === id)!, unit) }));
+  const scan = (code: string) => {
+    if (!hasExactBarcodeMatch(products, code)) return null;
+    const id = String(findBarcodeProduct(products, code).id);
+    add(id);
+    return id;
+  };
   return <main className="mx-auto max-w-6xl p-5"><h1 className="text-2xl font-bold">Retail POS test</h1><label><input type="checkbox" checked={employee} onChange={event => setEmployee(event.target.checked)} /> Employee mode</label><p>Saved sales: {saves}</p>
     {search.has("draft") || search.has("remove") ? <label className="mb-3 block">Invoice discount<input aria-label="Invoice discount" type="text" inputMode="decimal" value={sale.discount} onChange={event => setSale(current => ({ ...current, discount: event.target.value }))} className="ml-2 min-h-11 rounded border border-input px-2" /></label> : null}
-    <RetailPOS scope="synthetic-pos-test" sale={sale} products={products} customers={customers} busy={false} owner={!employee} scanUnit={unit} cashReceived={cashReceived} onCashReceived={setCashReceived} onDiscount={discount => setSale(current => ({ ...current, discount }))} onDiscountType={discountType => setSale(current => ({ ...current, discountType }))} focusSignal={focus} onScan={code => { const product = findBarcodeProduct(products, code); add(String(product.id)); return String(product.id); }} onAdd={add} onUnit={setUnit} onCustomer={id => setSale(current => ({ ...current, customerId: id }))} onLine={(index, field, value) => setSale(current => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, [field]: value } : line) }))} onRemove={index => setSale(current => ({ ...current, lines: current.lines.filter((_, i) => i !== index) }))} onSave={() => {
+    <RetailPOS scope="synthetic-pos-test" sale={sale} products={products} customers={customers} busy={false} owner={!employee} scanUnit={unit} cashReceived={cashReceived} onCashReceived={setCashReceived} onDiscount={discount => setSale(current => ({ ...current, discount }))} onDiscountType={discountType => setSale(current => ({ ...current, discountType }))} focusSignal={focus} onScan={scan} onAdd={add} onUnit={setUnit} onCustomer={id => setSale(current => ({ ...current, customerId: id }))} onLine={(index, field, value) => setSale(current => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, [field]: value } : line) }))} onRemove={index => setSale(current => ({ ...current, lines: current.lines.filter((_, i) => i !== index) }))} onSave={() => {
       const result = validateSaleDraft({ lines: sale.lines, invoiceDiscount: sale.discount, invoiceDiscountType: sale.discountType, taxRate: sale.tax, paymentType: sale.paymentType, cashReceived, validateCash: !employee, allowInvoiceAdjustments: !employee });
       if (!result.valid || !result.amounts) return;
       const amounts = result.amounts;

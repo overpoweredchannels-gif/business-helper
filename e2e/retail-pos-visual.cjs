@@ -14,7 +14,12 @@
   const bundle = await build({
     entryPoints: [path.join(__dirname, 'fixtures/retail-pos.tsx')], bundle: true, write: false,
     platform: 'browser', format: 'iife', jsx: 'automatic',
-    define: { 'process.env.NODE_ENV': '"development"' },
+    banner: { js: 'var process = { env: {} };' },
+    define: {
+      'process.env.NODE_ENV': '"development"',
+      'process.env.NEXT_PUBLIC_SUPABASE_URL': '"https://example.invalid"',
+      'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': '"fixture"',
+    },
     plugins: [{ name: 'fixture-boundaries', setup(builder) {
       builder.onResolve({ filter: /^next\/(link|navigation)$/ }, args => ({ path: args.path, namespace: 'fixture' }));
       builder.onResolve({ filter: /lib\/supabase\/client$/ }, () => ({ path: 'supabase', namespace: 'fixture' }));
@@ -37,7 +42,7 @@
     if (request.url.startsWith('/bundle.js')) {
       response.setHeader('Content-Type', 'text/javascript'); response.end(bundle.outputFiles[0].text);
     } else if (request.url.startsWith('/styles.css')) {
-      response.setHeader('Content-Type', 'text/css'); response.end(css.css);
+      response.setHeader('Content-Type', 'text/css'); response.end(css.css + fs.readFileSync(path.join(root, 'src/app/workspace.css'), 'utf8'));
     } else {
       response.setHeader('Content-Type', 'text/html');
       response.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/styles.css"></head><body><div id="root"></div><script src="/bundle.js"></script></body></html>');
@@ -89,7 +94,7 @@
           assert.ok(await option.evaluate(element => element.getBoundingClientRect().height >= 44), 'search suggestion meets the phone target');
           await productSearch.press('ArrowDown');
           await productSearch.press('Enter');
-          await page.waitForFunction(() => document.activeElement?.getAttribute('data-pos-quantity') === '12');
+          await page.waitForFunction(() => ['data-pos-unit', 'data-pos-quantity'].some(key => document.activeElement?.getAttribute(key) === '12'), undefined, { timeout: 5000 });
           assert.equal(await page.locator('[data-pos-mobile-row]:visible').count(), 13, 'keyboard selection adds the product to the phone basket');
       }
 
@@ -139,9 +144,9 @@
         }
       };
       assert.equal(baseTotal, 9.45, 'phone line discount and 5% tax are included before invoice discount');
-      const phoneDiscountType = page.getByRole('combobox', { name: 'Sale discount type' });
+      const phoneDiscountType = page.locator('[data-pos-invoice-discount-type]');
       await phoneDiscountType.selectOption('percent');
-      const phonePercentDiscount = page.getByRole('textbox', { name: 'Sale discount percentage' });
+      const phonePercentDiscount = page.getByRole('textbox', { name: 'Total Bill Discount percentage' });
       await phonePercentDiscount.fill('100.01');
       assert.match(await paymentTotal.innerText(), /Unavailable/, 'phone rejects a percentage above 100 without showing a payable amount');
       assert.equal(await save.isDisabled(), true, 'phone invalid percentage cannot be saved');
@@ -153,11 +158,11 @@
       assert.equal(Number(percentTotalText.replace(/[^\d.]/g, '')), percentTotal, 'phone percentage discount yields the expected payable total');
       assert.ok((await page.getByText(/Discount before tax:/).innerText()).includes(formatMoney(percentAmount)), 'phone shows the calculated percentage discount');
       await phoneDiscountType.selectOption('flat');
-      const amountDiscount = page.getByRole('textbox', { name: 'Sale discount amount' });
+      const amountDiscount = page.getByRole('textbox', { name: 'Total Bill Discount amount' });
       await amountDiscount.fill('0.50');
       assert.equal(Number((await paymentTotal.innerText()).replace(/[^\d.]/g, '')), 8.93, 'phone amount discount recalculates tax and payable total');
       await phoneDiscountType.selectOption('percent');
-      await page.getByRole('textbox', { name: 'Sale discount percentage' }).fill('10');
+      await page.getByRole('textbox', { name: 'Total Bill Discount percentage' }).fill('10');
       const totalText = await paymentTotal.innerText();
       const total = Number(totalText.replace(/[^\d.]/g, ''));
       assert.ok(Number.isFinite(total) && total > 0, `displayed total is usable: ${totalText}`);
@@ -188,9 +193,9 @@
       assert.ok((await changeRow.innerText()).includes(formatMoney(1)), 'phone receipt change matches the POS summary');
       await assertReceiptAmounts(dialog, {
         'Items subtotal': 10,
-        'Line discounts': 1,
+        'Line Discounts': 1,
         Subtotal: 9,
-        'Invoice discount': 0.9,
+        'Invoice Discount': 0.9,
         'Tax (5%)': 0.41,
         Total: 8.51,
         Tendered: 9.51,
@@ -206,7 +211,7 @@
       await barcode.press('Enter');
       const excessBaseText = await page.locator('[data-pos-payment-bar] .text-3xl').innerText();
       const excessBase = Number(excessBaseText.replace(/[^\d.]/g, ''));
-      await page.getByRole('textbox', { name: 'Sale discount amount' }).fill('2.50');
+      await page.getByRole('textbox', { name: 'Total Bill Discount amount' }).fill('2.50');
       const excessTotal = Math.round((excessBase - 2.5) * 100) / 100;
       const excessTotalText = await page.locator('[data-pos-payment-bar] .text-3xl').innerText();
       assert.equal(Number(excessTotalText.replace(/[^\d.]/g, '')), excessTotal, 'phone amount discount yields the expected payable total');
@@ -225,9 +230,9 @@
       assert.ok((await excessDialog.getByText('Change due', { exact: true }).locator('xpath=..').innerText()).includes(formatMoney(2.5)), 'phone amount-discount receipt change matches cash input');
       await assertReceiptAmounts(excessDialog, {
         'Items subtotal': 10,
-        'Line discounts': 0,
+        'Line Discounts': 0,
         Subtotal: 10,
-        'Invoice discount': 2.5,
+        'Invoice Discount': 2.5,
         'Tax (0%)': 0,
         Total: excessTotal,
         Tendered: excessCash,
@@ -243,9 +248,9 @@
       await draftPage.waitForLoadState('networkidle');
       const draftHelpClose = draftPage.getByRole('button', { name: 'Close help' });
       if (await draftHelpClose.isVisible().catch(() => false)) await draftHelpClose.click();
-      const draftQuantity = draftPage.locator('[data-pos-desktop-table] input[aria-label="quantity for Test Box 1"]');
+      const draftQuantity = draftPage.locator('[data-pos-desktop-table] input[aria-label="Quantity for Test Box 1"]');
       const draftPrice = draftPage.locator('[data-pos-desktop-table] input[aria-label="Price for Test Box 1"]');
-      const draftLineDiscount = draftPage.locator('[data-pos-desktop-table] input[aria-label="discount for Test Box 1"]');
+      const draftLineDiscount = draftPage.locator('[data-pos-desktop-table] input[aria-label="Discount for Test Box 1"]');
       const draftTotal = draftPage.locator('[data-pos-payment-bar] .text-3xl');
       const draftSave = draftPage.getByRole('button', { name: 'Pay & Save' });
       const basket = draftPage.locator('[data-pos-desktop-table]');
@@ -275,15 +280,15 @@
       assert.match(await draftTotal.innerText(), /Unavailable/, 'excess line discount never appears as a valid total');
       assert.equal(await draftSave.isDisabled(), true);
       await draftLineDiscount.fill('0');
-      const invoiceDiscount = draftPage.getByRole('textbox', { name: 'Invoice discount' });
+      const invoiceDiscount = draftPage.locator('#pos-invoice-discount');
       await invoiceDiscount.fill('10.09');
       assert.match(await draftTotal.innerText(), /Unavailable/, 'invoice discount above subtotal is unavailable');
       assert.equal(await draftSave.isDisabled(), true);
       await invoiceDiscount.fill('0');
       assert.equal(await draftSave.isDisabled(), false, 'correcting both discounts restores saving');
-      const discountType = draftPage.getByRole('combobox', { name: 'Sale discount type' });
+      const discountType = draftPage.locator('[data-pos-invoice-discount-type]');
       await discountType.selectOption('percent');
-      const percentDiscount = draftPage.getByRole('textbox', { name: 'Sale discount percentage' });
+      const percentDiscount = draftPage.getByRole('textbox', { name: 'Total Bill Discount percentage' });
       await percentDiscount.fill('10');
       assert.match(await draftTotal.innerText(), /9\.07/, '10% of 10.08 rounds to 1.01 and reduces the payable total');
       assert.match(await draftPage.getByText(/Discount before tax:/).innerText(), /1\.01/, 'the calculated discount is visible');
@@ -293,11 +298,11 @@
       await percentDiscount.fill('100');
       assert.match(await draftTotal.innerText(), /0\.00/, 'a 100% discount is valid');
       await discountType.selectOption('flat');
-      await draftPage.getByRole('textbox', { name: 'Sale discount amount' }).fill('1.00');
+      await draftPage.getByRole('textbox', { name: 'Total Bill Discount amount' }).fill('1.00');
       assert.match(await draftTotal.innerText(), /9\.08/, 'flat discount uses the existing amount calculation');
-      await draftPage.getByRole('textbox', { name: 'Sale discount amount' }).fill('');
-      await draftPage.getByRole('combobox', { name: 'Sale discount type' }).selectOption('percent');
-      await draftPage.getByRole('textbox', { name: 'Sale discount percentage' }).fill('10');
+      await draftPage.getByRole('textbox', { name: 'Total Bill Discount amount' }).fill('');
+      await draftPage.locator('[data-pos-invoice-discount-type]').selectOption('percent');
+      await draftPage.getByRole('textbox', { name: 'Total Bill Discount percentage' }).fill('10');
       assert.match(await draftTotal.innerText(), /9\.07/, 'desktop percentage discount preserves the rounded 0.125 × 80.60 line total');
       assert.match(await draftPage.getByText(/Discount before tax:/).innerText(), /1\.01/, 'desktop shows the calculated percentage discount');
       await draftLineDiscount.fill('0.08');
@@ -313,9 +318,9 @@
       await desktopReceipt.waitFor();
       await assertReceiptAmounts(desktopReceipt, {
         'Items subtotal': 10.08,
-        'Line discounts': 0.08,
+        'Line Discounts': 0.08,
         Subtotal: 10,
-        'Invoice discount': 1,
+        'Invoice Discount': 1,
         'Tax (0%)': 0,
         Total: 9,
         Tendered: 10,
@@ -327,7 +332,7 @@
       await desktopBarcode.fill('001202');
       await desktopBarcode.press('Enter');
       const desktopBase = Number((await draftTotal.innerText()).replace(/[^\d.]/g, ''));
-      await draftPage.getByRole('textbox', { name: 'Sale discount amount' }).fill('2.50');
+      await draftPage.getByRole('textbox', { name: 'Total Bill Discount amount' }).fill('2.50');
       const desktopAmountTotal = Math.round((desktopBase - 2.5) * 100) / 100;
       assert.equal(Number((await draftTotal.innerText()).replace(/[^\d.]/g, '')), desktopAmountTotal, 'desktop amount discount yields the expected payable total');
       await draftPage.getByRole('textbox', { name: 'Cash received' }).fill(String(desktopAmountTotal + 2.5));
@@ -340,9 +345,9 @@
       await secondDesktopReceipt.waitFor();
       await assertReceiptAmounts(secondDesktopReceipt, {
         'Items subtotal': 10,
-        'Line discounts': 0,
+        'Line Discounts': 0,
         Subtotal: 10,
-        'Invoice discount': 2.5,
+        'Invoice Discount': 2.5,
         'Tax (0%)': 0,
         Total: desktopAmountTotal,
         Tendered: desktopAmountTotal + 2.5,
@@ -389,7 +394,7 @@
       if (await employeeHelpClose.isVisible().catch(() => false)) await employeeHelpClose.click();
       await employeePage.getByText('Held sales (1)', { exact: true }).click();
       await employeePage.getByRole('button', { name: 'Resume' }).click();
-      assert.equal(await employeePage.getByRole('combobox', { name: 'Sale discount type' }).count(), 0, 'employee cannot edit an owner-only invoice discount');
+      assert.equal(await employeePage.locator('[data-pos-invoice-discount-type]').count(), 0, 'employee cannot edit an owner-only invoice discount');
       assert.ok(await employeePage.getByRole('alert').filter({ hasText: /not available for this approval flow/ }).isVisible(), 'employee sees why the restored discounted draft is blocked');
       assert.match(await employeePage.locator('[data-pos-payment-bar] .text-3xl').innerText(), /Unavailable/, 'blocked restored draft does not show a misleading total');
       assert.equal(await employeePage.getByRole('button', { name: 'Send for approval' }).isDisabled(), true, 'employee cannot submit the restored discounted draft');
