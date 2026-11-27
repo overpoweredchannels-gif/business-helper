@@ -59,7 +59,8 @@ async function runPost(req: NextRequest) {
       return NextResponse.json({ ok: false, error: sanitized.error }, { status: 400 });
     }
     const message = sanitized.cleaned;
-    const live = await liveEntityContext(message, auth.actor.organizationId, String(body.booksCurrency ?? ""), true);
+    const sanitizedHistory = sanitizeHistory(conversationHistory);
+    const live = await liveEntityContext(message, auth.actor.organizationId, String(body.booksCurrency ?? ""), true, sanitizedHistory);
     if (live.reply) return NextResponse.json({ ok: true, message: filterResponse(live.reply), provider: "live_catalogue" });
     // History hygiene (2026-11-16): stored history can contain the legacy
     // runtime's verbatim failure replies ("Sorry, I couldn't process
@@ -68,7 +69,7 @@ async function runPost(req: NextRequest) {
     // failure voice instead of answering from Business Memory — and each
     // echoed failure is saved and re-sent, so the loop self-reinforces.
     // Drop every pair with no real answer before building the prompt.
-    const cleanHistory = cleanChatHistoryForPrompt(sanitizeHistory(conversationHistory));
+    const cleanHistory = cleanChatHistoryForPrompt(sanitizedHistory);
 
     const historyBlock = cleanHistory
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)

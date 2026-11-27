@@ -2,7 +2,8 @@ import "./validation-environment";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadLiveEntityRows } from "../src/lib/ai/live-entity-context";
+import { liveEntityContext, loadLiveEntityRows } from "../src/lib/ai/live-entity-context";
+import { todayInTimezone } from "../src/lib/ai/confirmation-content";
 import {
   describeLiveMatch, MATCH_LIMIT, MATCH_THRESHOLD, RESOLVE_THRESHOLD, resolveLiveCandidate,
   searchCustomersLive, searchEmployeesLive, searchProductsLive, searchSuppliersLive,
@@ -104,7 +105,58 @@ async function testLiveRead() {
   ]);
 }
 
-void testLiveRead().then(() => console.log("J3 deterministic matching checks passed")).catch((error: unknown) => {
+async function testSaleContinuation() {
+  const sale = "Create a sale: sell 1 Aylo 2000 ml to Walk-in customer, cash payment.";
+  const classify = async (text: string) => text === sale
+    ? { ok: true, intent: "create_sale" as const, language: "english", entities: {
+      product_name: "Aylo 2000 ml", customer_name: "Walk-in customer", quantity: 1,
+    } }
+    : { ok: false, intent: "unknown" as const, language: "english", entities: {} };
+  const walk = { id: "walk", customer_name: "Walk-in customer", credit_policy: "cash_only" };
+  const competing = { id: "other", customer_name: "AL FAZL" };
+  const client = (ambiguous = true) => ({
+    from(table: string) {
+      const builder = {
+        select: () => builder,
+        eq(column: string, value: string) {
+          assert.equal(column, table === "organizations" ? "id" : "organization_id");
+          assert.equal(value, "authenticated-org");
+          return builder;
+        },
+        order: () => builder,
+        range: async () => ({ data: table === "products" ? products : ambiguous ? [competing, walk] : [walk], error: null }),
+        maybeSingle: async () => ({ data: { books_currency: "EUR", regional_preferences: { timeZone: "Asia/Karachi" } } }),
+      };
+      return builder;
+    },
+  }) as unknown as SupabaseClient;
+  const expected = [
+    "Sale confirmation preview",
+    "Create Sale Invoice:",
+    "• Customer: Walk-in customer",
+    "• Product: Aylo 2000 ml 🥭",
+    "• Quantity: 1",
+    "• Selling Price: 6.15 EUR",
+    "• Payment: cash",
+    `• Invoice Date: ${todayInTimezone("Asia/Karachi")}`,
+    "• Batch: —",
+    "• Expiry: —",
+    "Stock: 10. Open Sales to submit after reviewing.",
+  ].join("\n");
+  const first = await liveEntityContext(sale, "authenticated-org", "", true, [], classify, client);
+  assert.equal(first.reply, "Which customer did you mean? 1. Walk-in customer; 2. AL FAZL");
+  const history = [{ role: "user", text: sale }, { role: "assistant", text: first.reply }] as const;
+  for (const answer of ["1", "Walk-in", "Walk-in customer"]) {
+    const second = await liveEntityContext(answer, "authenticated-org", "", true, history, classify, client);
+    assert.equal(second.reply, expected);
+  }
+  const invalid = await liveEntityContext("3", "authenticated-org", "", true, history, classify, client);
+  assert.equal(invalid.reply, first.reply);
+  const oneTurn = await liveEntityContext(sale, "authenticated-org", "", true, [], classify, () => client(false));
+  assert.equal(oneTurn.reply, expected);
+}
+
+void testLiveRead().then(testSaleContinuation).then(() => console.log("J3 deterministic matching checks passed")).catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });
