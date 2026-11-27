@@ -43,49 +43,51 @@ export function getBusinessHealthScore(
   overview: DashboardHealthOverview,
   translate: (key: MessageKey) => string = (key) => key,
 ) {
-  let score = 50;
+  const baseScore = 50;
+  const components = { sales: 0, profit: 0, stock: 0, collections: 0, expenses: 0 };
   const reasons: string[] = [];
   if (overview.totalSalesAmount > 0) {
-    score += 10;
+    components.sales = 10;
     reasons.push(translate('page.salesRecordedInPeriod'));
   } else {
-    score -= 10;
+    components.sales = -10;
     reasons.push(translate('page.noSalesInPeriod'));
   }
   if (overview.estimatedNetProfit > 0) {
-    score += 20;
+    components.profit = 20;
     reasons.push(translate('page.netProfitPositive'));
   } else if (overview.totalSalesAmount > 0) {
-    score -= 15;
+    components.profit = -15;
     reasons.push(translate('page.netProfitNotPositive'));
   }
   if (overview.outOfStockCount > 0) {
-    score -= 20;
+    components.stock = -20;
     reasons.push(translate('page.outOfStockProducts').replace('{count}', String(overview.outOfStockCount)));
   } else if (overview.lowStockCount > 0) {
-    score -= 10;
+    components.stock = -10;
     reasons.push(translate('page.lowStockProducts').replace('{count}', String(overview.lowStockCount)));
   } else {
-    score += 10;
+    components.stock = 10;
     reasons.push(translate('page.noUrgentLowStockView'));
   }
   if (overview.customerCollectionsTotal >= overview.totalSalesAmount * 0.5 || overview.totalSalesAmount === 0) {
-    score += 10;
+    components.collections = 10;
     reasons.push(translate('page.collectionsReasonable'));
   } else {
-    score -= 10;
+    components.collections = -10;
     reasons.push(translate('page.collectionsLow'));
   }
   if (overview.expensesTotal > overview.totalSalesAmount && overview.totalSalesAmount > 0) {
-    score -= 15;
+    components.expenses = -15;
     reasons.push(translate('page.expensesHigher'));
   } else {
-    score += 5;
+    components.expenses = 5;
     reasons.push(translate('page.expensesNotHigher'));
   }
+  const score = baseScore + Object.values(components).reduce((sum, points) => sum + points, 0);
   const boundedScore = Math.max(0, Math.min(100, score));
   const label = businessHealthLabel(boundedScore);
-  return { score: boundedScore, label, reasons };
+  return { score: boundedScore, label, reasons, baseScore, components };
 }
 
 export type BusinessHealthLabel =

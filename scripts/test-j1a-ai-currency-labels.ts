@@ -250,15 +250,15 @@ async function main(): Promise<void> {
   check(!hasPkrLabel(eurBi.message), "EUR sales forecast carries no PKR/Rs label");
   const execAiSource = readFileSync("src/lib/ai/executive-ai.ts", "utf8");
   check(
-    execAiSource.includes("generateMorningBriefing(payload, language, data.currency)"),
-    "executive report passes the org currency into the morning briefing"
+    execAiSource.includes("generateMorningBriefing(payload, language, data)"),
+    "executive report passes the organization data into the morning briefing"
   );
   check(
-    execAiSource.includes("formatRs(payload.salesForecasting.tomorrow, currency)"),
-    "morning briefing formats the forecast with the passed currency"
+    execAiSource.includes("formatRs(amount, kpis.booksCurrency)"),
+    "morning briefing formats BI period figures in books currency"
   );
   check(
-    execAiSource.includes("formatRs(value, data.currency)"),
+    execAiSource.includes("formatRs(value, kpis.booksCurrency)"),
     "explainKPI formats the KPI value with the org currency"
   );
   const report = generateExecutiveReport(eur.store, eur.data, "morning", "org-eur", "english");

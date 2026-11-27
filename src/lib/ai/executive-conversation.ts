@@ -3,7 +3,7 @@ import { createConversationContext, addConversationMessage, updateConversationSt
 import { ConversationState, ConversationContext, ActionType } from "@/lib/ai/conversation-engine";
 import type { MemoryStore } from "@/lib/brain/memory/business-memory";
 import type { MemoryWriterRawData } from "@/lib/brain/contracts/memory";
-import { explainKPI, generateExecutiveReport } from "@/lib/ai/executive-ai";
+import { executiveQuestionType, explainKPI, generateExecutiveReport } from "@/lib/ai/executive-ai";
 
 export interface ExecutiveSessionContext extends ConversationContext {
   currentFocus?: "briefing" | "alerts" | "kpi" | "recommendations" | "general";
@@ -315,6 +315,7 @@ function calculateExecutiveImpact(recommendation: any, data: MemoryWriterRawData
 }
 
 function resolveExecutiveKpiType(queryType: string | null | undefined, message: string) {
+  if (queryType === "cash_flow" || executiveQuestionType(message) === "cash_flow") return "cash_flow";
   if (queryType === "inventory_turnover" || /\binventory turnover\b/i.test(message)) return "inventory_turnover";
   if (queryType === "revenue" || queryType === "profit") return queryType;
   if (/\b(?:explain|kpi)\b.*\b(?:revenue|profit)\b/i.test(message)) return /\bprofit\b/i.test(message) ? "profit" : "revenue";

@@ -32,7 +32,8 @@ export function salesLineCogsInMainUnits(
 
 // Server chats have no dashboard filters. Use the dashboard's default
 // 30-day overview with the same line cost and inventory classifiers.
-function rawKpiInputs(raw: MemoryWriterRawData, timeZone: string, now: Date): AssistantKpiInputs {
+export function buildDefaultAssistantKpiInputs(raw: MemoryWriterRawData, now = new Date()) {
+  const timeZone = parseTimeZone(raw.timezone) ?? legacyRegionalSettings.timeZone;
   const customers = buildCustomerLedger(raw, now).totals;
   const suppliers = buildSupplierLedger(raw, now).totals;
   const end = todayInTimezone(timeZone, now);
@@ -66,6 +67,8 @@ function rawKpiInputs(raw: MemoryWriterRawData, timeZone: string, now: Date): As
     reorderLevel: safeNumber(product.reorder_level ?? product.minimum_stock_level ?? 0),
   }));
   return {
+    period: { start, end },
+    knownCogs,
     payables: suppliers.totalPayable,
     receivables: customers.totalOutstanding,
     customersOwing: customers.customersOwing,
@@ -92,7 +95,7 @@ export function buildAssistantKpiBlock(
   if (!source) return null;
   const timeZone = parseTimeZone(orgTimezone) ?? legacyRegionalSettings.timeZone;
   if ("products" in source && source.assistantKpiReady === false) return null;
-  const input = "products" in source ? rawKpiInputs(source, timeZone, now) : source;
+  const input = "products" in source ? buildDefaultAssistantKpiInputs({ ...source, timezone: timeZone }, now) : source;
   const { score, label } = getBusinessHealthScore(input.health);
   const resolved = resolveAiCurrency(currency);
   const booksCurrency = resolved.kind === "known" ? resolved.currency : resolved.kind === "unknown" ? resolved.code : null;
@@ -100,12 +103,14 @@ export function buildAssistantKpiBlock(
     timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit",
   }).format(now)} ${timeZone}`;
   const { payables, receivables, customersOwing, inventoryValue } = input;
+  const cashFlow = receivables - payables;
   return {
-    payables, receivables, customersOwing, inventoryValue,
+    payables, receivables, cashFlow, customersOwing, inventoryValue,
     health: { score, label }, booksCurrency, computedAt,
     text: [
       `Outstanding Payables: ${formatAiMoney(payables, booksCurrency)}`,
       `Outstanding Receivables: ${formatAiMoney(receivables, booksCurrency)} (${customersOwing} customers with outstanding balances)`,
+      `Cash Flow (receivables minus payables): ${formatAiMoney(cashFlow, booksCurrency)}`,
       `Inventory Value: ${formatAiMoney(inventoryValue, booksCurrency)}`,
       `Health: ${score}/100 (${label})`,
       `Books currency: ${booksCurrency ?? "unknown"}`,

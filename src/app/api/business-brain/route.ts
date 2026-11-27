@@ -7,7 +7,10 @@ import { cleanChatHistoryForPrompt } from "@/lib/ai/chat-history-hygiene";
 import { sanitizeMessage, sanitizeHistory } from "@/lib/brain/sanitize";
 import { checkRateLimit } from "@/lib/brain/rate-limit";
 import { logPiiSafe, filterResponse } from "@/lib/brain/pii-filter";
-import { requireAuthenticatedOrg } from "@/lib/identity/authorization";
+import { requireAuthenticatedOrg, requirePermissionDirect } from "@/lib/identity/authorization";
+import { executiveQuestionType, explainKPI, formatExecutiveOverview } from "@/lib/ai/executive-ai";
+import { createSupabaseService } from "@/lib/supabase/server";
+import { loadRawBusinessData } from "@/lib/brain/supabase-loader";
 import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 
 export const runtime = "nodejs";
@@ -59,6 +62,17 @@ async function runPost(req: NextRequest) {
       return NextResponse.json({ ok: false, error: sanitized.error }, { status: 400 });
     }
     const message = sanitized.cleaned;
+    const executive = executiveQuestionType(message);
+    if (executive) {
+      const permission = requirePermissionDirect(auth.actor, "reports_view");
+      if (!permission.allowed) return NextResponse.json({ ok: false, error: permission.reason }, { status: 403 });
+      const data = await loadRawBusinessData(createSupabaseService(), auth.actor.organizationId);
+      const reply = !data ? "Executive figures are unavailable because the business data could not be read."
+        : executive === "report" ? formatExecutiveOverview(data)
+        : executive === "tomorrow_forecast" ? "A tomorrow estimate is unavailable."
+        : explainKPI(null, data, executive, auth.actor.organizationId).explanation;
+      return NextResponse.json({ ok: true, message: reply, provider: "executive_report" });
+    }
     const sanitizedHistory = sanitizeHistory(conversationHistory);
     const live = await liveEntityContext(message, auth.actor.organizationId, String(body.booksCurrency ?? ""), true, sanitizedHistory);
     if (live.reply) return NextResponse.json({ ok: true, message: filterResponse(live.reply), provider: "live_catalogue" });

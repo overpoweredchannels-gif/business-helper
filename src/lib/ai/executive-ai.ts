@@ -2,6 +2,9 @@ import type { MemoryStore } from "../brain/memory/business-memory";
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import { calculateBusinessIntelligence, detectQueryLanguage, formatRs } from "./business-intelligence";
 
+import { buildAssistantKpiBlock, buildDefaultAssistantKpiInputs } from "./assistant-kpi-block";
+import { getBusinessHealthScore, type DashboardHealthOverview } from "../dashboard/health";
+
 type BusinessIntelligencePayload = ReturnType<typeof calculateBusinessIntelligence>;
 
 export type ExecutiveReportType = "morning" | "daily" | "weekly" | "monthly";
@@ -13,9 +16,11 @@ export interface ExecutiveReport {
   executiveName?: string;
   language: "english" | "urdu" | "roman_urdu";
   summary: {
-    healthScore: number;
-    revenue: number;
-    profit: number;
+    healthScore: number | null;
+    period: { start: string; end: string };
+    cashFlow: number | null;
+    revenue: number | null;
+    profit: number | null;
     keyAlerts: string[];
     priorityActions: string[];
   };
@@ -49,7 +54,7 @@ export interface ProactiveAlert {
 
 export interface KPIExplanation {
   kpiType: string;
-  value: number;
+  value: number | null;
   previousValue?: number;
   trend: "up" | "down" | "stable";
   explanation: string;
@@ -97,6 +102,46 @@ export interface ConversationContext {
   preferredReportFrequency: "daily" | "weekly" | "monthly";
 }
 
+function executiveMetrics(data: MemoryWriterRawData, now = new Date()) {
+  const input = buildDefaultAssistantKpiInputs(data, now);
+  const currency = data.assistantKpiCurrency === undefined ? data.currency : data.assistantKpiCurrency;
+  const kpis = data.assistantKpiReady === false ? null : buildAssistantKpiBlock(input, currency, data.timezone, now);
+  return { input, kpis };
+}
+
+function describeHealth(overview: DashboardHealthOverview): string {
+  const { baseScore, components } = getBusinessHealthScore(overview);
+  const points = Object.entries(components).map(([name, value]) => `${name} ${value >= 0 ? "+" : ""}${value}`);
+  return `Dashboard formula: starts at ${baseScore}; ${points.join(", ")}. The final score is bounded to 0–100.`;
+}
+
+export function executiveQuestionType(message: string) {
+  if (/\b(?:executive\s+(?:report|summary|briefing)|morning\s+briefing)\b/i.test(message)) return "report";
+  if (/\bcash\s*flow\b/i.test(message)) return "cash_flow";
+  if (/\b(?:business health|health score|health kpi)\b/i.test(message)) return "health_score";
+  if (/\b(?:period profit|executive profit)\b/i.test(message)) return "profit";
+  if (/\b(?:forecast|predict(?:ed|ion)?)\b/i.test(message) && /\btomorrow\b/i.test(message)) return "tomorrow_forecast";
+  return null;
+}
+
+export function formatExecutiveOverview(data: MemoryWriterRawData, now = new Date()): string {
+  const { input, kpis } = executiveMetrics(data, now);
+  if (!kpis) return "Executive figures are unavailable because the business data could not be read completely.";
+  const { start, end } = input.period;
+  const money = (amount: number) => formatRs(amount, kpis.booksCurrency);
+  return [
+    `**Period:** ${start} to ${end} (BI Last 30 Days, inclusive, organization time)`,
+    `**Period Revenue:** ${money(input.health.totalSalesAmount)}`,
+    `**Estimated Net Profit:** ${money(input.health.estimatedNetProfit)} (${money(input.health.totalSalesAmount)} revenue minus ${money(input.knownCogs)} known line costs and ${money(input.health.expensesTotal)} expenses)`,
+    `**Business Health Score:** ${kpis.health.score}/100 (${kpis.health.label})`,
+    describeHealth(input.health),
+    `**Inventory Value:** ${money(kpis.inventoryValue)}`,
+    `**Receivables:** ${money(kpis.receivables)} (${kpis.customersOwing} customers)`,
+    `**Payables:** ${money(kpis.payables)}`,
+    `**Cash Flow:** ${money(kpis.cashFlow)} (dashboard metric: receivables minus payables)`,
+  ].join("\n");
+}
+
 export function generateExecutiveReport(
   store: MemoryStore,
   data: MemoryWriterRawData,
@@ -106,20 +151,23 @@ export function generateExecutiveReport(
 ): ExecutiveReport {
   const payload = calculateBusinessIntelligence(store, data);
 
+  const { input, kpis } = executiveMetrics(data);
   const report: ExecutiveReport = {
     reportType,
     timestamp: new Date().toISOString(),
     organizationId,
     language,
     summary: {
-      healthScore: payload.businessHealth.score,
-      revenue: payload.salesForecasting.tomorrow,
-      profit: payload.salesForecasting.tomorrow * 0.15,
+      healthScore: kpis?.health.score ?? null,
+      period: input.period,
+      cashFlow: kpis?.cashFlow ?? null,
+      revenue: kpis ? input.health.totalSalesAmount : null,
+      profit: kpis ? input.health.estimatedNetProfit : null,
       keyAlerts: generateExecutiveAlerts(data),
       priorityActions: generatePriorityActions(payload),
     },
     detailedReports: {
-      morningBriefing: generateMorningBriefing(payload, language, data.currency),
+      morningBriefing: generateMorningBriefing(payload, language, data),
       dailySummary: generateDailySummary(language),
       weeklyInsights: generateWeeklyInsights(language),
       monthlyForecast: generateMonthlyForecast(language),
@@ -194,37 +242,29 @@ export function analyzeProactiveAlerts(
 }
 
 export function explainKPI(
-  store: MemoryStore,
+  _store: MemoryStore | null,
   data: MemoryWriterRawData,
   kpiType: string,
   organizationId: string,
   language: "english" | "urdu" | "roman_urdu" = detectQueryLanguage("")
 ): KPIExplanation {
-  const payload = calculateBusinessIntelligence(store, data);
+  const { input, kpis } = executiveMetrics(data);
+  const scope = `BI Last 30 Days (${input.period.start} to ${input.period.end})`;
+  if (["health_score", "revenue", "profit", "cash_flow"].includes(kpiType)) {
+    const value = !kpis ? null : kpiType === "health_score" ? kpis.health.score
+      : kpiType === "revenue" ? input.health.totalSalesAmount
+      : kpiType === "profit" ? input.health.estimatedNetProfit : kpis.cashFlow;
+    const explanation = value === null || !kpis ? "The live KPI is unavailable."
+      : kpiType === "health_score" ? `Health score is ${value}/100 for ${scope}. ${describeHealth(input.health)}`
+      : kpiType === "cash_flow" ? `Cash Flow is ${formatRs(value, kpis.booksCurrency)} (receivables minus payables, as of ${input.period.end}).`
+      : `${kpiType === "profit" ? "Estimated net profit" : "Revenue"} is ${formatRs(value, kpis.booksCurrency)} for ${scope}.`;
+    return { kpiType, value, trend: "stable", explanation, recommendations: [], impactAssessment: "" };
+  }
 
   let value = 0;
   let previousValue = 0;
-  let trend: "up" | "down" | "stable" = "stable";
-
+  let trend: KPIExplanation["trend"] = "stable";
   switch (kpiType) {
-    case "health_score":
-      value = payload.businessHealth.score;
-      previousValue = (data as any).analytics?.previousHealthScore || value - 5;
-      trend = value > previousValue ? "up" : value < previousValue ? "down" : "stable";
-      break;
-
-    case "revenue":
-      value = payload.salesForecasting.tomorrow;
-      previousValue = payload.salesForecasting.weekly * 7;
-      trend = value > previousValue ? "up" : value < previousValue ? "down" : "stable";
-      break;
-
-    case "profit":
-      value = payload.salesForecasting.tomorrow * 0.15;
-      previousValue = payload.salesForecasting.weekly * 0.15 * 7;
-      trend = value > previousValue ? "up" : value < previousValue ? "down" : "stable";
-      break;
-
     case "inventory_turnover":
       value = calculateInventoryTurnover(data);
       previousValue = calculatePreviousInventoryTurnover(data);
@@ -236,85 +276,14 @@ export function explainKPI(
       previousValue = 0;
   }
 
-  let explanation = "";
-  let recommendations: string[] = [];
-  let impactAssessment = "";
-
-  switch (kpiType) {
-    case "health_score":
-      explanation = language === "urdu"
-        ? `صحت کا اسکور ${value} ہے، جو گزشتہ ${previousValue} سے ${trend === "up" ? "بہتر" : trend === "down" ? "خراب" : "مستحکم"} ہے۔`
-        : language === "roman_urdu"
-          ? `Health score ${value} hai, previous ${previousValue} se ${trend === "up" ? "better" : trend === "down" ? "worse" : "stable"}.`
-          : `Health score is ${value}, which is ${trend === "up" ? "better" : trend === "down" ? "worse" : "stable"} than previous value of ${previousValue}.`;
-      recommendations = language === "urdu"
-        ? ["ہر مصنوعے کی وضاحت کی جانچ پڑتال کریں جس کی ساکھ سکور کم ہے۔", "کاٹی ہوئی مصنوعات کی فہرست میں شامل مصنوعات کی دوبارہ تشخیص کریں۔", "کریڈٹ کے اداروں کے ساتھ تعلقات کو برقرار رکھنے کے لیے فروخت کے بعد سروس کالیں کریں۔"]
-        : language === "roman_urdu"
-          ? ["Audit product explanations of low health score items.", "Re-evaluate products in write-off list.", "Post-sale service calls for customer relations."]
-          : ["Audit products with low health scores.", "Re-evaluate write-off list products.", "Post-sale service calls for customer relationships."];
-      impactAssessment = trend === "up"
-        ? language === "urdu"
-          ? "کاروبار کی مجموعی صحت بہتر ہو رہی ہے، جو برآمدات اور منافع میں اضافے کی جانب اشارہ کرتا ہے۔"
-          : language === "roman_urdu"
-            ? "Business health improving, indicating growth in exports and profits."
-            : "Business health is improving, indicating growth in revenue and profit."
-        : trend === "down"
-          ? language === "urdu"
-            ? "کاروبار کی صحت گر رہی ہے، جو فوری توجہ کی ضرورت ہے کیونکہ یہ منافع کو متاثر کر سکتا ہے۔"
-            : language === "roman_urdu"
-              ? "Business health declining, requires immediate attention as it may affect profits."
-              : "Business health is declining, requiring immediate attention as it may affect profits."
-          : language === "urdu"
-            ? "کاروبار کی صحت مستحکم ہے، جو اچھی ہے لیکن بہتری کے لیے بہتر حکمت عملی کی ضرورت ہو سکتی ہے۔"
-            : language === "roman_urdu"
-              ? "Business health stable, which is good but improvement strategies may be needed."
-              : "Business health is stable, which is good but improvement strategies may be needed.";
-      break;
-
-    case "revenue":
-      explanation = language === "urdu"
-        ? `آج کی متوقع فروخت ${formatRs(value, data.currency)} ہے، جو گزشتہ دورانیہ سے ${trend === "up" ? "زیادہ" : trend === "down" ? "کم" : "برابر"} ہے۔`
-        : language === "roman_urdu"
-          ? `Tomorrow's expected sales are ${formatRs(value, data.currency)}, which is ${trend === "up" ? "more" : trend === "down" ? "less" : "same as"} than previous period.`
-          : `Tomorrow's expected sales are ${formatRs(value, data.currency)}, which is ${trend === "up" ? "more" : trend === "down" ? "less" : "the same as"} than previous period.`;
-      recommendations = language === "urdu"
-        ? ["بلند منافع والے مصنوعات کے لیے فروخت کی حکمت عملی میں ترمیم کریں۔", "سب سے زیادہ فروخت والے مصنوعات کے لیے فروخت کے بعد کی خدمات کو بہتر بنائیں۔", "کھڑے ہونے والی نقد رقم میں اضافہ کے لیے کسٹمر کریڈٹ کی حدود کی تشخیص کریں۔"]
-        : language === "roman_urdu"
-          ? ["Revise sales strategy for high-margin products.", "Improve post-sale service for best-sellers.", "Evaluate customer credit limits for outstanding growth."]
-          : ["Revise sales strategy for high-margin products.", "Improve post-sale service for best-sellers.", "Evaluate customer credit limits for outstanding growth."];
-      impactAssessment = trend === "up"
-        ? language === "urdu"
-          ? "یہ برآمدات میں اضافے کی جانب اشارہ کرتا ہے اور آمدنی میں بہتری لے کر آتا ہے۔"
-          : language === "roman_urdu"
-            ? "It indicates growth in exports and brings revenue improvement."
-            : "This indicates revenue growth and brings income improvement."
-        : trend === "down"
-          ? language === "urdu"
-            ? "اس سے برآمدات میں کمی آئے گی اور منافع متاثر ہوں گے۔"
-            : language === "roman_urdu"
-              ? "It will reduce exports and affect profits."
-              : "This will reduce revenue and affect profits."
-          : language === "urdu"
-            ? "آمدنی مستحکم ہے، گزشتہ دورانیہ کے برابر ہے۔"
-            : language === "roman_urdu"
-              ? "Revenue stable hai, previous period ke barabar hai."
-              : "Revenue is stable, consistent with the previous period.";
-      break;
-
-    default:
-      explanation = `${kpiType} is ${value}.`;
-      recommendations = ["Monitor this KPI regularly for trend analysis."];
-      impactAssessment = "This KPI provides insights into overall business performance.";
-  }
-
   return {
     kpiType,
     value,
     previousValue: previousValue > 0 ? previousValue : undefined,
     trend,
-    explanation,
-    recommendations,
-    impactAssessment,
+    explanation: `${kpiType} is ${value}.`,
+    recommendations: ["Monitor this KPI regularly for trend analysis."],
+    impactAssessment: "This KPI provides insights into overall business performance.",
   };
 }
 
@@ -481,27 +450,10 @@ function generatePriorityActions(payload: BusinessIntelligencePayload): string[]
 function generateMorningBriefing(
   payload: BusinessIntelligencePayload,
   language: "english" | "urdu" | "roman_urdu",
-  currency: unknown = "PKR"
+  data: MemoryWriterRawData,
 ): string {
-  if (language === "urdu") {
-    return `صبحانہ بریفنگ:\n` +
-      `- صحت کا اسکور: ${payload.businessHealth.score}\n` +
-      `- آج کی متوقع فروخت: ${formatRs(payload.salesForecasting.tomorrow, currency)}\n` +
-      `- کلیدی انتباہات: ${generateExecutiveAlerts({} as MemoryWriterRawData).join(", ")}\n` +
-      `- فوری کاروائی: ${generatePriorityActions(payload).join(", ")}`;
-  } else if (language === "roman_urdu") {
-    return `Morning briefing:\n` +
-      `- Health score: ${payload.businessHealth.score}\n` +
-      `- Today's expected sales: ${formatRs(payload.salesForecasting.tomorrow, currency)}\n` +
-      `- Key alerts: ${generateExecutiveAlerts({} as MemoryWriterRawData).join(", ")}\n` +
-      `- Immediate actions: ${generatePriorityActions(payload).join(", ")}`;
-  } else {
-    return `Morning Briefing:\n` +
-      `- Health Score: ${payload.businessHealth.score}\n` +
-      `- Today's Expected Sales: ${formatRs(payload.salesForecasting.tomorrow, currency)}\n` +
-      `- Key Alerts: ${generateExecutiveAlerts({} as MemoryWriterRawData).join(", ")}\n` +
-      `- Immediate Actions: ${generatePriorityActions(payload).join(", ")}`;
-  }
+  const title = language === "urdu" ? "صبحانہ بریفنگ" : "Morning Briefing";
+  return `${title}\n${formatExecutiveOverview(data)}\n- Immediate Actions: ${generatePriorityActions(payload).join(", ")}`;
 }
 
 function generateDailySummary(

@@ -31,7 +31,7 @@ function TableRenderer({ data }: { data: TableData }) {
         <thead>
           <tr className="bg-muted/50">
             {data.headers.map((h, i) => (
-              <th key={i} className="px-3 py-2 text-left font-medium text-muted-foreground">{h}</th>
+            <th key={i} className="px-3 py-2 text-left font-medium text-muted-foreground">{renderInline(h)}</th>
             ))}
           </tr>
         </thead>
@@ -39,7 +39,7 @@ function TableRenderer({ data }: { data: TableData }) {
           {data.rows.map((row, ri) => (
             <tr key={ri} className="border-t border-border/50 even:bg-muted/20">
               {row.map((cell, ci) => (
-                <td key={ci} className="px-3 py-1.5">{cell}</td>
+                  <td key={ci} className="px-3 py-1.5">{renderInline(cell)}</td>
               ))}
             </tr>
           ))}
@@ -73,12 +73,12 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
-function ListRenderer({ items, ordered }: { items: React.ReactNode[]; ordered: boolean }) {
+function ListRenderer({ items, ordered }: { items: string[]; ordered: boolean }) {
   const Tag = ordered ? "ol" : "ul";
   return (
     <Tag className={`my-2 ${ordered ? "list-decimal" : "list-disc"} pl-5 space-y-1`}>
       {items.map((item, i) => (
-        <li key={i}>{item}</li>
+        <li key={i}>{renderInline(item)}</li>
       ))}
     </Tag>
   );
@@ -90,7 +90,7 @@ interface ParsedBlock {
   language?: string;
   level?: number;
   table?: TableData;
-  items?: React.ReactNode[];
+  items?: string[];
   ordered?: boolean;
 }
 
@@ -145,14 +145,14 @@ function parseMarkdown(text: string): (ParsedBlock | string)[] {
       continue;
     }
 
-    if (/^[\-\*]\s/.test(line) || /^\d+[\.\)]\s/.test(line)) {
+    if (/^(?:[-*•]|\d+[.)])\s/.test(line)) {
       const items: string[] = [];
       const ordered = /^\d+[\.\)]\s/.test(line);
-      while (i < lines.length && (/^[\-\*]\s/.test(lines[i]) || /^\d+[\.\)]\s/.test(lines[i]))) {
-        items.push(lines[i].replace(/^[\-\*\d]+[\.\)]\s*/, ""));
+      while (i < lines.length && /^(?:[-*•]|\d+[.)])\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^(?:[-*•]|\d+[.)])\s+/, ""));
         i++;
       }
-      blocks.push({ type: "list", items: items as unknown as React.ReactNode[], ordered });
+      blocks.push({ type: "list", items, ordered });
       continue;
     }
 
@@ -183,7 +183,7 @@ function renderInline(text: string): React.ReactNode[] {
     if (boldMatch) matches.push({ index: boldMatch.index!, length: boldMatch[0].length, render: <strong key={key++}>{boldMatch[1]}</strong>, consumed: boldMatch[0].length });
     if (italicMatch) matches.push({ index: italicMatch.index!, length: italicMatch[0].length, render: <em key={key++}>{italicMatch[1]}</em>, consumed: italicMatch[0].length });
     if (codeMatch) matches.push({ index: codeMatch.index!, length: codeMatch[0].length, render: <InlineCode key={key++}>{codeMatch[1]}</InlineCode>, consumed: codeMatch[0].length });
-    if (linkMatch) matches.push({ index: linkMatch.index!, length: linkMatch[0].length, render: <a key={key++} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80">{linkMatch[1]}</a>, consumed: linkMatch[0].length });
+    if (linkMatch && /^https?:\/\//i.test(linkMatch[2])) matches.push({ index: linkMatch.index!, length: linkMatch[0].length, render: <a key={key++} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:text-primary/80">{linkMatch[1]}</a>, consumed: linkMatch[0].length });
 
     if (matches.length === 0) {
       parts.push(remaining);
