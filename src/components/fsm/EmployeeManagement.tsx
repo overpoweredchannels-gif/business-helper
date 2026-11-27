@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { readJsonBody } from "@/lib/tradeos/safe-json";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
 import { buildWhatsAppUrl, buildWhatsAppInviteMessage } from "@/lib/identity/staff-invitation";
 import { DEFAULT_STAFF_DESIGNATION } from "@/lib/identity/staff-roles";
@@ -113,8 +114,8 @@ export default function EmployeeManagement() {
   const loadOrganization = async () => {
     try {
       const res = await authorizedFetch("/api/identity/organization/current");
-      const data = await res.json();
-      if (data.organization?.name) setOrganizationName(data.organization.name);
+      const data = await readJsonBody(res);
+      if (data?.organization?.name) setOrganizationName(data.organization.name);
     } catch {
       // best-effort; fall back to generic label
     }
@@ -129,24 +130,24 @@ export default function EmployeeManagement() {
         authorizedFetch("/api/customers/assignment-options"),
         authorizedFetch("/api/identity/employees/summaries"),
       ]);
-      const [data, optionsData, summariesData] = await Promise.all([res.json(), optionsRes.json(), summariesRes.json()]);
+      const [data, optionsData, summariesData] = await Promise.all([readJsonBody(res), readJsonBody(optionsRes), readJsonBody(summariesRes)]);
       if (res.status === 403) {
         setIsOwner(false);
-        setMessage({ type: "error", text: data.error || t('fsm.routes.accessDenied') });
-      } else if (Array.isArray(data.employees)) {
+        setMessage({ type: "error", text: data?.error || t('fsm.routes.accessDenied') });
+      } else if (Array.isArray(data?.employees)) {
         setEmployees(data.employees);
       } else {
-        setMessage({ type: "error", text: data.error || t('fsm.employees.loadEmployeesFailed') });
+        setMessage({ type: "error", text: data?.error || t('fsm.employees.loadEmployeesFailed') });
       }
-      if (optionsData.ok) {
+      if (optionsData?.ok) {
         setTerritories(optionsData.territories ?? []);
         setRoutes(optionsData.routes ?? []);
         setRouteStops(optionsData.routeStops ?? []);
       }
-      if (summariesData.ok) setSummaries(summariesData.employees ?? []);
+      if (summariesData?.ok) setSummaries(summariesData.employees ?? []);
       const customerRes = await authorizedFetch("/api/customers");
-      const customerData = await customerRes.json();
-      if (Array.isArray(customerData.customers)) setCustomers(customerData.customers);
+      const customerData = await readJsonBody(customerRes);
+      if (customerData && Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
     } finally {
@@ -203,8 +204,8 @@ export default function EmployeeManagement() {
           body: JSON.stringify(form),
         },
       );
-      const data = await res.json();
-      if (data.employee) {
+      const data = await readJsonBody(res);
+      if (data?.employee) {
         const assignmentRes = await authorizedFetch(`/api/identity/employees/${data.employee.id}/assignment`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -215,13 +216,13 @@ export default function EmployeeManagement() {
             customer_ids: selectedCustomerIds,
           }),
         });
-        const assignmentData = await assignmentRes.json();
-        if (!assignmentRes.ok || !assignmentData.ok) throw new Error(assignmentData.error ?? "Employee saved, but assignment failed");
+        const assignmentData = await readJsonBody(assignmentRes);
+        if (!assignmentRes.ok || !assignmentData?.ok) throw new Error(assignmentData?.error ?? "Employee saved, but assignment failed");
         setMessage({ type: "ok", text: editingId ? t('fsm.employees.employeeUpdated') : t('fsm.employees.employeeAdded') });
         resetForm();
         load();
       } else {
-        setMessage({ type: "error", text: data.error || t('fsm.employees.saveFailed') });
+        setMessage({ type: "error", text: data?.error || t('fsm.employees.saveFailed') });
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
@@ -231,14 +232,14 @@ export default function EmployeeManagement() {
   const remove = async (id: string) => {
     try {
       const res = await authorizedFetch(`/api/identity/employees/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.success) {
+      const data = await readJsonBody(res);
+      if (data?.success) {
         setMessage({ type: "ok", text: t('fsm.employees.employeeDeleted') });
         if (editingId === id) resetForm();
         setPendingDeleteId(null);
         load();
       } else {
-        setMessage({ type: "error", text: data.error || t('fsm.employees.deleteFailed') });
+        setMessage({ type: "error", text: data?.error || t('fsm.employees.deleteFailed') });
       }
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
@@ -252,11 +253,11 @@ export default function EmployeeManagement() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ employeeId: emp.id }),
       });
-      const data = await res.json();
-      if (data.loginId && data.code) {
+      const data = await readJsonBody(res);
+      if (data?.loginId && data?.code) {
         return { loginId: data.loginId, code: data.code, inviteLink: data.inviteLink };
       }
-      return { error: data.error || "Invite generation failed" };
+      return { error: data?.error || "Invite generation failed" };
     } catch (err) {
       return { error: err instanceof Error ? err.message : t('tracking.networkError') };
     }
