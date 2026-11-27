@@ -3,7 +3,7 @@ import { createConversationContext, addConversationMessage, updateConversationSt
 import { ConversationState, ConversationContext, ActionType } from "@/lib/ai/conversation-engine";
 import type { MemoryStore } from "@/lib/brain/memory/business-memory";
 import type { MemoryWriterRawData } from "@/lib/brain/contracts/memory";
-import { generateExecutiveReport } from "@/lib/ai/executive-ai";
+import { explainKPI, generateExecutiveReport } from "@/lib/ai/executive-ai";
 
 export interface ExecutiveSessionContext extends ConversationContext {
   currentFocus?: "briefing" | "alerts" | "kpi" | "recommendations" | "general";
@@ -100,10 +100,16 @@ export async function getExecutiveAIResponse(
   if (reportType) {
     context.executiveFocus.currentReportType = reportType;
   }
+  const kpiType = resolveExecutiveKpiType(intent?.queryType, message);
+  if (kpiType) {
+    context.currentFocus = "kpi";
+  } else if (reportType || intent?.queryType === "briefing" || /\b(?:briefing|executive (?:report|summary))\b/i.test(message)) {
+    context.currentFocus = "briefing";
+  }
 
   const updatedContext = addConversationMessage(context, "user", "text", message) as ExecutiveSessionContext;
 
-  const response = await processExecutiveQuery(updatedContext, language, store, data, intent);
+  const response = await processExecutiveQuery(updatedContext, language, store, data, kpiType);
 
   const finalContext = {
     ...updatedContext,
@@ -179,6 +185,7 @@ export async function getExecutiveDashboardData(
 }
 
 export function saveExecutiveConversationContext(context: ExecutiveSessionContext): void {
+  if (typeof localStorage === "undefined") return;
   const existingContexts = JSON.parse(localStorage.getItem("executive_contexts") || "{}") as Record<string, ExecutiveSessionContext>;
   existingContexts[context.sessionId] = context;
   localStorage.setItem("executive_contexts", JSON.stringify(existingContexts));
@@ -307,12 +314,20 @@ function calculateExecutiveImpact(recommendation: any, data: MemoryWriterRawData
   return { revenueImpact, costSavings };
 }
 
+function resolveExecutiveKpiType(queryType: string | null | undefined, message: string) {
+  if (queryType === "inventory_turnover" || /\binventory turnover\b/i.test(message)) return "inventory_turnover";
+  if (queryType === "revenue" || queryType === "profit") return queryType;
+  if (/\b(?:explain|kpi)\b.*\b(?:revenue|profit)\b/i.test(message)) return /\bprofit\b/i.test(message) ? "profit" : "revenue";
+  if (queryType === "health_score" || queryType === "kpi" || /\b(?:health score|business health|kpis?)\b/i.test(message)) return "health_score";
+  return null;
+}
+
 async function processExecutiveQuery(
   context: ExecutiveSessionContext,
   language: string,
   store?: MemoryStore,
   data?: MemoryWriterRawData,
-  intent?: { module: string; queryType?: string | null }
+  kpiType?: ReturnType<typeof resolveExecutiveKpiType>
 ): Promise<any> {
   const now = new Date().toISOString();
 
@@ -355,13 +370,14 @@ async function processExecutiveQuery(
 
     case "kpi":
       if (store && data) {
-        const kpi = generateExecutiveKPIInsights(store, data, language);
+        const kpi = explainKPI(store, data, kpiType ?? "health_score", context.organizationId, context.executiveProfile.language);
         return {
           ok: true,
-          message: kpi.message,
+          message: kpi.explanation,
           type: "executive_kpi",
           timestamp: now,
-          insights: kpi.insights,
+          insights: [kpi.explanation, ...kpi.recommendations],
+          kpi,
         };
       }
       break;
@@ -425,46 +441,4 @@ function generateExecutiveRecommendationMessage(recommendations: any[], language
   } else {
     return `There are ${criticalRecs} critical and ${highRecs} high priority recommendations that require immediate action.`;
   }
-}
-
-function generateExecutiveKPIInsights(
-  store: MemoryStore,
-  data: MemoryWriterRawData,
-  language: string
-): any {
-  const insights: any = {
-    message: "",
-    insights: [],
-  };
-
-  if (language === "urdu") {
-    insights.message = "انتظام کی کارکردگی کے بارے میں مندرجہ ذیل اہم اشارے ہیں...";
-    insights.insights = [
-      "صحت کا اسکور 85 ہے، جو بہتری کی طرف اشارہ کرتا ہے۔",
-      "فروخت اگلے مہینے کے ہدف سے 15% زیادہ ہے۔",
-      "انوینٹری کی سطح صحت کی حالت میں ہے۔",
-      "کریڈٹ کی وصولیوں میں 20% بہتری ہے۔",
-      "خرچوں میں 10% کی کمی ہے۔",
-    ];
-  } else if (language === "roman_urdu") {
-    insights.message = "System performance key indicators are as follows...";
-    insights.insights = [
-      "Health score is 85, indicating improvement.",
-      "Sales are 15% above target for next month.",
-      "Inventory levels are at healthy state.",
-      "Credit collections have improved by 20%.",
-      "Expenses have reduced by 10%.",
-    ];
-  } else {
-    insights.message = "Key performance indicators for the system are as follows...";
-    insights.insights = [
-      "Health score is 85, indicating improvement.",
-      "Sales are 15% above target for next month.",
-      "Inventory levels are at healthy state.",
-      "Credit collections have improved by 20%.",
-      "Expenses have reduced by 10%.",
-    ];
-  }
-
-  return insights;
 }

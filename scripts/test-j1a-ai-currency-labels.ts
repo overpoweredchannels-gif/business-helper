@@ -248,18 +248,6 @@ async function main(): Promise<void> {
   const eurBi = processBusinessIntelligenceQuery("sales_forecast", eur.store, eur.data, "forecast");
   check(eurBi.ok && eurBi.message.includes("€"), "EUR sales forecast carries €");
   check(!hasPkrLabel(eurBi.message), "EUR sales forecast carries no PKR/Rs label");
-  // Executive report / KPI explanation: the label wiring is verified
-  // statically, NOT by running the report — generateExecutiveReport and
-  // explainKPI are BROKEN on unmodified code and still broken after J1a
-  // (PRE-EXISTING, out of scope): executive-ai.ts has its own local
-  // calculateBusinessIntelligence that returns store.getBusinessSummary()
-  // (a STRING), while both functions read payload.businessHealth.score,
-  // so they throw TypeError on any input. That crash predates J1a (same
-  // function at HEAD) and needs its own slice; J1a only re-labels the
-  // money inside them. The checks below lock in the known-broken state
-  // so the follow-up slice can flip them to green — they are labelled
-  // "known-broken: executive-ai defect, expected-fail" (Claude msg 48)
-  // so they read as expected-fail, not green.
   const execAiSource = readFileSync("src/lib/ai/executive-ai.ts", "utf8");
   check(
     execAiSource.includes("generateMorningBriefing(payload, language, data.currency)"),
@@ -273,30 +261,10 @@ async function main(): Promise<void> {
     execAiSource.includes("formatRs(value, data.currency)"),
     "explainKPI formats the KPI value with the org currency"
   );
-  let execCrashedAsKnown = false;
-  try {
-    generateExecutiveReport(eur.store, eur.data, "morning", "org-eur", "english");
-  } catch (err) {
-    execCrashedAsKnown =
-      err instanceof TypeError && /reading 'score'/.test(err.message);
-  }
-  check(
-    execCrashedAsKnown,
-    "known-broken: executive-ai defect, expected-fail — generateExecutiveReport still throws TypeError reading businessHealth (needs its own slice)"
-  );
-  let kpiCrashedAsKnown = false;
-  try {
-    explainKPI(eur.store, eur.data, "revenue", "org-eur", "english");
-  } catch (err) {
-    // explainKPI("revenue") reads payload.salesForecasting.tomorrow first,
-    // so its TypeError names 'tomorrow' (same string-payload root cause).
-    kpiCrashedAsKnown =
-      err instanceof TypeError && /reading 'tomorrow'/.test(err.message);
-  }
-  check(
-    kpiCrashedAsKnown,
-    "known-broken: executive-ai defect, expected-fail — explainKPI still throws the same TypeError (needs its own slice)"
-  );
+  const report = generateExecutiveReport(eur.store, eur.data, "morning", "org-eur", "english");
+  check(report.detailedReports.morningBriefing.includes("€"), "EUR executive briefing carries €");
+  const kpi = explainKPI(eur.store, eur.data, "revenue", "org-eur", "english");
+  check(kpi.explanation.includes("€"), "EUR executive revenue explanation carries €");
 
   // --- (e) Intelligence modules: PKR org (mirror). ---
   console.log("(e) intelligence modules on a PKR org still label PKR");

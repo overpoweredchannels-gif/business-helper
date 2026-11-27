@@ -3,13 +3,10 @@ import { detectQueryLanguage } from "@/lib/ai/business-intelligence";
 import { createSupabaseService } from "@/lib/supabase/server";
 import { loadRawBusinessData } from "@/lib/brain/supabase-loader";
 import { UnifiedAssistant } from "@/lib/assistant/assistant";
-import { formatRs } from "@/lib/ai/business-intelligence";
 import { requirePermission } from "@/lib/identity/authorization";
 import { 
   getExecutiveAIResponse, 
   getExecutiveDashboardData,
-  createExecutiveConversationContext,
-  saveExecutiveConversationContext
 } from "@/lib/ai/executive-conversation";
 
 export async function POST(req: NextRequest) {
@@ -47,7 +44,7 @@ export async function POST(req: NextRequest) {
       executive_name,
       language || detectQueryLanguage(message || ""),
       report_type,
-      intent,
+      { ...intent, queryType: query_type ?? intent.queryType },
       assistant.store.store,
       rawData
     );

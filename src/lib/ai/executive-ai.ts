@@ -1,7 +1,8 @@
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
-import { detectQueryLanguage } from "@/lib/ai/business-intelligence";
-import { formatAiMoney } from "./ai-money";
+import { calculateBusinessIntelligence, detectQueryLanguage, formatRs } from "./business-intelligence";
+
+type BusinessIntelligencePayload = ReturnType<typeof calculateBusinessIntelligence>;
 
 export type ExecutiveReportType = "morning" | "daily" | "weekly" | "monthly";
 
@@ -119,9 +120,9 @@ export function generateExecutiveReport(
     },
     detailedReports: {
       morningBriefing: generateMorningBriefing(payload, language, data.currency),
-      dailySummary: generateDailySummary(payload, language),
-      weeklyInsights: generateWeeklyInsights(payload, language),
-      monthlyForecast: generateMonthlyForecast(payload, language),
+      dailySummary: generateDailySummary(language),
+      weeklyInsights: generateWeeklyInsights(language),
+      monthlyForecast: generateMonthlyForecast(language),
     },
   };
 
@@ -137,14 +138,14 @@ export function analyzeProactiveAlerts(
 
   const payload = calculateBusinessIntelligence(store, data);
 
-  payload.smartReorder.forEach((reorder: any, index: number) => {
+  payload.smartReorder.forEach((reorder, index) => {
     if (reorder.urgency === "critical") {
       alerts.push({
         alertId: `critical-reorder-${index}`,
         alertType: "critical",
         category: "inventory_shortage",
         title: "Critical Stock Outage Alert",
-        description: `${reorder.productName} is at ${reorder.currentStock} units. Reorder level is ${reorder.reorderLevel}. Estimated days left: ${reorder.estimatedDaysLeft || "Unknown"}.`,
+        description: `${reorder.name} is at ${reorder.currentStock} units. Recommended reorder quantity: ${reorder.reorderQuantity}.`,
         severity: "urgent",
         actionRequired: "Immediately source from alternate supplier or increase order quantity.",
         affectedArea: "Inventory",
@@ -155,14 +156,14 @@ export function analyzeProactiveAlerts(
     }
   });
 
-  payload.customerIntelligence.churnRisk.forEach((customer: any, index: number) => {
-    if (customer.riskScore > 0.8) {
+  payload.customerIntelligence.churnRisk.forEach((customer, index) => {
+    if (customer.riskScore > 80) {
       alerts.push({
         alertId: `churn-risk-${index}`,
         alertType: "high",
         category: "customer_churn_risk",
         title: "High Customer Churn Risk Alert",
-        description: `${customer.customerName} has last purchase ${customer.daysSinceLastPurchase} days ago. Risk score: ${Math.round(customer.riskScore * 100)}%. Current balance: ${customer.outstandingBalance}.`,
+        description: `${customer.name} has a churn risk score of ${Math.round(customer.riskScore)}%.`,
         severity: "warning",
         actionRequired: "Contact customer for win-back offer or credit review.",
         affectedArea: "Customer Relations",
@@ -173,40 +174,20 @@ export function analyzeProactiveAlerts(
     }
   });
 
-  payload.supplierIntelligence.delayed.forEach((supplier: any, index: number) => {
-    if (supplier.deliveryDays > 7) {
-      alerts.push({
-        alertId: `supplier-delay-${index}`,
-        alertType: "medium",
-        category: "supplier_delay",
-        title: "Supplier Delivery Delay Alert",
-        description: `${supplier.supplierName} is delayed by ${supplier.deliveryDays} days. Expected delivery: ${supplier.expectedDelivery}. Current status: ${supplier.status}.`,
-        severity: "warning",
-        actionRequired: "Consider alternate supplier or negotiate new terms.",
-        affectedArea: "Supply Chain",
-        timestamp: new Date().toISOString(),
-        organizationId,
-        status: "active",
-      });
-    }
-  });
-
-  payload.expenses?.forEach?.((expense: any, index: number) => {
-    if (expense.severity === "high") {
-      alerts.push({
-        alertId: `expense-anomaly-${index}`,
-        alertType: "medium",
-        category: "expense_anomaly",
-        title: "Expense Anomaly Alert",
-        description: `${expense.expenseType} expense of ${expense.amount} on ${expense.expenseDate} exceeds normal pattern. Reason: ${expense.reason}.`,
-        severity: "info",
-        actionRequired: "Review expense with finance team.",
-        affectedArea: "Finance",
-        timestamp: new Date().toISOString(),
-        organizationId,
-        status: "active",
-      });
-    }
+  payload.supplierIntelligence.delayed.forEach((supplier, index) => {
+    alerts.push({
+      alertId: `supplier-delay-${index}`,
+      alertType: "medium",
+      category: "supplier_delay",
+      title: "Supplier Overdue Payable Alert",
+      description: `${supplier.name} has an overdue payable.`,
+      severity: "warning",
+      actionRequired: "Review the overdue payable with the supplier.",
+      affectedArea: "Supply Chain",
+      timestamp: new Date().toISOString(),
+      organizationId,
+      status: "active",
+    });
   });
 
   return alerts;
@@ -430,7 +411,8 @@ export function prioritizeAIRecommendations(
     });
   });
 
-  payload.recommendations.forEach((rec: any, index: number) => {
+  const recordedRevenue = data.salesTransactions.reduce((sum, sale) => sum + (Number(sale.total_amount) || 0), 0);
+  payload.recommendations.forEach((rec, index) => {
     if (!prioritized.find(p => p.title === rec.title)) {
       prioritized.push({
         recommendationId: `rec-dashboard-${index}`,
@@ -439,7 +421,7 @@ export function prioritizeAIRecommendations(
         title: rec.title,
         description: rec.description,
         potentialImpact: {
-          revenueImpact: Math.round((data.salesTransactions as any[])?.reduce((sum, s) => sum + s.amount, 0) * 0.03),
+          revenueImpact: Math.round(recordedRevenue * 0.03),
           timeToImplement: "2-3 weeks",
         },
         implementationComplexity: "moderate",
@@ -454,13 +436,6 @@ export function prioritizeAIRecommendations(
   });
 
   return prioritized.slice(0, 10);
-}
-
-function calculateBusinessIntelligence(
-  store: MemoryStore,
-  data: MemoryWriterRawData
-): any {
-  return store.getBusinessSummary();
 }
 
 function generateExecutiveAlerts(data: MemoryWriterRawData): string[] {
@@ -485,18 +460,18 @@ function generateExecutiveAlerts(data: MemoryWriterRawData): string[] {
   return alerts;
 }
 
-function generatePriorityActions(payload: any): string[] {
+function generatePriorityActions(payload: BusinessIntelligencePayload): string[] {
   const actions: string[] = [];
 
-  if (payload.smartReorder.some((r: any) => r.urgency === "critical")) {
+  if (payload.smartReorder.some((r) => r.urgency === "critical")) {
     actions.push("Immediate inventory procurement needed");
   }
 
-  if (payload.customerIntelligence.churnRisk.some((c: any) => c.riskScore > 0.7)) {
+  if (payload.customerIntelligence.churnRisk.some((c) => c.riskScore > 70)) {
     actions.push("Customer retention campaigns required");
   }
 
-  if (payload.supplierIntelligence.delayed.some((s: any) => s.deliveryDays > 7)) {
+  if (payload.supplierIntelligence.delayed.length > 0) {
     actions.push("Supplier performance review needed");
   }
 
@@ -504,7 +479,7 @@ function generatePriorityActions(payload: any): string[] {
 }
 
 function generateMorningBriefing(
-  payload: any,
+  payload: BusinessIntelligencePayload,
   language: "english" | "urdu" | "roman_urdu",
   currency: unknown = "PKR"
 ): string {
@@ -530,7 +505,6 @@ function generateMorningBriefing(
 }
 
 function generateDailySummary(
-  payload: any,
   language: "english" | "urdu" | "roman_urdu"
 ): string {
   return language === "urdu"
@@ -550,7 +524,6 @@ function generateDailySummary(
 }
 
 function generateWeeklyInsights(
-  payload: any,
   language: "english" | "urdu" | "roman_urdu"
 ): string {
   return language === "urdu"
@@ -570,7 +543,6 @@ function generateWeeklyInsights(
 }
 
 function generateMonthlyForecast(
-  payload: any,
   language: "english" | "urdu" | "roman_urdu"
 ): string {
   return language === "urdu"
@@ -597,8 +569,4 @@ function calculateInventoryTurnover(data: MemoryWriterRawData): number {
 
 function calculatePreviousInventoryTurnover(data: MemoryWriterRawData): number {
   return Math.max(0, calculateInventoryTurnover(data) - 1);
-}
-
-function formatRs(amount: number, currency: unknown = "PKR"): string {
-  return formatAiMoney(amount, currency);
 }
