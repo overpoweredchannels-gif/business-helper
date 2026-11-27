@@ -1,5 +1,6 @@
 import { MemoryStore } from "../memory/business-memory";
 import { formatAiMoney } from "../../ai/ai-money";
+import type { AssistantKpiBlock } from "../../ai/assistant-kpi-block";
 
 export interface ContextBundle {
   businessSummary: string;
@@ -91,12 +92,14 @@ export class ContextRetriever {
     };
   }
 
-  getBusinessContext(): string {
+  getBusinessContext(kpis?: AssistantKpiBlock | null): string {
+    if (!this.store.meta.organizationId && !kpis) return "(No business data loaded)";
     const ctx = this.getFullContext();
     const lines: string[] = [
+      ...(kpis ? [kpis.text, ""] : []),
       ctx.businessSummary,
       "",
-      `Health Score: ${ctx.healthScore.score}/100 (${ctx.healthScore.label})`,
+      ...(kpis === undefined ? [`Health Score: ${ctx.healthScore.score}/100 (${ctx.healthScore.label})`] : []),
       `Period Revenue: ${formatAiMoney(ctx.currentPeriod.revenue, this.store.meta.currency)}`,
       `Period Profit: ${formatAiMoney(ctx.currentPeriod.profit, this.store.meta.currency)}`,
       `Invoices: ${ctx.currentPeriod.invoiceCount}`,
@@ -106,7 +109,7 @@ export class ContextRetriever {
     if (ctx.inventoryAlerts.length > 0) {
       lines.push("", "Inventory Alerts:", ...ctx.inventoryAlerts.map((a) => `  - ${a}`));
     }
-    if (ctx.customerAlerts.length > 0) {
+    if (kpis === undefined && ctx.customerAlerts.length > 0) {
       lines.push("", "Customer Alerts:", ...ctx.customerAlerts.map((a) => `  - ${a}`));
     }
 

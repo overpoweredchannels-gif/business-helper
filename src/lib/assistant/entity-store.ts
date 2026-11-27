@@ -2,6 +2,7 @@ import { MemoryStore, MemoryWriter } from "../brain";
 import { PreferenceStore } from "../brain/learning/preference-store";
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import type { EntityRef, ClarificationCandidate } from "./types";
+import { buildAssistantKpiBlock } from "../ai/assistant-kpi-block";
 
 export interface EntityMatch {
   ref: EntityRef;
@@ -17,12 +18,14 @@ export interface EntityMatch {
  */
 export class AssistantEntityStore {
   private _store: MemoryStore;
+  private raw: MemoryWriterRawData;
 
   get store(): MemoryStore {
     return this._store;
   }
 
   constructor(data: MemoryWriterRawData) {
+    this.raw = data;
     this._store = new MemoryStore();
     const writer = new MemoryWriter(this._store, new PreferenceStore());
     writer.writeRaw(data);
@@ -37,6 +40,7 @@ export class AssistantEntityStore {
     const writer = new MemoryWriter(fresh, new PreferenceStore());
     writer.writeRaw(data);
     this._store = fresh;
+    this.raw = data;
   }
 
   getOrganizationId(): string {
@@ -44,7 +48,9 @@ export class AssistantEntityStore {
   }
 
   getBusinessSummary(): string {
-    return this.store.getBusinessSummary();
+    const currency = this.raw.assistantKpiCurrency === undefined ? this.raw.currency : this.raw.assistantKpiCurrency;
+    const kpis = buildAssistantKpiBlock(this.raw, currency, this.raw.timezone);
+    return [kpis?.text, this.store.getBusinessSummary()].filter(Boolean).join("\n\n");
   }
 
   getConversationContext(count: number): Array<{ role: string; text: string }> {

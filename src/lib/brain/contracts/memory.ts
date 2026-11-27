@@ -412,6 +412,8 @@ export interface MemoryWriterRawData {
   // Org books currency — see MemoryMeta.currency. Loaded from the
   // organizations row (books_currency, else regional_preferences).
   currency: string;
+  assistantKpiCurrency?: string | null;
+  assistantKpiReady?: boolean;
   products: Array<{
     id: number | string;
     name: string;
@@ -421,6 +423,8 @@ export interface MemoryWriterRawData {
     category_name?: string | null;
     last_purchase_price?: number | null;
     default_selling_price?: number | null;
+    current_stock?: number | null;
+    units_per_pack?: number | null;
     minimum_stock_level?: number | null;
     reorder_level?: number | null;
     track_batch?: boolean | null;
@@ -489,6 +493,7 @@ export interface MemoryWriterRawData {
     quantity: number;
     selling_price: number;
     purchase_price_snapshot?: number | null;
+    unit_mode?: "main" | "subunit" | null;
     // J1b receivables fix — line discount, an input of the tile's
     // invoice-net-total fallback (see salesTransactions above).
     discount?: number | string | null;

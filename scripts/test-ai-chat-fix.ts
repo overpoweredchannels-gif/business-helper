@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   const pageSource = readFileSync("src/app/page.tsx", "utf8");
   const onBrainChatStart = pageSource.indexOf("const onBrainChat");
   assert.ok(onBrainChatStart >= 0, "onBrainChat exists in page.tsx");
-  const onBrainChatEnd = pageSource.indexOf("}, []);", onBrainChatStart);
+  const onBrainChatEnd = pageSource.indexOf("\n  const buildAnalyticsContext", onBrainChatStart);
   assert.ok(onBrainChatEnd > onBrainChatStart, "onBrainChat block ends");
   const onBrainChatBlock = pageSource.slice(onBrainChatStart, onBrainChatEnd);
   assert.ok(
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     "onBrainChat never calls the provider router directly"
   );
   assert.ok(
-    onBrainChatBlock.includes("getBusinessContext()"),
+    onBrainChatBlock.includes("getBusinessContext(buildCurrentAssistantKpiBlock())"),
     "onBrainChat sends the loaded business context to the server"
   );
   assert.ok(

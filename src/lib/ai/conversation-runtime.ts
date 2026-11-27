@@ -24,6 +24,7 @@ import {
 } from "./conversation-engine";
 import { executeSaleDraft } from "./sales-executor";
 import { formatAiMoney } from "./ai-money";
+import type { AssistantKpiBlock } from "./assistant-kpi-block";
 import { executePurchaseDraft } from "./purchase-executor";
 import { processInventoryQuery } from "./inventory-intelligence";
 import type { InventoryQueryIntent } from "./inventory-intelligence";
@@ -255,7 +256,8 @@ export class ConversationRuntime {
     message: string,
     sessionId: string,
     organizationId: string,
-    profileId: string | null
+    profileId: string | null,
+    kpis?: AssistantKpiBlock | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     let context = this.getOrCreateSession(sessionId, organizationId, profileId);
 
@@ -274,7 +276,7 @@ export class ConversationRuntime {
       const resume = await this.checkIsResume(message);
       if (resume) {
         context = this.resetSession(context);
-        return await this.handleNewIntent(message, context, sessionId, organizationId, profileId);
+        return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis);
       }
       context = addConversationMessage(context, "assistant", "text", "The previous operation failed. Say yes to try again or provide a new command.");
       this.sessions.set(sessionId, context);
@@ -283,11 +285,11 @@ export class ConversationRuntime {
 
     if (context.state === "completed" || context.state === "cancelled") {
       context = this.resetSession(context);
-      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId);
+      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis);
     }
 
     if (context.state === "idle") {
-      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId);
+      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis);
     }
 
     if (context.state === "waiting_for_confirmation") {
@@ -344,14 +346,15 @@ export class ConversationRuntime {
     context: ConversationContext,
     sessionId: string,
     organizationId: string,
-    profileId: string | null
+    profileId: string | null,
+    kpis?: AssistantKpiBlock | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     context = updateConversationState(context, "waiting_for_intent");
 
     const classification = await this.classifyIntent(message, context);
 
     if (!classification.ok || classification.intent === "unknown") {
-      return await this.fallbackToChat(message, context, sessionId, organizationId, profileId);
+      return await this.fallbackToChat(message, context, sessionId, organizationId, profileId, kpis);
     }
 
     context.actionType = classification.intent;
@@ -430,10 +433,11 @@ export class ConversationRuntime {
           sessionId,
           organizationId,
           profileId,
-          classification.language
+          classification.language,
+          kpis
         );
       }
-      return await this.fallbackToChat(message, context, sessionId, organizationId, profileId);
+      return await this.fallbackToChat(message, context, sessionId, organizationId, profileId, kpis);
     }
 
     if (classification.intent === "inventory_query") {
@@ -520,10 +524,11 @@ export class ConversationRuntime {
     sessionId: string,
     organizationId: string,
     profileId: string | null,
-    language?: string
+    language?: string,
+    kpis?: AssistantKpiBlock | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
-    const ctx = this.store ? this.getBusinessContextText() : "";
-    const recentConv = this.store ? this.store.getConversationContext(5) : [];
+    const ctx = this.getBusinessContextText(organizationId, kpis);
+    const recentConv = this.store?.meta.organizationId === organizationId ? this.store.getConversationContext(5) : [];
     const history = recentConv.map((m) => `${m.role}: ${m.text}`).join("\n");
 
     const result = await callAiProviderRouter({
@@ -533,7 +538,7 @@ export class ConversationRuntime {
         language: resolveBusinessQueryLanguage(language),
         businessContext: ctx,
         history,
-        currency: this.orgCurrency(),
+        currency: kpis ? kpis.booksCurrency : this.orgCurrency(),
       }),
       temperature: 0.3,
     });
@@ -584,12 +589,13 @@ export class ConversationRuntime {
     context: ConversationContext,
     sessionId: string,
     organizationId: string,
-    profileId: string | null
+    profileId: string | null,
+    kpis?: AssistantKpiBlock | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     // Unknown intent: answer the message directly with the same
     // business-chat path the business_query branch uses (language "auto"
     // mirrors the question's own language style).
-    return await this.answerBusinessQuestionDirectly(message, context, sessionId, organizationId, profileId);
+    return await this.answerBusinessQuestionDirectly(message, context, sessionId, organizationId, profileId, undefined, kpis);
   }
 
   private async classifyIntent(message: string, context: ConversationContext): Promise<{
@@ -1300,9 +1306,9 @@ export class ConversationRuntime {
     } catch {}
   }
 
-  private getBusinessContextText(): string {
-    if (!this.store) return "";
-    return this.store.getBusinessSummary();
+  private getBusinessContextText(organizationId: string, kpis?: AssistantKpiBlock | null): string {
+    const summary = this.store?.meta.organizationId === organizationId ? this.store.getBusinessSummary() : "";
+    return [kpis?.text, summary].filter(Boolean).join("\n\n");
   }
 
   resetSessionById(sessionId: string): void {

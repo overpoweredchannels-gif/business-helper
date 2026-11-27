@@ -1,4 +1,5 @@
 import { getBusinessBrain } from "@/lib/brain";
+import type { BusinessBrain } from "@/lib/brain/bootstrap";
 import type { ChatRequest, ChatResponse, StreamEvent } from "./contracts";
 import type { Channel } from "./types";
 import { TCGP_VERSION, SUPPORTED_VERSIONS } from "./contracts";
@@ -103,7 +104,7 @@ export class ConversationGateway {
     activeSessions: 0,
   };
 
-  async chat(request: ChatRequest): Promise<ChatResponse> {
+  async chat(request: ChatRequest, brain: BusinessBrain | null = getBusinessBrain()): Promise<ChatResponse> {
     const requestId = generateRequestId();
     const correlationId = request.correlationId || generateCorrelationId();
     const timestamp = request.timestamp || new Date().toISOString();
@@ -171,7 +172,6 @@ export class ConversationGateway {
     });
 
     // 6. Delegate to BusinessBrain
-    const brain = getBusinessBrain();
     if (!brain) {
       this.metrics.brainErrorCount++;
       gatewayLogger.error("brain.unavailable", {
@@ -280,7 +280,7 @@ export class ConversationGateway {
     return { ...this.metrics };
   }
 
-  async *chatStream(request: ChatRequest): AsyncGenerator<StreamEvent, void, void> {
+  async *chatStream(request: ChatRequest, brain: BusinessBrain | null = getBusinessBrain()): AsyncGenerator<StreamEvent, void, void> {
     const requestId = generateRequestId();
     const correlationId = request.correlationId || generateCorrelationId();
 
@@ -333,7 +333,6 @@ export class ConversationGateway {
     const conversationId = this.resolveConversation(request);
     this.resolveSession(request, conversationId);
 
-    const brain = getBusinessBrain();
     if (!brain) {
       this.metrics.brainErrorCount++;
       gatewayLogger.error("brain.unavailable", {

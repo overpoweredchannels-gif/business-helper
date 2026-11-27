@@ -106,6 +106,7 @@ export function buildBusinessQueryDirectPrompt(input: {
   return [
     `You are the AI assistant for a Pakistani retail/wholesale business called Aankh.`,
     `Answer the user's question concisely using the business context below.`,
+    `Use the current KPI block, when present, for outstanding balances, stock value, and business health.`,
     `If the user greets you, greet back and ask how you can help.`,
     aiCurrencyPromptLine(input.currency),
     businessQueryLanguageLine(input.language),

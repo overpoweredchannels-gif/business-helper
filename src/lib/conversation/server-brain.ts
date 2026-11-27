@@ -21,8 +21,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bootstrapOrganizationData } from "@/lib/brain/supabase-loader";
 import type { ActorContext } from "@/lib/identity/types";
+import type { BusinessBrain } from "@/lib/brain/bootstrap";
 
-export type ServerBrainInitResult = { ok: true } | { ok: false; error: string };
+export type ServerBrainInitResult = { ok: true; brain: BusinessBrain } | { ok: false; error: string };
 
 async function bestEffortString(
   query: () => PromiseLike<{ data: Record<string, unknown> | null; error: unknown }>,
@@ -67,12 +68,13 @@ export async function ensureServerBusinessBrain(
     actor.organizationId,
     organizationName,
     ownerName,
+    true,
   );
-  if (!result.success) {
+  if (!result.success || !result.brain) {
     return {
       ok: false,
       error: `BRAIN_NOT_INITIALIZED: Business Brain is not initialized. Load business data first.${result.error ? ` (${result.error})` : ""}`,
     };
   }
-  return { ok: true };
+  return { ok: true, brain: result.brain };
 }

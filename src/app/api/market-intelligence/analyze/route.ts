@@ -270,7 +270,7 @@ Business context: ${inputBusinessContext}
       return NextResponse.json(
         {
           ok: false,
-          error: "AI providers are temporarily unavailable. Tried configured providers.",
+          error: routerResult.error ?? "The AI request failed.",
           details: routerResult.error,
           attempts: routerResult.attempts,
         },

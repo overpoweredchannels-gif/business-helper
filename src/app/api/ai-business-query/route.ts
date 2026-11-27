@@ -56,7 +56,9 @@ const buildLocalFallbackResult = (
   language: string,
   queryType: string,
   businessSummary: any,
-  booksCurrency: unknown
+  booksCurrency: unknown,
+  kpiText: string,
+  providerError: string,
 ): BusinessQueryResult => {
   const sales = getSummarySection(businessSummary, "sales");
   const purchases = getSummarySection(businessSummary, "purchases");
@@ -94,7 +96,7 @@ const buildLocalFallbackResult = (
   }
 
   return {
-    answer: `AI providers are unavailable, but here is a local Aankh summary for "${question}". ${keyPoints.join(" ")}`,
+    answer: [providerError, `Showing a local Aankh summary for "${question}".`, kpiText, keyPoints.join(" ")].filter(Boolean).join("\n\n"),
     query_type: queryType || "general",
     language: language || "auto",
     key_points: keyPoints,
@@ -141,6 +143,7 @@ async function runPost(request: NextRequest) {
       }
     }
     const currencyInstruction = aiCurrencyPromptLine(booksCurrency);
+    const kpiText = safeText(businessSummary.balances?.assistant_kpis?.text ?? businessSummary.assistant_kpis?.text, 1800);
     const summaryText = safeText(JSON.stringify(businessSummary), 24000);
     const isAnalyticsExplainer = queryType === "analytics_explainer";
     const prompt = isAnalyticsExplainer
@@ -150,6 +153,8 @@ Answer ONLY from the provided analytics context. Do not invent numbers, percenta
 If the provided data is not enough to answer accurately, say exactly: "There is not enough recorded business data to answer this accurately."
 Do not execute actions or suggest that you changed records.
 ${currencyInstruction}
+Use the current KPI block below for totals it covers.
+${kpiText || "(No business data loaded)"}
 
 Language setting: ${language}
 Reply in the requested language. For Urdu or Roman Urdu, keep business terms understandable for Pakistani traders.
@@ -185,6 +190,8 @@ You are Aankh Business Assistant for Pakistani wholesalers, traders, distributor
 Answer only from the provided business_summary. Do not invent data. If data is missing, say it is not available.
 Do not execute actions or suggest that you changed records.
 ${currencyInstruction}
+Use the current KPI block below for totals it covers.
+${kpiText || "(No business data loaded)"}
 
 Language setting: ${language}
 If language is auto, reply in the same language style as the question. For Urdu or Roman Urdu, keep business terms understandable for Pakistani traders.
@@ -233,7 +240,10 @@ ${summaryText}
           ok: true,
           provider: "local_fallback",
           model: "local_summary",
-          result: buildLocalFallbackResult(question, language, queryType, businessSummary, booksCurrency),
+          result: buildLocalFallbackResult(
+            question, language, queryType, businessSummary, booksCurrency, kpiText,
+            routerResult.error ?? "The AI request failed.",
+          ),
           raw: { attempts: routerResult.attempts, fallback: true },
         });
       }
@@ -241,7 +251,7 @@ ${summaryText}
       return NextResponse.json(
         {
           ok: false,
-          error: "AI providers are temporarily unavailable. Tried configured providers.",
+          error: routerResult.error ?? "The AI request failed.",
           details: routerResult.error,
           attempts: routerResult.attempts,
         },

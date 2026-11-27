@@ -1,27 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { NotificationCategory, NotificationItem } from "@/lib/tradeos/types";
-import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
+import { useMemo, useState } from "react";
+import type { NotificationCategory } from "@/lib/tradeos/types";
+import type { VisibleNotification } from "@/lib/notifications/visible-notifications";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import { Bell, CheckCircle2, X } from "lucide-react";
 
 const CATEGORY_STYLES: Record<string, string> = {
   draft_sale: "bg-warning/10 text-warning-text border-warning/30",
   approval: "bg-primary/10 text-primary border-primary/30",
-  target: "bg-violet-500/10 text-violet-500 border-violet-500/30",
+  target: "bg-primary/10 text-primary border-primary/30",
   route: "bg-success/10 text-success border-success/30",
-  duty: "bg-cyan-500/10 text-cyan-500 border-cyan-500/30",
+  duty: "bg-success/10 text-success border-success/30",
   off_route: "bg-destructive/10 text-destructive border-destructive/30",
-  missed_customer: "bg-orange-500/10 text-orange-500 border-orange-500/30",
-  inventory: "bg-amber-500/10 text-amber-500 border-amber-500/30",
-  attendance: "bg-indigo-500/10 text-indigo-500 border-indigo-500/30",
-  leave: "bg-pink-500/10 text-pink-500 border-pink-500/30",
-  collection: "bg-teal-500/10 text-teal-500 border-teal-500/30",
+  missed_customer: "bg-warning/10 text-warning-text border-warning/30",
+  inventory: "bg-warning/10 text-warning-text border-warning/30",
+  attendance: "bg-primary/10 text-primary border-primary/30",
+  leave: "bg-muted text-muted-foreground border-border",
+  collection: "bg-success/10 text-success border-success/30",
   general: "bg-muted text-muted-foreground border-border",
 };
 
 interface NotificationCenterProps {
+  notifications: readonly VisibleNotification[];
+  unreadCount: number;
+  loading: boolean;
+  loadError: string | null;
+  onMarkRead: (item: VisibleNotification) => Promise<void>;
+  onMarkAllRead: () => Promise<void>;
+  onClearStored: () => Promise<void>;
   onReviewDraft?: (draftEntityId: string, notificationId: string) => void;
   // Opens the page-level in-app confirm dialog (the repo standard). The
   // destructive Clear all action must never go through window.confirm:
@@ -35,7 +42,10 @@ interface NotificationCenterProps {
   }) => void;
 }
 
-export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: NotificationCenterProps) {
+export default function NotificationCenter({
+  notifications, unreadCount, loading, loadError, onMarkRead, onMarkAllRead, onClearStored,
+  onReviewDraft, onRequestConfirm,
+}: NotificationCenterProps) {
   const { t } = useRegional();
   const categoryLabel = (c: NotificationCategory) => {
     const labels: Record<NotificationCategory, string> = {
@@ -64,76 +74,34 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
     { id: "collection", label: t('team.metricCollections') },
     { id: "general", label: t('fsm.notifications.catGeneral') },
   ];
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [maxVisible, setMaxVisible] = useState(30);
 
-  const load = useCallback(async () => {
+  const markRead = async (item: VisibleNotification) => {
     try {
-      setLoading(true);
-      const res = await authorizedFetch("/api/notifications?limit=100");
-      const data = await res.json();
-      if (data.ok && Array.isArray(data.notifications)) {
-        setNotifications(data.notifications);
-        setMessage(null);
-      } else {
-        setMessage({ type: "error", text: data.error || t('fsm.notifications.loadFailed') });
-      }
-    } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : t('tracking.networkError') });
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const markRead = async (id: string) => {
-    const res = await authorizedFetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true, read_at: new Date().toISOString() } : n)));
+      await onMarkRead(item);
       setMessage(null);
-    } else {
-      setMessage({ type: "error", text: data.error || t('fsm.notifications.updateFailed') });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : t('fsm.notifications.updateFailed') });
     }
   };
 
   const markAllRead = async () => {
-    const res = await authorizedFetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark_all_read" }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      setNotifications((prev) => prev.map((n) => (n.is_read ? n : { ...n, is_read: true, read_at: new Date().toISOString() })));
+    try {
+      await onMarkAllRead();
       setMessage({ type: "ok", text: t('fsm.notifications.allRead') });
-    } else {
-      setMessage({ type: "error", text: data.error || t('fsm.notifications.updateAllFailed') });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : t('fsm.notifications.updateAllFailed') });
     }
   };
 
   const doClearAll = async () => {
-    const res = await authorizedFetch("/api/notifications", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "clear_all" }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      setNotifications([]);
+    try {
+      await onClearStored();
       setMessage({ type: "ok", text: t('fsm.notifications.cleared') });
-    } else {
-      setMessage({ type: "error", text: data.error || t('fsm.notifications.clearFailed') });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : t('fsm.notifications.clearFailed') });
     }
   };
 
@@ -158,7 +126,6 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
     return filtered.slice(0, maxVisible);
   }, [notifications, filter, maxVisible]);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
   const filteredCount =
     filter === "all" ? notifications.length : filter === "unread" ? unreadCount : notifications.filter((n) => n.category === filter).length;
 
@@ -184,7 +151,7 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
           <button
             type="button"
             onClick={clearAll}
-            disabled={notifications.length === 0}
+            disabled={!notifications.some((note) => note.source === "notification")}
             className="inline-flex items-center gap-1.5 rounded border border-destructive/40 bg-card px-3 py-1.5 text-xs text-destructive hover:bg-destructive/5 disabled:opacity-40"
           >
             <X className="size-3.5" />
@@ -222,6 +189,7 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
         })}
       </div>
 
+      {loadError && <p className="mt-3 text-sm text-destructive" role="alert">{loadError}</p>}
       {message && (
         <p
           className={`mt-3 rounded border px-3 py-2 text-sm ${
@@ -245,7 +213,7 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
           {visible.map((note, index) => {
             const category = (note.category ?? "general") as NotificationCategory;
             const categoryClass = CATEGORY_STYLES[category] ?? CATEGORY_STYLES.general;
-            const isDraft = category === "draft_sale" && Boolean(note.entity_id);
+            const isDraft = category === "draft_sale" && Boolean(note.entity_id && note.notificationId);
             return (
               <div
                 key={note.id}
@@ -259,9 +227,9 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <div className="font-medium text-foreground">{note.title}</div>
-                    <div className="shrink-0 text-xs text-muted-foreground">
+                    {note.created_at && <div className="shrink-0 text-xs text-muted-foreground">
                       {new Date(note.created_at).toLocaleString()}
-                    </div>
+                    </div>}
                   </div>
                   {note.body && <p className="mt-0.5 text-sm text-foreground/80">{note.body}</p>}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -276,8 +244,8 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
                     {isDraft && onReviewDraft && (
                       <button
                         type="button"
-                        onClick={() => onReviewDraft(note.entity_id!, note.id)}
-                        className="rounded bg-primary px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-primary/90"
+                        onClick={() => onReviewDraft(note.entity_id!, note.notificationId!)}
+                        className="min-h-11 rounded bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
                       >
                         {t('fsm.notifications.reviewDraft')}
                       </button>
@@ -285,8 +253,8 @@ export default function NotificationCenter({ onReviewDraft, onRequestConfirm }: 
                     {!note.is_read && (
                       <button
                         type="button"
-                        onClick={() => markRead(note.id)}
-                        className="rounded border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+                        onClick={() => markRead(note)}
+                        className="min-h-11 rounded border border-border px-2 text-[11px] text-muted-foreground hover:bg-muted"
                       >
                         {t('fsm.notifications.markRead')}
                       </button>

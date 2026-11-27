@@ -187,7 +187,7 @@ async function main(): Promise<void> {
   );
   check(
     routeSource.indexOf("ensureServerBusinessBrain(supabase, auth.actor)") <
-      routeSource.indexOf("getGateway().chat(body)"),
+      routeSource.indexOf("getGateway().chat(body, brainInit.brain)"),
     "brain init runs BEFORE getGateway().chat(body)",
   );
   check(

@@ -1,8 +1,9 @@
-import { initializeBusinessBrain } from "./bootstrap";
+import { initializeBusinessBrain, type BusinessBrain } from "./bootstrap";
 import type { MemoryWriterRawData } from "./contracts/memory";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseTimeZone } from "../regional/settings";
 import { resolveBooksCurrency } from "../books/currency";
+import { resolveAiCurrency } from "../ai/ai-money";
 
 export async function loadRawBusinessData(
   supabase: SupabaseClient,
@@ -29,12 +30,12 @@ export async function loadRawBusinessData(
     tasksRes,
     alertsRes,
   ] = await Promise.all([
-    supabase.from("products").select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, minimum_stock_level, reorder_level, track_batch, track_expiry, is_active, created_at, updated_at").eq("organization_id", organizationId).order("name", { ascending: true }),
+    supabase.from("products").select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, current_stock, units_per_pack, minimum_stock_level, reorder_level, track_batch, track_expiry, is_active, created_at, updated_at").eq("organization_id", organizationId).order("name", { ascending: true }),
     supabase.from("customers").select("id, customer_name, shop_name, phone, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, created_at, updated_at").eq("organization_id", organizationId).order("customer_name", { ascending: true }),
     supabase.from("suppliers").select("id, supplier_name, contact_person, phone, city, notes, created_at, updated_at").eq("organization_id", organizationId).order("supplier_name", { ascending: true }),
     supabase.from("profiles").select("id, display_name, email, role, is_active").eq("organization_id", organizationId).order("email", { ascending: true }),
     supabase.from("sales_transactions").select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, total_amount, discount_amount, tax_rate").eq("organization_id", organizationId).order("created_at", { ascending: false }),
-    supabase.from("sales_items").select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
+    supabase.from("sales_items").select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, unit_mode, discount, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("purchase_transactions").select("id, supplier_id, invoice_number, created_at, purchase_date, payment_type").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("purchase_items").select("id, purchase_transaction_id, product_id, quantity, purchase_price, selling_price, created_at").eq("organization_id", organizationId).order("created_at", { ascending: false }),
     supabase.from("expenses").select("id, expense_type, amount, notes, expense_date, created_at, supplier_id, customer_id").eq("organization_id", organizationId).order("created_at", { ascending: false }),
@@ -95,6 +96,7 @@ export async function loadRawBusinessData(
   // legacy defaults in place and the load continues.
   let orgTimeZone = "Asia/Karachi";
   let orgCurrency = "PKR";
+  let assistantKpiCurrency: string | null = null;
   try {
     const orgRes = await supabase
       .from("organizations")
@@ -108,6 +110,9 @@ export async function loadRawBusinessData(
     if (!orgRes?.error && orgRow) {
       orgCurrency = resolveBooksCurrency(orgRow.books_currency, orgRow.regional_preferences);
       const prefs = orgRow.regional_preferences;
+      const settings = prefs && typeof prefs === "object" && !Array.isArray(prefs) ? prefs as Record<string, unknown> : null;
+      const aiCurrency = resolveAiCurrency(orgRow.books_currency ?? settings?.accountingCurrency);
+      assistantKpiCurrency = aiCurrency.kind === "known" ? aiCurrency.currency : aiCurrency.kind === "unknown" ? aiCurrency.code : null;
       const zone =
         prefs && typeof prefs === "object" && !Array.isArray(prefs)
           ? (prefs as Record<string, unknown>).timeZone
@@ -130,6 +135,8 @@ export async function loadRawBusinessData(
     // (Asia/Karachi / PKR) apply, exactly as before this change.
     timezone: orgTimeZone,
     currency: orgCurrency,
+    assistantKpiCurrency,
+    assistantKpiReady: queryResults.every(({ name, error }) => !error || ["staff", "tasks", "ai_alerts"].includes(name)),
     products: (productsRes.data ?? []) as MemoryWriterRawData["products"],
     customers: (customersRes.data ?? []) as MemoryWriterRawData["customers"],
     suppliers: (suppliersRes.data ?? []) as MemoryWriterRawData["suppliers"],
@@ -180,6 +187,7 @@ export async function loadRawBusinessData(
 }
 
 interface BootstrapResult {
+  brain?: BusinessBrain;
   success: boolean;
   organizationName: string;
   productCount: number;
@@ -191,7 +199,8 @@ export async function bootstrapOrganizationData(
   supabase: SupabaseClient,
   organizationId: string,
   organizationName: string,
-  ownerName: string
+  ownerName: string,
+  requestScoped = false,
 ): Promise<BootstrapResult> {
   try {
     const data = await loadRawBusinessData(supabase, organizationId);
@@ -202,10 +211,14 @@ export async function bootstrapOrganizationData(
     data.organizationName = organizationName;
     data.ownerName = ownerName;
 
-    const brain = initializeBusinessBrain(data);
+    const brain = initializeBusinessBrain(
+      data,
+      requestScoped ? undefined : () => loadRawBusinessData(supabase, organizationId),
+    );
 
     return {
       success: true,
+      brain,
       organizationName: brain.getMemorySnapshot().organizationName,
       productCount: brain.getMemorySnapshot().productCount,
       customerCount: brain.getMemorySnapshot().customerCount,

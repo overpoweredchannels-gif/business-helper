@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       return authErrorResponse(brainInit.error, 503);
     }
 
-    const result = await getGateway().chat(body);
+    const result = await getGateway().chat(body, brainInit.brain);
     const httpStatus = result.ok ? 200 : result.error?.startsWith("VALIDATION_ERROR") ? 422 : result.error?.startsWith("BRAIN_NOT_INITIALIZED") ? 503 : 400;
 
     return NextResponse.json(result, { status: httpStatus });

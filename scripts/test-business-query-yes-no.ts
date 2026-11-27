@@ -265,7 +265,7 @@ function main(): void {
     "unknown classification still detected",
   );
   check(
-    runtimeSource.includes("return await this.fallbackToChat(message, context, sessionId, organizationId, profileId);"),
+    runtimeSource.includes("return await this.fallbackToChat(message, context, sessionId, organizationId, profileId, kpis);"),
     "unknown intent still falls back to chat",
   );
   check(

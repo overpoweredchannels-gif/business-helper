@@ -196,8 +196,8 @@ function main(): void {
     "formatBooksMoney defaults to the active books currency",
   );
   check(
-    generatorSource.includes("formatBooksMoney(payable)"),
-    "supplier payable candidate formats with formatBooksMoney (active books currency)",
+    generatorSource.includes("formatAiMoney(payable, assistantBooksCurrency)"),
+    "supplier payable candidate formats with formatAiMoney using the organization's books currency",
   );
   check(
     !/["']Rs/.test(generatorSource) && !generatorSource.includes('"PKR"') && !generatorSource.includes("'PKR'"),

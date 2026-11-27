@@ -437,7 +437,7 @@ async function main(): Promise<void> {
   );
   const pageSource = readFileSync("src/app/page.tsx", "utf8");
   const onBrainChatStart = pageSource.indexOf("const onBrainChat");
-  const onBrainChatBlock = pageSource.slice(onBrainChatStart, pageSource.indexOf("}, []);", onBrainChatStart));
+  const onBrainChatBlock = pageSource.slice(onBrainChatStart, pageSource.indexOf("\n  const buildAnalyticsContext", onBrainChatStart));
   check(onBrainChatBlock.includes("booksCurrency"), "onBrainChat sends booksCurrency to the business-brain route");
   for (const rel of [
     "src/lib/ai/customer-intelligence.ts",

@@ -9,6 +9,7 @@ import { logPiiSafe, filterResponse } from "./pii-filter";
 import type { MemoryWriterRawData, PreferencesSnapshot } from "./contracts/memory";
 import type { SkillResult } from "./contracts/skills";
 import { conversationRuntime } from "@/lib/ai/conversation-runtime";
+import { buildAssistantKpiBlock, type AssistantKpiBlock } from "../ai/assistant-kpi-block";
 
 // ─── Public Interface ───
 
@@ -23,7 +24,7 @@ export interface ChatResult {
 export interface BusinessBrain {
   getContext(): ContextBundle;
   getMinimalContext(): ContextBundle;
-  getBusinessContext(): string;
+  getBusinessContext(kpis?: AssistantKpiBlock | null): string;
   executeSkill(skillId: string, input?: Record<string, unknown>): SkillResult<unknown>;
   getPreferences(): PreferencesSnapshot;
   recordInteraction(topic: string): void;
@@ -61,7 +62,10 @@ export function getBusinessBrain(): BusinessBrain | null {
 
 // ─── Bootstrap ───
 
-export function initializeBusinessBrain(data: MemoryWriterRawData): BusinessBrain {
+export function initializeBusinessBrain(
+  data: MemoryWriterRawData,
+  loadCurrentKpiData?: () => Promise<MemoryWriterRawData | null>,
+): BusinessBrain {
   if (_instance) {
     _writer?.clear();
   }
@@ -79,7 +83,7 @@ export function initializeBusinessBrain(data: MemoryWriterRawData): BusinessBrai
   const brain: BusinessBrain = {
     getContext: () => retriever.getFullContext(),
     getMinimalContext: () => retriever.getMinimalContext(),
-    getBusinessContext: () => retriever.getBusinessContext(),
+    getBusinessContext: (kpis) => retriever.getBusinessContext(kpis),
     executeSkill: (skillId: string, input?: Record<string, unknown>) =>
       executeSkill(skillId, input ?? {}, store, prefs),
     getPreferences: () => prefs.get(),
@@ -140,11 +144,14 @@ export function initializeBusinessBrain(data: MemoryWriterRawData): BusinessBrai
           };
         }
 
+        const raw = loadCurrentKpiData ? await loadCurrentKpiData() : data;
+        const kpis = buildAssistantKpiBlock(raw, raw && (raw.assistantKpiCurrency === undefined ? raw.currency : raw.assistantKpiCurrency), raw?.timezone);
         const runtimeResult = await conversationRuntime.processMessage(
           message,
           sessionId,
           orgId,
-          profileId
+          profileId,
+          kpis
         );
 
         if (runtimeResult.state === "idle" && runtimeResult.actionType === null) {

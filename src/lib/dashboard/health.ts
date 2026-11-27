@@ -28,6 +28,66 @@
  * contradict its value.
  */
 
+import type { MessageKey } from "../regional/messages";
+
+export type DashboardHealthOverview = {
+  totalSalesAmount: number;
+  estimatedNetProfit: number;
+  outOfStockCount: number;
+  lowStockCount: number;
+  customerCollectionsTotal: number;
+  expensesTotal: number;
+};
+
+export function getBusinessHealthScore(
+  overview: DashboardHealthOverview,
+  translate: (key: MessageKey) => string = (key) => key,
+) {
+  let score = 50;
+  const reasons: string[] = [];
+  if (overview.totalSalesAmount > 0) {
+    score += 10;
+    reasons.push(translate('page.salesRecordedInPeriod'));
+  } else {
+    score -= 10;
+    reasons.push(translate('page.noSalesInPeriod'));
+  }
+  if (overview.estimatedNetProfit > 0) {
+    score += 20;
+    reasons.push(translate('page.netProfitPositive'));
+  } else if (overview.totalSalesAmount > 0) {
+    score -= 15;
+    reasons.push(translate('page.netProfitNotPositive'));
+  }
+  if (overview.outOfStockCount > 0) {
+    score -= 20;
+    reasons.push(translate('page.outOfStockProducts').replace('{count}', String(overview.outOfStockCount)));
+  } else if (overview.lowStockCount > 0) {
+    score -= 10;
+    reasons.push(translate('page.lowStockProducts').replace('{count}', String(overview.lowStockCount)));
+  } else {
+    score += 10;
+    reasons.push(translate('page.noUrgentLowStockView'));
+  }
+  if (overview.customerCollectionsTotal >= overview.totalSalesAmount * 0.5 || overview.totalSalesAmount === 0) {
+    score += 10;
+    reasons.push(translate('page.collectionsReasonable'));
+  } else {
+    score -= 10;
+    reasons.push(translate('page.collectionsLow'));
+  }
+  if (overview.expensesTotal > overview.totalSalesAmount && overview.totalSalesAmount > 0) {
+    score -= 15;
+    reasons.push(translate('page.expensesHigher'));
+  } else {
+    score += 5;
+    reasons.push(translate('page.expensesNotHigher'));
+  }
+  const boundedScore = Math.max(0, Math.min(100, score));
+  const label = businessHealthLabel(boundedScore);
+  return { score: boundedScore, label, reasons };
+}
+
 export type BusinessHealthLabel =
   | "Excellent"
   | "Good"

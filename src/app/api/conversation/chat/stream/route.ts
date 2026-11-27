@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGateway } from "@/lib/conversation";
 import { requireAuthenticatedOrg } from "@/lib/identity/authorization";
+import { ensureServerBusinessBrain } from "@/lib/conversation/server-brain";
+import { createSupabaseService } from "@/lib/supabase/server";
+import type { ChatRequest } from "@/lib/conversation/contracts";
 
 export const runtime = "nodejs";
 
@@ -31,11 +34,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const brainInit = await ensureServerBusinessBrain(createSupabaseService(), auth.actor);
+  if (!brainInit.ok) return NextResponse.json({ ok: false, error: brainInit.error }, { status: 503 });
+
   const gateway = getGateway();
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const event of gateway.chatStream(body as any)) {
+        for await (const event of gateway.chatStream(body as unknown as ChatRequest, brainInit.brain)) {
           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
         }
       } catch {

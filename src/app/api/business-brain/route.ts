@@ -74,6 +74,7 @@ async function runPost(req: NextRequest) {
       `You are the AI assistant for the business "${body.organizationName || "Aankh"}" running inside Aankh — a Pakistani retail/wholesale ERP system.`,
       ``,
       `Your role: Answer business questions using ONLY the Business Memory context below.`,
+      `Use the current KPI block for the totals it covers, even when older memory or conversation history differs.`,
       `You have NO access to live data — everything you know is in the context.`,
       `Never fabricate numbers. If the context lacks data, say so.`,
       `If a prior assistant message reports a failure, a timeout, or asks for a yes/no confirmation, it is a stale error — ignore it and answer the user's current question from the Business Memory context only.`,
@@ -102,7 +103,7 @@ async function runPost(req: NextRequest) {
     if (!result.ok || !result.text) {
       logPiiSafe("warn", "ai_response_empty", "AI provider returned empty response", { provider: result.provider });
       return NextResponse.json(
-        { ok: false, error: result.error || "AI provider returned no response." },
+        { ok: false, error: result.error || "AI provider returned no response.", attempts: result.attempts },
         { status: 502 }
       );
     }

@@ -128,7 +128,9 @@ import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
 import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, shouldRetryAuthForNotLoadedReads, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
-import { businessHealthCashFlowStatus, businessHealthLabel, businessHealthProfitMarginStatus } from "@/lib/dashboard/health";
+import { businessHealthCashFlowStatus, businessHealthProfitMarginStatus, getBusinessHealthScore } from "@/lib/dashboard/health";
+import { buildAssistantKpiBlock, salesLineCogsInMainUnits } from "@/lib/ai/assistant-kpi-block";
+import { formatAiMoney } from "@/lib/ai/ai-money";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
@@ -174,6 +176,7 @@ import LoadFormGenerator from "@/components/sales/LoadFormGenerator";
 import SalesInvoiceGenerator from "@/components/sales/SalesInvoiceGenerator";
 import EmployeeManagement from "@/components/fsm/EmployeeManagement";
 import NotificationCenter from "@/components/fsm/NotificationCenter";
+import { BELL_NOTIFICATION_LIMIT, getVisibleNotifications, type VisibleNotification } from "@/lib/notifications/visible-notifications";
 import TerritoriesManager from "@/components/fsm/TerritoriesManager";
 import RoutesManager from "@/components/fsm/RoutesManager";
 import LiveTrackingView from "@/components/fsm/LiveTrackingView";
@@ -808,6 +811,7 @@ export default function Home() {
   // chains below. Kept so those chains keep their exact behaviour.
   const [organizationName] = useState("");
   const [currentOrganization, setCurrentOrganization] = useState<any | null>(null);
+  const assistantBooksCurrency = currentOrganization?.books_currency ?? currentOrganization?.regional_preferences?.accountingCurrency;
   const [businessSettingsName, setBusinessSettingsName] = useState("");
   const [businessSettingsPhone, setBusinessSettingsPhone] = useState("");
   const [businessSettingsAddress, setBusinessSettingsAddress] = useState("");
@@ -1060,37 +1064,6 @@ export default function Home() {
   // the browser, so every provider came back unconfigured and every chat
   // message failed. Route through /api/business-brain, which holds the keys
   // server-side, sending the already-loaded business context + recent turns.
-  const onBrainChat = useCallback(async (message: string, context?: ChatContext): Promise<ChatResponse> => {
-    const conversationId =
-      context?.conversationId ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    const correlationId = `corr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    const brain = getBusinessBrain();
-    if (!brain) {
-      return buildChatResponse(
-        {
-          ok: false,
-          message: "",
-          error: "BRAIN_NOT_INITIALIZED: Business Brain is not initialized. Load business data first.",
-        },
-        { conversationId, correlationId }
-      );
-    }
-    const result = await chatWithBusinessBrain({
-      message,
-      organizationName: brain.getMemorySnapshot().organizationName,
-      businessContext: [brain.getBusinessContext(), formatVisibleAiAlertsContext(visibleAiAlerts)].join("\n\n"),
-      conversationHistory: context?.history,
-      booksCurrency: booksCurrencyRef.current,
-    });
-    // HYBRID Slice 6: an unreachable AI service means the device is
-    // offline — show the localized internet-required message instead
-    // of the English fallback.
-    const mappedResult =
-      !result.ok && result.error === SERVER_CHAT_UNREACHABLE_ERROR
-        ? { ...result, error: t("offline.internetRequired") }
-        : result;
-    return buildChatResponse(mappedResult, { conversationId, correlationId });
-  }, [visibleAiAlerts]);
   const [isVoiceAnswerListening, setIsVoiceAnswerListening] = useState(false);
   const [voiceAnswerMessage, setVoiceAnswerMessage] = useState<string | null>(null);
   const [voiceAnswerError, setVoiceAnswerError] = useState<string | null>(null);
@@ -1134,10 +1107,11 @@ export default function Home() {
   const aiVoiceAutoSendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiVoiceFinalTranscriptRef = useRef("");
   const aiVoiceLastAutoSentRef = useRef<{ text: string; sentAt: number }>({ text: "", sentAt: 0 });
-  const [realNotifications, setRealNotifications] = useState<NotificationItem[]>([]);
-  const [notificationHistory, setNotificationHistory] = useState<NotificationItem[]>([]);
-  const [notificationFilter, setNotificationFilter] = useState<"all" | "unread" | "draft_sale" | "approval">("all");
-  const [notificationHistoryLoading, setNotificationHistoryLoading] = useState(false);
+  const notificationScope = currentProfile?.id && currentOrganizationId ? `${currentOrganizationId}:${currentProfile.id}` : "";
+  const [notificationRows, setNotificationRows] = useState<{ scope: string; rows: NotificationItem[] }>({ scope: "", rows: [] });
+  const [notificationReadState, setNotificationReadState] = useState<{ scope: string; ids: Set<string> }>({ scope: "", ids: new Set() });
+  const [notificationLoadError, setNotificationLoadError] = useState<{ scope: string; message: string } | null>(null);
+  const notificationRequest = useRef(0);
   const [saleAlert, setSaleAlert] = useState<NotificationItem | null>(null);
   const [aiDailyBriefings, setAiDailyBriefings] = useState<AiDailyBriefing[]>([]);
   const [aiBriefingMessage, setAiBriefingMessage] = useState<string | null>(null);
@@ -1760,16 +1734,19 @@ export default function Home() {
   };
 
   const fetchRealNotifications = async (organizationId?: string | null) => {
-    if (!currentProfile) return;
+    if (!notificationScope || (organizationId && organizationId !== currentOrganizationId)) return;
+    const request = ++notificationRequest.current;
     try {
-      const response = await authorizedFetch("/api/notifications?limit=100&unread_only=true");
+      const response = await authorizedFetch("/api/notifications?limit=100");
       const data = await response.json();
+      if (request !== notificationRequest.current) return;
       if (!data.ok || !Array.isArray(data.notifications)) {
-        if (data.error) console.warn("fetch notifications:", data.error);
+        setNotificationLoadError({ scope: notificationScope, message: data.error || t('fsm.notifications.loadFailed') });
         return;
       }
       const fresh = data.notifications as NotificationItem[];
-      setRealNotifications(fresh);
+      setNotificationRows({ scope: notificationScope, rows: fresh });
+      setNotificationLoadError(null);
 
       const draft = fresh.find((n) => n.category === "draft_sale" && !n.is_read);
       if (draft) {
@@ -1786,56 +1763,36 @@ export default function Home() {
         }
       }
     } catch (err) {
-      console.warn("fetch notifications error:", err);
-    }
-  };
-
-    const fetchNotificationHistory = async (organizationId?: string | null) => {
-    if (!currentProfile) return;
-    setNotificationHistoryLoading(true);
-    try {
-      const response = await authorizedFetch("/api/notifications?limit=100");
-      const data = await response.json();
-      if (data.ok && Array.isArray(data.notifications)) {
-        setNotificationHistory(data.notifications as NotificationItem[]);
+      if (request === notificationRequest.current) {
+        setNotificationLoadError({ scope: notificationScope, message: err instanceof Error ? err.message : t('fsm.notifications.loadFailed') });
       }
-    } catch (err) {
-      console.warn("fetch notification history error:", err);
-    } finally {
-      setNotificationHistoryLoading(false);
     }
   };
 
-  const markNotificationsRead = async (id?: string, markAll = false) => {
+  const updateStoredNotifications = async (method: "PATCH" | "DELETE", body: Record<string, string>) => {
+    const response = await authorizedFetch("/api/notifications", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || t('fsm.notifications.updateFailed'));
+    await fetchRealNotifications();
+  };
+
+  const markNotificationsRead = async (id: string) => {
     try {
-      const response = await authorizedFetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(markAll ? { action: "mark_all_read" } : { id }),
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || t('fsm.notifications.updateFailed'));
-      await fetchRealNotifications();
-      await fetchNotificationHistory();
-    } catch (err) {
-      console.warn("mark notification read error:", err);
+      await updateStoredNotifications("PATCH", { id });
+    } catch (error) {
+      console.warn("mark notification read error:", error);
     }
   };
 
-  const deleteNotification = async (id: string) => {
-    try {
-      const response = await authorizedFetch("/api/notifications", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || t('page.failedDeleteNotification'));
-      await fetchRealNotifications();
-      await fetchNotificationHistory();
-    } catch (err) {
-      console.warn("delete notification error:", err);
-    }
+  const markDerivedNotificationsRead = (ids: string[]) => {
+    setNotificationReadState((previous) => ({
+      scope: notificationScope,
+      ids: new Set([...(previous.scope === notificationScope ? previous.ids : []), ...ids]),
+    }));
   };
 
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
@@ -2466,11 +2423,14 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!currentProfile) return;
+    if (!notificationScope) return;
     fetchRealNotifications(currentOrganizationId);
     const interval = window.setInterval(() => fetchRealNotifications(currentOrganizationId), 30000);
-    return () => window.clearInterval(interval);
-  }, [currentProfile?.id, currentOrganizationId]);
+    return () => {
+      window.clearInterval(interval);
+      notificationRequest.current++;
+    };
+  }, [notificationScope, currentOrganizationId]);
 
   useEffect(() => {
     if (!saleAlert) return;
@@ -3543,18 +3503,6 @@ export default function Home() {
       return t('page.cannotSell').replace('{qty}', String(quantity)).replace('{unit}', unitMode === "subunit" ? t('sell.units') : "").replace('{product}', product.name).replace('{available}', String(available));
     }
     return null;
-  };
-  // Cost of a sales line in main units. purchase_price_snapshot is stored per
-  // main unit (see the sales-invoice handler), and the fallback product price
-  // is per main unit too — so only the sold quantity needs normalizing.
-  const salesLineCogsInMainUnits = (item: any, product?: Product): number | null => {
-    const quantity = safeNumber(item.quantity);
-    const costSnapshot = safeNumber(item.purchase_price_snapshot);
-    const fallbackCost = safeNumber(product?.last_purchase_price);
-    const unitCost = costSnapshot > 0 ? costSnapshot : fallbackCost > 0 ? fallbackCost : null;
-    if (unitCost === null) return null;
-    const mainQuantity = quantityToMainUnits(quantity, item.unit_mode ?? "main", product?.units_per_pack);
-    return mainQuantity * unitCost;
   };
   const evaluateAiDraftData = (actionType: string, parsedData: Record<string, unknown>) => {
     const product = products.find((item) => String(item.id) === String(parsedData.product_id));
@@ -14764,6 +14712,28 @@ export default function Home() {
   const lowStockProducts = inventoryStats.filter(
     (item) => stockStatusFor(item.currentStock, item.reorderLevel).status === "urgent_reorder"
   );
+  const visibleNotifications = getVisibleNotifications({
+    realNotifications: notificationRows.scope === notificationScope ? notificationRows.rows : [],
+    aiAlerts: visibleAiAlerts,
+    lowStock: {
+      productIds: notificationScope ? lowStockProducts.map((product) => product.productId) : [],
+      title: t('page.notifLowStock').replace('{count}', String(lowStockProducts.length)),
+      description: t('page.notifReorderReached').replace('{count}', String(lowStockProducts.length)),
+    },
+    readDerivedIds: notificationReadState.scope === notificationScope ? notificationReadState.ids : undefined,
+  });
+  const unreadNotificationCount = visibleNotifications.filter((item) => !item.is_read).length;
+  const markVisibleNotificationRead = async (item: VisibleNotification) => {
+    if (item.is_read) return;
+    if (item.notificationId) await updateStoredNotifications("PATCH", { id: item.notificationId });
+    else markDerivedNotificationsRead([item.id]);
+  };
+  const markAllVisibleNotificationsRead = async () => {
+    if (visibleNotifications.some((item) => item.source === "notification" && !item.is_read)) {
+      await updateStoredNotifications("PATCH", { action: "mark_all_read" });
+    }
+    markDerivedNotificationsRead(visibleNotifications.filter((item) => item.source !== "notification").map((item) => item.id));
+  };
   const pendingTasks = tasks.filter((t) => t.status === "pending");
   // True "today" KPIs for the dashboard hero cards (independent of the BI
   // range selector which defaults to 30 days).
@@ -15585,57 +15555,56 @@ export default function Home() {
     setBiMessage(t('page.biExpenseCsvExported'));
     setBiError(null);
   };
-  const getBusinessHealthScore = () => {
-    const overview = businessIntelligenceAnalytics.overview;
-    let score = 50;
-    const reasons: string[] = [];
-    if (overview.totalSalesAmount > 0) {
-      score += 10;
-      reasons.push(t('page.salesRecordedInPeriod'));
-    } else {
-      score -= 10;
-      reasons.push(t('page.noSalesInPeriod'));
+  const businessHealthScore = getBusinessHealthScore(businessIntelligenceAnalytics.overview, t);
+  const buildCurrentAssistantKpiBlock = () => buildAssistantKpiBlock(
+    brainReady && getBusinessBrain()?.getMemorySnapshot().organizationId === currentOrganizationId
+      ? {
+          payables: totalPayables,
+          receivables: totalReceivables,
+          customersOwing: receivablesStats.filter(({ outstanding }) => outstanding > 0).length,
+          inventoryValue,
+          health: businessIntelligenceAnalytics.overview,
+        }
+      : null,
+    assistantBooksCurrency,
+    currentOrganization?.regional_preferences?.timeZone,
+  );
+  const onBrainChat = async (message: string, context?: ChatContext): Promise<ChatResponse> => {
+    const conversationId =
+      context?.conversationId ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const correlationId = `corr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const brain = getBusinessBrain();
+    if (!brain || !brainReady || brain.getMemorySnapshot().organizationId !== currentOrganizationId) {
+      return buildChatResponse(
+        {
+          ok: false,
+          message: "",
+          error: "BRAIN_NOT_INITIALIZED: Business Brain is not initialized. Load business data first.",
+        },
+        { conversationId, correlationId }
+      );
     }
-    if (overview.estimatedNetProfit > 0) {
-      score += 20;
-      reasons.push(t('page.netProfitPositive'));
-    } else if (overview.totalSalesAmount > 0) {
-      score -= 15;
-      reasons.push(t('page.netProfitNotPositive'));
-    }
-    if (overview.outOfStockCount > 0) {
-      score -= 20;
-      reasons.push(t('page.outOfStockProducts').replace('{count}', String(overview.outOfStockCount)));
-    } else if (overview.lowStockCount > 0) {
-      score -= 10;
-      reasons.push(t('page.lowStockProducts').replace('{count}', String(overview.lowStockCount)));
-    } else {
-      score += 10;
-      reasons.push(t('page.noUrgentLowStockView'));
-    }
-    if (overview.customerCollectionsTotal >= overview.totalSalesAmount * 0.5 || overview.totalSalesAmount === 0) {
-      score += 10;
-      reasons.push(t('page.collectionsReasonable'));
-    } else {
-      score -= 10;
-      reasons.push(t('page.collectionsLow'));
-    }
-    if (overview.expensesTotal > overview.totalSalesAmount && overview.totalSalesAmount > 0) {
-      score -= 15;
-      reasons.push(t('page.expensesHigher'));
-    } else {
-      score += 5;
-      reasons.push(t('page.expensesNotHigher'));
-    }
-    const boundedScore = Math.max(0, Math.min(100, score));
-    const label = businessHealthLabel(boundedScore);
-    return { score: boundedScore, label, reasons };
+    const result = await chatWithBusinessBrain({
+      message,
+      organizationName: brain.getMemorySnapshot().organizationName,
+      businessContext: [brain.getBusinessContext(buildCurrentAssistantKpiBlock()), formatVisibleAiAlertsContext(visibleAiAlerts)].join("\n\n"),
+      conversationHistory: context?.history,
+      booksCurrency: assistantBooksCurrency,
+    });
+    // HYBRID Slice 6: an unreachable AI service means the device is
+    // offline — show the localized internet-required message instead
+    // of the English fallback.
+    const mappedResult =
+      !result.ok && result.error === SERVER_CHAT_UNREACHABLE_ERROR
+        ? { ...result, error: t("offline.internetRequired") }
+        : result;
+    return buildChatResponse(mappedResult, { conversationId, correlationId });
   };
-  const businessHealthScore = getBusinessHealthScore();
   const buildAnalyticsContext = () => {
     const analytics = businessIntelligenceAnalytics;
     return {
       range: analytics.range,
+      assistant_kpis: buildCurrentAssistantKpiBlock(),
       business_health: businessHealthScore,
       sales: {
         total_amount: analytics.overview.totalSalesAmount,
@@ -17420,6 +17389,7 @@ export default function Home() {
         stock_summary: reorderRecommendationSummary,
       },
       balances: {
+        assistant_kpis: buildCurrentAssistantKpiBlock(),
         customer_receivables: customers
           .map((customer) => {
             const summary = getCustomerCreditSummary(customer);
@@ -17677,7 +17647,9 @@ export default function Home() {
         candidates.push({
           alert_type: "payment",
           title: t('page.overdueReceivable').replace('{customer}', customer.customer_name),
-          summary: t('page.overdueSummary').replace('{amount}', formatBooksMoney(summary.overdueAmount)).replace('{count}', String(summary.overdueInvoiceCount)),
+          summary: t('page.overdueSummary').replace('{customer}', customer.customer_name)
+            .replace('{amount}', formatAiMoney(summary.overdueAmount, assistantBooksCurrency))
+            .replace('{count}', String(summary.overdueInvoiceCount)),
           severity: summary.overdueAmount >= alertThresholds.customerOverdueHigh ? "high" : "medium",
           source_type: "customer_credit",
           source_entity_type: "customer",
@@ -17694,7 +17666,8 @@ export default function Home() {
         candidates.push({
           alert_type: "payment",
           title: t('page.supplierPayablePressure').replace('{supplier}', supplier.supplier_name),
-          summary: t('page.currentPayableMsg').replace('{amount}', formatBooksMoney(payable)),
+          summary: t('page.currentPayableMsg').replace('{supplier}', supplier.supplier_name)
+            .replace('{amount}', formatAiMoney(payable, assistantBooksCurrency)),
           severity: payable >= alertThresholds.supplierPayableHigh ? "high" : "medium",
           source_type: "supplier_ledger",
           source_entity_type: "supplier",
@@ -21548,37 +21521,18 @@ export default function Home() {
               }
             : undefined
         }
-        notificationCount={realNotifications.filter((n) => !n.is_read).length}
-        notifications={[
-          ...realNotifications.filter((n) => !n.is_read).slice(0, 5).map((n) => ({
-            id: n.id,
-            notificationId: n.id,
-            entityId: n.category === "draft_sale" ? n.entity_id : null,
-            title: n.title,
-            description: n.body ?? undefined,
-            severity: (n.category === "draft_sale" || n.category === "inventory"
-              ? "warning"
-              : "info") as "info" | "warning" | "critical",
-            section: n.category === "draft_sale" ? ("sales" as const) : ("notifications" as const),
-            time: formatDateTime(n.created_at),
-          })),
-          ...visibleAiAlerts.map((a) => ({
-            id: a.id,
-            title: a.title,
-            description: a.summary ?? undefined,
-            severity: a.severity === "critical" ? "critical" as const
-              : ["high", "warning", "medium"].includes(a.severity) ? "warning" as const : "info" as const,
-            time: formatDateTime(a.created_at),
-          })),
-          ...(lowStockProducts.length > 0 ? [{
-            id: "low-stock",
-            title: t('page.notifLowStock').replace('{count}', String(lowStockProducts.length)),
-            description: t('page.notifReorderReached').replace('{count}', String(lowStockProducts.length)),
-            severity: lowStockProducts.length > 5 ? "critical" as const : "warning" as const,
-            section: "inventory" as const,
-            time: t('bi.rangeToday'),
-          }] : []),
-        ]}
+        notificationCount={unreadNotificationCount}
+        notifications={visibleNotifications.slice(0, BELL_NOTIFICATION_LIMIT).map((item) => ({
+          id: item.id,
+          notificationId: item.notificationId,
+          entityId: item.category === "draft_sale" ? item.entity_id : null,
+          title: item.title,
+          description: item.body ?? undefined,
+          severity: item.severity,
+          section: item.source === "derived_low_stock" ? "inventory"
+            : item.category === "draft_sale" ? "sales" : "notifications",
+          time: item.created_at ? formatDateTime(item.created_at) : t('bi.rangeToday'),
+        }))}
         onNotificationClick={(n) => {
           // Clicking a bell item acts on it: a draft opens that exact draft,
           // any other real notification is marked read, then navigation runs.
@@ -21586,8 +21540,9 @@ export default function Home() {
             void openDraftReview(n.entityId, n.notificationId);
             return;
           }
-          if (n.notificationId) {
-            void markNotificationsRead(n.notificationId);
+          const item = visibleNotifications.find((note) => note.id === n.id);
+          if (item) {
+            void markVisibleNotificationRead(item).catch((error) => console.warn("mark notification read error:", error));
           }
           if (n.section === "sales") {
             handleSectionChange("sales");
@@ -31402,6 +31357,13 @@ export default function Home() {
         {activeSectionAllowed && activeSection === "notifications" && (
         <section className="workspace-section">
           <NotificationCenter
+            notifications={visibleNotifications}
+            unreadCount={unreadNotificationCount}
+            loading={Boolean(notificationScope && notificationRows.scope !== notificationScope && notificationLoadError?.scope !== notificationScope)}
+            loadError={notificationLoadError?.scope === notificationScope ? notificationLoadError.message : null}
+            onMarkRead={markVisibleNotificationRead}
+            onMarkAllRead={markAllVisibleNotificationsRead}
+            onClearStored={() => updateStoredNotifications("DELETE", { action: "clear_all" })}
             onReviewDraft={(draftEntityId, notificationId) => {
               void openDraftReview(draftEntityId, notificationId);
             }}
