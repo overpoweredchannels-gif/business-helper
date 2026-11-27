@@ -133,7 +133,7 @@ import { businessHealthCashFlowStatus, businessHealthProfitMarginStatus, getBusi
 import { buildAssistantKpiBlock, salesLineCogsInMainUnits } from "@/lib/ai/assistant-kpi-block";
 import { formatAiMoney } from "@/lib/ai/ai-money";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
-import { activityDay, inDashboardRange, type DashboardRange } from "@/lib/dashboard/period";
+import { activityDay, dashboardRange, inDashboardRange, type DashboardRange } from "@/lib/dashboard/period";
 import { exportBusinessActivityCsv } from "@/lib/dashboard/business-records-export";
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
@@ -21018,6 +21018,39 @@ export default function Home() {
       : [];
   const myCustomerById = new Map(myCustomers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [String(p.id), p]));
+  const dashboardTopProductRows = () => {
+    const range = dashboardRange("month", dashboardToday, { start: "", end: "" });
+    if (!range) return [];
+    const previous = previousPeriodRange(range);
+    const saleDays = new Map(salesTransactions.filter(isCurrentOrganizationRecord).map(tx => [
+      tx.id, calendarDayOfRecord([tx.sale_date, tx.created_at]),
+    ]));
+    const totals = new Map<string, { quantitySold: number; previousQuantitySold: number; netRevenue: number }>();
+    for (const item of salesItems) {
+      const day = saleDays.get(item.sales_transaction_id) ?? null;
+      const thisMonth = inDashboardRange(day, range);
+      if (!thisMonth && !(previous && inDashboardRange(day, previous))) continue;
+      const productId = String(item.product_id);
+      const product = productById.get(productId);
+      if (!product) continue;
+      const quantity = safeNumber(item.quantity);
+      const mainQuantity = quantityToMainUnits(quantity, item.unit_mode ?? "main", product.units_per_pack);
+      const total = totals.get(productId) ?? { quantitySold: 0, previousQuantitySold: 0, netRevenue: 0 };
+      if (thisMonth) {
+        total.quantitySold += mainQuantity;
+        total.netRevenue += topProductLineNetRevenue({
+          quantity, sellingPrice: safeNumber(item.selling_price), discount: safeNumber(item.discount),
+        });
+      } else {
+        total.previousQuantitySold += mainQuantity;
+      }
+      totals.set(productId, total);
+    }
+    return buildTopProductRows(products.flatMap(product => {
+      const total = totals.get(String(product.id));
+      return total ? [{ name: product.name, unitType: product.unit_type ?? null, ...total }] : [];
+    }), value => formatDashboardMoney(displayCurrency, displayFxRate, value));
+  };
   const dashboardPeriodMetrics = (range: DashboardRange) => {
     const ids = new Set(salesTransactions.filter(tx =>
       inDashboardRange(calendarDayOfRecord([tx.sale_date, tx.created_at]), range)
@@ -21972,16 +22005,7 @@ export default function Home() {
               (value) => formatDashboardMoney(displayCurrency, displayFxRate, value),
             )}
             onViewAllActivity={() => handleSectionChange("activity-logs")}
-            topProducts={buildTopProductRows(
-              businessIntelligenceAnalytics.topByQuantity.map((p) => ({
-                name: p.productName,
-                unitType: products.find((product) => String(product.id) === p.productId)?.unit_type ?? null,
-                quantitySold: p.quantitySold,
-                netRevenue: p.netRevenue,
-                previousQuantitySold: previousBiRange ? p.previousQuantitySold : null,
-              })),
-              (value) => formatDashboardMoney(displayCurrency, displayFxRate, value),
-            )}
+            topProducts={dashboardTopProductRows()}
             onQuickAction={(label) => {
               if (label === "New Sale") { setSalesTab("invoice"); setQuickSaleMode(true); handleSectionChange("sales"); }
               else if (label === "New Purchase") handleSectionChange("purchases");

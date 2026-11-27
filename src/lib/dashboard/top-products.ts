@@ -11,21 +11,15 @@
  * card vanished entirely when there was no data (DashboardView only
  * included it when the array was non-empty).
  *
- * Fix: the card now plots the current BI period (the same range the
- * Revenue/Profit trend cards and the Top Customers card use), ranked by
- * quantity sold in MAIN units (via `quantityToMainUnits`, exactly like
- * the BI product analytics). Each row shows the quantity WITH its unit
+ * The dashboard supplies month-to-date sales, ranked by quantity sold
+ * in main units (via `quantityToMainUnits`, like BI product analytics).
+ * Each row shows the quantity with its unit
  * (the product's `unit_type`, e.g. "373 CARTON") and the product's
  * revenue net of line discounts, and a trend arrow vs the previous
  * equivalent period (same length, immediately before the current
  * range). The card itself is always on the dashboard — an empty period
  * shows the message, it never removes the card.
  *
- * Ranking basis note: the old card ranked ALL-TIME top sellers while
- * every sibling card on the dashboard is period-based. Aligning the
- * ranking to the BI range is what makes the trend comparison
- * like-for-like; with an all-time ranking there is no "previous
- * equivalent period" to compare against at all.
  */
 
 export type TopProductTrend = "up" | "down" | "flat";

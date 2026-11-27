@@ -299,11 +299,11 @@ export function DashboardView({
   const chartCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
     // Both trend cards are always on the dashboard: with no data they
     // show their empty state instead of vanishing.
-    ...(periodMetrics && mode === "profit" ? [] : [{ id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> }]),
-    ...(periodMetrics && mode === "sales" ? [] : [{ id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> }]),
+    { id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> },
+    { id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> },
     // The Top Products card is always on the dashboard too: with no
     // selling products it shows its empty state instead of vanishing.
-    { id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts ?? []} /> },
+    { id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts ?? []} periodLabel={periodToday ? t("bi.rangeThisMonth") : undefined} /> },
     // The Top Customers card is always on the dashboard too: with no
     // buying customers it shows its empty state instead of vanishing.
     { id: "chart-top-customers" as DashboardWidgetId, node: <TopCustomersCard items={topCustomers ?? []} /> },
