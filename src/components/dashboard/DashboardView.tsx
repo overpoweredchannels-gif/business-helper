@@ -1,4 +1,6 @@
 "use client";
+import { useState } from "react";
+import { dashboardRange, type DashboardPeriod, type DashboardRange } from "@/lib/dashboard/period";
 
 import {
   KPICard,
@@ -33,7 +35,14 @@ interface SmartModuleConfig {
   lastSuccessfulAt?: string;
 }
 
+type PeriodMetric = { value: string; unknownCostLines?: number; unknownCostAmount?: string };
 interface DashboardViewProps {
+  periodScope?: string;
+  periodToday?: string;
+  periodMetrics?: (range: DashboardRange) => { sales?: PeriodMetric; profit?: PeriodMetric };
+  exportActivity?: (range: DashboardRange) => void;
+  restricted?: boolean;
+  cashFlow?: string;
   userName: string;
   /** Display currency code (e.g. PKR) shown on KPI definition lines. */
   currencyCode?: string;
@@ -106,6 +115,12 @@ interface DashboardViewProps {
 
 export function DashboardView({
   userName,
+  periodScope,
+  periodToday,
+  periodMetrics,
+  exportActivity,
+  restricted = false,
+  cashFlow,
   currencyCode,
   setupContent,
   quickSaleContent,
@@ -168,6 +183,33 @@ export function DashboardView({
   const safeInventoryValue = inventoryValue?.value ?? "--";
   const safeReceivables = outstandingReceivables?.value ?? "--";
   const safePayables = outstandingPayables?.value ?? "--";
+  const [savedPeriod, setSavedPeriod] = useState(() => {
+    try {
+      const stored = periodScope ? JSON.parse(localStorage.getItem(periodScope) ?? "null") : null;
+      return {
+        period: (["today", "week", "month", "custom"].includes(stored?.period) ? stored.period : "today") as DashboardPeriod,
+        start: typeof stored?.start === "string" ? stored.start : "",
+        end: typeof stored?.end === "string" ? stored.end : "",
+        mode: stored?.mode === "profit" ? "profit" as const : "sales" as const,
+      };
+    } catch {
+      return { period: "today" as const, start: "", end: "", mode: "sales" as const };
+    }
+  });
+  const updatePeriod = (change: Partial<typeof savedPeriod>) => {
+    const next = { ...savedPeriod, ...change };
+    setSavedPeriod(next);
+    try { if (periodScope) localStorage.setItem(periodScope, JSON.stringify(next)); } catch { /* Session choice still works. */ }
+  };
+  const range = periodToday ? dashboardRange(savedPeriod.period, periodToday, { start: savedPeriod.start, end: savedPeriod.end }) : null;
+  const periodValues = range && periodMetrics ? periodMetrics(range) : null;
+  const mode = todayProfit && (!todaySales || savedPeriod.mode === "profit") ? "profit" : "sales";
+  const selectedMetric = mode === "profit" ? periodValues?.profit ?? todayProfit : periodValues?.sales ?? todaySales;
+  const periodLabels = { today: t("records.today"), week: t("sell.invoiceGen.range7days"), month: t("buy.thisMonth"), custom: t("bi.rangeCustom") };
+  const periodCaption = savedPeriod.period === "custom" && range ? `${range.start} – ${range.end}` : periodLabels[savedPeriod.period];
+  const periodLabel = mode === "profit" ? t("sell.profit") : t("sell.salesColumn");
+  const periodReadKey = mode === "profit" ? "today-profit" : "today-sales";
+  const periodControl = "min-h-11 min-w-11 rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
   const safeLowStock = lowStockAlerts?.count?.toString() ?? "0";
 
   const getMetricStatus = (metric: DashboardMetricKey): DashboardReadStatus => metricReadStates?.[metric] ?? "successful-populated";
@@ -203,6 +245,14 @@ export function DashboardView({
   const widgetHidden = (id: DashboardWidgetId) => hiddenWidgets.includes(id);
   // Each key number is its own card so the user can keep only what they watch daily.
   const kpiCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
+    ...(periodMetrics ? (selectedMetric ? [{
+      id: (todaySales ? "kpi-today-sales" : "kpi-today-profit") as DashboardWidgetId,
+      node: <KPICard title={periodLabel} value={range ? selectedMetric.value : "—"} readStatus={getMetricStatus(periodReadKey)}
+        lastSuccessfulAt={metricLastSuccessfulAt?.[periodReadKey]} onRetry={onRetryFailedReads}
+        icon={mode === "profit" ? <TrendingDown className="size-4" /> : <TrendingUp className="size-4" />}
+        definition={`${periodCaption}${currencyCode ? ` · ${currencyCode}` : ""}${mode === "profit" && range && "unknownCostLines" in selectedMetric && selectedMetric.unknownCostLines ? ` · ${t("dashboard.profitTrendExcludesUnknownCost").replace("{amount}", selectedMetric.unknownCostAmount ?? "").replace("{count}", String(selectedMetric.unknownCostLines))}` : ""}`}
+        onClick={() => onKPIClick?.(mode === "profit" ? "Today's Profit" : "Today's Sales")} />,
+    }] : []) : [
     ...(todaySales ? [{
       id: "kpi-today-sales" as DashboardWidgetId,
       node: <KPICard tone="accent" title={t('kpi.todaySales')} value={todaySales.value} readStatus={getMetricStatus("today-sales")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-sales"]} onRetry={onRetryFailedReads} trend={todaySales.trend} icon={<TrendingUp className="size-4" />} sparklineData={todaySales.sparkline} definition={definitionFor('kpi.definitionTodaySales')} onClick={() => onKPIClick?.("Today's Sales")} />,
@@ -210,6 +260,11 @@ export function DashboardView({
     ...(todayProfit ? [{
       id: "kpi-today-profit" as DashboardWidgetId,
       node: <KPICard title={t('kpi.todayProfit')} value={todayProfit.value} readStatus={getMetricStatus("today-profit")} lastSuccessfulAt={metricLastSuccessfulAt?.["today-profit"]} onRetry={onRetryFailedReads} trend={todayProfit.trend} icon={<TrendingDown className="size-4" />} sparklineData={todayProfit.sparkline} definition={todayProfitDefinition} onClick={() => onKPIClick?.("Today's Profit")} />,
+    }] : []),
+    ]),
+    ...(cashFlow ? [{
+      id: "kpi-cash-flow" as DashboardWidgetId,
+      node: <KPICard title={t("dashboard.cashFlow")} value={cashFlow} readStatus={getMetricStatus("business-health")} icon={<DollarSign className="size-4" />} definition="As of now" />,
     }] : []),
     ...(inventoryValue ? [{
       id: "kpi-inventory-value" as DashboardWidgetId,
@@ -244,8 +299,8 @@ export function DashboardView({
   const chartCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
     // Both trend cards are always on the dashboard: with no data they
     // show their empty state instead of vanishing.
-    { id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> },
-    { id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> },
+    ...(periodMetrics && mode === "profit" ? [] : [{ id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> }]),
+    ...(periodMetrics && mode === "sales" ? [] : [{ id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> }]),
     // The Top Products card is always on the dashboard too: with no
     // selling products it shows its empty state instead of vanishing.
     { id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts ?? []} /> },
@@ -263,7 +318,7 @@ export function DashboardView({
     { id: "quick-actions", node: <QuickActions onAction={onQuickAction} />, width: "full" },
     ...kpiCards.map(card => ({ ...card, width: "metric" as const })),
     ...chartCards.map(card => ({ ...card, width: "half" as const })),
-    ...(recentActivities.length ? [{ id: "recent-activity" as const, node: <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} />, width: "full" as const }] : []),
+    ...(recentActivities.length || exportActivity ? [{ id: "recent-activity" as const, node: <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} onExport={exportActivity && range ? () => exportActivity(range) : undefined} />, width: "full" as const }] : []),
     ...(aiInsight ? [{ id: "ai-insight" as const, node: <AIInsightCard {...aiInsight} />, width: "full" as const }] : []),
     ...((taskList.length > 0 || allAlertReadsReady) ? [{ id: "needs-attention" as const, node: (<div className="aankh-card rounded-xl border border-border bg-card p-5">
             <h2 className="mb-1 text-base font-semibold text-foreground">{t('dashboard.needsAttention')}</h2>
@@ -312,7 +367,7 @@ export function DashboardView({
           </div>), width: "full" as const }] : []),
     ...droppedCards.map(card => ({ ...card, width: "half" as const })),
   ];
-  const orderedCards = cards.filter(card => !widgetHidden(card.id)).toSorted((a, b) => {
+  const orderedCards = cards.filter(card => !widgetHidden(card.id) && (!restricted || card.id.startsWith("kpi-") && !["kpi-approvals"].includes(card.id))).toSorted((a, b) => {
     const rank = (id: DashboardWidgetId) => { const index = widgetOrder.indexOf(id); return index < 0 ? widgetOrder.length : index; };
     return rank(a.id) - rank(b.id);
   });
@@ -345,6 +400,25 @@ export function DashboardView({
           </button>
         )}
       </header>
+      {periodMetrics && (
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3">
+          <label className="grid gap-1 text-sm">
+            <span>{t("sell.invoiceGen.periodHeading")}</span>
+            <select className={periodControl} value={savedPeriod.period} onChange={event => updatePeriod({ period: event.target.value as DashboardPeriod })}>
+              {Object.entries(periodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          {savedPeriod.period === "custom" && <>
+            <label className="grid gap-1 text-sm">{t("records.startDate")}<input type="date" className={periodControl} value={savedPeriod.start} onChange={event => updatePeriod({ start: event.target.value })} /></label>
+            <label className="grid gap-1 text-sm">{t("records.endDate")}<input type="date" className={periodControl} min={savedPeriod.start || undefined} value={savedPeriod.end} onChange={event => updatePeriod({ end: event.target.value })} /></label>
+          </>}
+          {todaySales && todayProfit && <div role="group" aria-label="Dashboard trend" className="flex flex-wrap gap-2">
+            {(["sales", "profit"] as const).map(option => <button key={option} type="button" aria-pressed={mode === option} className={cn(periodControl, mode === option && "border-primary bg-primary text-primary-foreground")} onClick={() => updatePeriod({ mode: option })}>
+              {option === "sales" ? t("sell.salesColumn") : t("sell.profit")}
+            </button>)}
+          </div>}
+        </div>
+      )}
       <h2 id="dashboard-today-heading" className="sr-only">{t('dashboard.todayBalances')}</h2>
       <div className="dashboard-grid">
         {orderedCards.map((card, index) => <DashboardWidget key={card.id} id={card.id} label={card.label} customizing={customizingWidgets} onRemove={onRemoveWidget}

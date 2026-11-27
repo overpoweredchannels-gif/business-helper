@@ -55,6 +55,28 @@ export function recordsExportFilename(from: string, to: string): string {
   return `business-records-${from}_to_${to}.html`;
 }
 
+export function downloadBusinessRecordsFile(filename: string, content: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function exportBusinessActivityCsv(from: string, to: string, rows: readonly (readonly (string | number)[])[]) {
+  const cell = (value: string | number) => {
+    const text = String(value);
+    const safe = /^[=+\-@]/.test(text) ? "'" + text : text;
+    return '"' + safe.replaceAll('"', '""') + '"';
+  };
+  const columns = ["date-time", "type", "reference", "party", "amount", "currency"];
+  const csv = [columns, ...rows.slice(0, 10_000)].map(row => row.map(cell).join(",")).join("\r\n");
+  downloadBusinessRecordsFile(`business-activity-${from}_to_${to}.csv`, "\uFEFF" + csv, "text/csv;charset=utf-8");
+}
+
 export async function runBusinessRecordsExport(
   from: string,
   to: string,

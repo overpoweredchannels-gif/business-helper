@@ -3,7 +3,7 @@ import { useState } from "react";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { businessReportHtml, type ReportSection } from "@/lib/print/business-report";
 import { useRegional } from "@/components/regional/RegionalProvider";
-import { runBusinessRecordsExport } from "@/lib/dashboard/business-records-export";
+import { downloadBusinessRecordsFile, runBusinessRecordsExport } from "@/lib/dashboard/business-records-export";
 
 export function BusinessRecordsExport() {
   const { t } = useRegional();
@@ -22,14 +22,7 @@ export function BusinessRecordsExport() {
           return { ok: res.ok && data.ok === true, sections: data.sections, error: typeof data.error === "string" ? data.error : undefined };
         },
         buildHtml: (f, tt, sections) => businessReportHtml(f, tt, sections as ReportSection[], { printButton: t('report.printButton'), choosePdf: t('report.choosePdf'), businessRecords: t('report.businessRecords'), heading: t('report.heading'), rangeSeparator: t('buy.dateSeparator'), rangeSummary: t('report.rangeSummary'), disclaimer: t('report.disclaimer'), noRecords: t('report.noRecords') }),
-        downloadHtml: (filename, html) => {
-          const blob = new Blob([html], { type: "text/html" });
-          const url = URL.createObjectURL(blob);
-          const anchor = document.createElement("a");
-          anchor.href = url; anchor.download = filename;
-          document.body.appendChild(anchor); anchor.click(); anchor.remove();
-          URL.revokeObjectURL(url);
-        },
+        downloadHtml: (filename, html) => downloadBusinessRecordsFile(filename, html, "text/html"),
       }, { preparingReport: t('records.preparingReport'), reportFailed: t('records.reportFailed') });
       if (result.delivered === "error") setError(result.message);
       else if (result.delivered === "download") setNotice(t('records.reportDownloaded'));

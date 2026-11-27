@@ -133,6 +133,8 @@ import { businessHealthCashFlowStatus, businessHealthProfitMarginStatus, getBusi
 import { buildAssistantKpiBlock, salesLineCogsInMainUnits } from "@/lib/ai/assistant-kpi-block";
 import { formatAiMoney } from "@/lib/ai/ai-money";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
+import { activityDay, inDashboardRange, type DashboardRange } from "@/lib/dashboard/period";
+import { exportBusinessActivityCsv } from "@/lib/dashboard/business-records-export";
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
@@ -223,6 +225,7 @@ import {
   formatDateTime,
   formatNumber,
   getActiveBooksCurrency,
+  getActiveTimeZone,
   getDateOnly,
   getMonthRange,
   getUsableTimestamp,
@@ -20980,7 +20983,30 @@ export default function Home() {
   };
 
   const role = currentProfile?.role;
-  const isStaff = Boolean(role) && role !== "owner" && role !== "admin";
+  const dashboardWideAccess = currentProfile?.is_active !== false && Boolean(currentOrganizationId) && (
+    role === "owner" || (
+      selfEmployee?.designation === "manager" && selfEmployee.is_active && selfEmployee.status === "active" &&
+      selfEmployee.organization_id === currentOrganizationId && selfEmployee.profile_id === currentProfile?.id
+    )
+  );
+  const dashboardPermission = currentStaffPermission?.organization_id === currentOrganizationId &&
+    currentStaffPermission?.profile_id === currentProfile?.id && currentProfile?.is_active !== false
+    ? currentStaffPermission : null;
+  const dashboardGrants = dashboardPermission?.granted_sections ?? [];
+  const dashboardSectionGranted = (section: SectionId) => {
+    if (dashboardWideAccess) return true;
+    const permission = sectionPermissionMap[section];
+    if (!permission || permission === "owner_admin") return false;
+    return dashboardGrants.length ? dashboardGrants.includes(section) : dashboardPermission?.[permission] === true;
+  };
+  const dashboardSalesGrant = dashboardSectionGranted("sales");
+  const dashboardProfitGrant = dashboardSectionGranted("profit-loss");
+  const dashboardReceivablesGrant = dashboardSectionGranted("customer-credit");
+  const dashboardPayablesGrant = dashboardSectionGranted("supplier-ledger");
+  const dashboardInventoryGrant = dashboardSectionGranted("inventory");
+  const dashboardPeriodScope = `aankh-dashboard-period:${currentOrganizationId}:${currentProfile?.id}`;
+  const dashboardTimeZone = getActiveTimeZone();
+  const dashboardToday = activityDay(new Date().toISOString(), dashboardTimeZone) ?? todayDateValue;
   const profileId = currentProfile?.id ?? null;
   const employeeId = selfEmployee?.id ?? null;
   const mySales = salesTransactions.filter((t) => t.created_by_profile_id === profileId);
@@ -20992,6 +21018,47 @@ export default function Home() {
       : [];
   const myCustomerById = new Map(myCustomers.map((c) => [c.id, c]));
   const productById = new Map(products.map((p) => [String(p.id), p]));
+  const dashboardPeriodMetrics = (range: DashboardRange) => {
+    const ids = new Set(salesTransactions.filter(tx =>
+      inDashboardRange(calendarDayOfRecord([tx.sale_date, tx.created_at]), range)
+    ).map(tx => tx.id));
+    let sales = 0;
+    let profit = 0;
+    let unknownCostLines = 0;
+    let unknownCostRevenue = 0;
+    for (const item of salesItems) {
+      if (!ids.has(item.sales_transaction_id)) continue;
+      const revenue = safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
+      if (dashboardSalesGrant) sales += revenue;
+      if (dashboardProfitGrant) {
+        const cogs = salesLineCogsInMainUnits(item, productById.get(String(item.product_id)));
+        if (cogs === null) { unknownCostLines++; unknownCostRevenue += revenue; }
+        else profit += revenue - cogs;
+      }
+    }
+    const money = (value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value);
+    return {
+      sales: dashboardSalesGrant ? { value: money(sales) } : undefined,
+      profit: dashboardProfitGrant ? { value: money(profit), unknownCostLines, unknownCostAmount: money(unknownCostRevenue) } : undefined,
+    };
+  };
+  const exportDashboardActivity = (range: DashboardRange) => {
+    if (!dashboardWideAccess || !currentOrganizationId || !dashboardActivityReady) return;
+    const currency = getActiveBooksCurrency();
+    const customerNames = new Map(customers.map(customer => [customer.id, customer.customer_name]));
+    const supplierNames = new Map(suppliers.map(supplier => [supplier.id, supplier.supplier_name]));
+    const entries = [
+      ...salesTransactions.map(tx => ({ tx, type: "sale", party: customerNames.get(tx.customer_id) ?? "" })),
+      ...purchaseTransactions.map(tx => ({ tx, type: "purchase", party: supplierNames.get(tx.supplier_id) ?? "" })),
+    ].filter(({ tx }) => (!tx.organization_id || tx.organization_id === currentOrganizationId)
+      && inDashboardRange(activityDay(tx.created_at, dashboardTimeZone), range))
+      .sort((a, b) => Date.parse(b.tx.created_at) - Date.parse(a.tx.created_at))
+      .slice(0, 10_000);
+    exportBusinessActivityCsv(range.start, range.end, entries.map(({ tx, type, party }) => [
+      dashboardTimeZone ? formatDateTime(tx.created_at) : new Date(tx.created_at).toLocaleString("en-CA", { timeZone: "Asia/Karachi" }),
+      type, tx.invoice_number, party, tx.total_amount ?? "", currency,
+    ]));
+  };
 
   const productTotals = new Map<string, { qty: number; value: number }>();
   for (const item of mySaleItems) {
@@ -21042,6 +21109,9 @@ export default function Home() {
   const dashboardMetricReadStates = deriveDashboardMetricStates(dashboardSourceStates);
   const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
   const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardSourceStates[source].status;
+  const dashboardActivityReady = (["sales-transactions", "purchase-transactions"] as const).every(source =>
+    ["successful-populated", "successful-empty"].includes(dashboardReadStatusFor(source))
+  );
   const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardSourceStates[source].lastSuccessAt;
   const healthReadStatus = dashboardMetricReadStates["business-health"];
   const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
@@ -21086,7 +21156,7 @@ export default function Home() {
   };
 
   const staffDashboardData = {
-    isStaff,
+    isStaff: !dashboardWideAccess,
     mySalesCount: mySales.length,
     mySalesTotal: formatBooksMoney(mySales.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0)),
     todaySalesCount: mySalesToday.length,
@@ -21730,8 +21800,32 @@ export default function Home() {
           <EmployeeLiveTracking />
         )}
 
+        {activeSection === "dashboard" && staffDashboardData.isStaff && (dashboardSalesGrant || dashboardProfitGrant || dashboardReceivablesGrant || dashboardPayablesGrant || dashboardInventoryGrant) && (
+          <DashboardView
+            key={dashboardPeriodScope}
+            userName={currentProfile?.full_name ?? currentUser.email}
+            restricted
+            currencyCode={displayCurrency}
+            periodToday={dashboardToday}
+            periodScope={dashboardPeriodScope}
+            periodMetrics={dashboardSalesGrant || dashboardProfitGrant ? dashboardPeriodMetrics : undefined}
+            metricReadStates={dashboardMetricReadStates}
+            todaySales={dashboardSalesGrant ? { value: "" } : undefined}
+            todayProfit={dashboardProfitGrant ? { value: "" } : undefined}
+            inventoryValue={dashboardInventoryGrant ? { value: formatDashboardMoney(displayCurrency, displayFxRate, inventoryValue) } : undefined}
+            outstandingReceivables={dashboardReceivablesGrant ? { value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables) } : undefined}
+            outstandingPayables={dashboardPayablesGrant ? { value: formatDashboardMoney(displayCurrency, displayFxRate, totalPayables) } : undefined}
+            cashFlow={dashboardReceivablesGrant && dashboardPayablesGrant ? formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables) : undefined}
+          />
+        )}
         {activeSection === "dashboard" && !staffDashboardData.isStaff && (
           <DashboardView
+            key={dashboardPeriodScope}
+            periodToday={dashboardToday}
+            periodScope={dashboardPeriodScope}
+            periodMetrics={dashboardPeriodMetrics}
+            exportActivity={dashboardActivityReady ? exportDashboardActivity : undefined}
+            cashFlow={formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables)}
             currencyCode={displayCurrency}
             metricReadStates={dashboardMetricReadStates}
             metricLastSuccessfulAt={dashboardMetricLastSuccessfulAt}

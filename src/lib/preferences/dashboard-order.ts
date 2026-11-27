@@ -4,7 +4,7 @@ import { dashboardSectionFromWidgetId } from "@/lib/dashboard/section-cards";
 // Saved per-user orders in localStorage take precedence over this layout.
 const preferredOrder: DashboardWidgetId[] = [
   "quick-actions",
-  "kpi-today-sales", "kpi-today-profit", "kpi-receivables", "kpi-payables", "kpi-inventory-value", "kpi-low-stock",
+  "kpi-today-sales", "kpi-today-profit", "kpi-receivables", "kpi-payables", "kpi-cash-flow", "kpi-inventory-value", "kpi-low-stock",
   "kpi-approvals", "kpi-orders-today", "kpi-customers-today",
   "quick-sale", "chart-revenue", "needs-attention", "recent-activity", "ai-insight",
   "chart-profit", "business-health",

@@ -20,6 +20,7 @@ export type DashboardWidgetId =
   | "kpi-inventory-value"
   | "kpi-receivables"
   | "kpi-payables"
+  | "kpi-cash-flow"
   | "kpi-low-stock"
   | "kpi-approvals"
   | "kpi-orders-today"
@@ -59,6 +60,7 @@ export const DASHBOARD_WIDGETS: DashboardWidgetDefinition[] = [
   { id: "kpi-inventory-value", label: "Inventory Value", description: "Value of the stock you are holding.", group: "Key numbers", whereToFind: "Inventory" },
   { id: "kpi-receivables", label: "Outstanding Receivables", description: "Money customers still owe you.", group: "Key numbers", whereToFind: "Customer Payments" },
   { id: "kpi-payables", label: "Outstanding Payables", description: "Money you still owe suppliers.", group: "Key numbers", whereToFind: "Supplier Payments" },
+  { id: "kpi-cash-flow", label: "Cash Flow", description: "Open receivables less open payables.", group: "Key numbers", whereToFind: "Dashboard" },
   { id: "kpi-low-stock", label: "Low Stock Alerts", description: "How many products need reordering.", group: "Key numbers", whereToFind: "Inventory" },
   { id: "kpi-approvals", label: "Pending Approvals", description: "Staff sales waiting for your approval.", group: "Key numbers", whereToFind: "Sales" },
   { id: "kpi-orders-today", label: "Orders Today", description: "Orders booked today.", group: "Key numbers", whereToFind: "Sales" },

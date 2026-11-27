@@ -36,14 +36,16 @@ const typeLabels: Record<string, MessageKey> = {
 interface RecentActivityProps {
   activities: Activity[];
   onViewAll?: () => void;
+  onExport?: () => void;
 }
 
-export function RecentActivity({ activities, onViewAll }: RecentActivityProps) {
+export function RecentActivity({ activities, onViewAll, onExport }: RecentActivityProps) {
   const { t } = useRegional();
   return (
     <div className="aankh-card rounded-xl border border-border bg-card p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{t('dashboard.recentActivity')}</h3>
+        {onExport && <button type="button" onClick={onExport} className="workspace-button-secondary">Export CSV</button>}
         {onViewAll && (
           <button onClick={onViewAll} className="flex min-h-11 items-center gap-1 -mr-1.5 rounded px-1.5 text-xs font-medium text-primary hover:text-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t('dashboard.viewAll')}
