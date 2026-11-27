@@ -76,6 +76,16 @@ function nextId(): string {
   return `msg_${Date.now()}_${messageCounter}`;
 }
 
+export function buildAIChatHistory(messages: readonly ChatMessage[]): NonNullable<ChatContext["history"]> {
+  return messages.filter((message, index) => {
+    if (!message.text.trim() || message.error) return false;
+    const next = messages[index + 1];
+    // A failed answer is visible in the UI, but its unanswered request
+    // must not become a stray turn when the user manually resends it.
+    return message.role !== "user" || next?.role !== "assistant" || !next.error;
+  }).slice(-10).map(({ role, text }) => ({ role, text }));
+}
+
 export function useAIChat(
   onChat: (message: string, context?: ChatContext) => Promise<ChatResponse>,
 ): UseAIChatReturn {
@@ -103,10 +113,7 @@ export function useAIChat(
     // setMessages would still see the pre-slice turns — including the
     // failed assistant reply the retry is meant to drop.
     const source = messagesOverride ?? messagesRef.current;
-    const history = source
-      .filter((m) => m.text.trim().length > 0)
-      .slice(-10)
-      .map((m) => ({ role: m.role, text: m.text }));
+    const history = buildAIChatHistory(source);
     return {
       sessionId: sessionIdRef.current,
       conversationId: conversationIdRef.current,

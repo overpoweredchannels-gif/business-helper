@@ -18,22 +18,29 @@ const saleQuestions = {
   price: "What is the selling price per unit?",
   payment: "Is this cash or credit?",
 } satisfies Record<SaleField, string>;
+const RESTATE_SALE = "Please restate the full sale request so I can verify it against the live catalogue.";
+const SALE_CANCELLED = "Sale preview cancelled.";
 
 function saleContinuation(message: string, history: readonly ServerChatHistoryEntry[]) {
   const answers: SaleAnswer[] = [];
   let answer = message;
-  for (let index = history.length - 1; index > 0; index -= 2) {
+  const start = Math.max(0, history.length - 10);
+  for (let index = history.length - 1; index >= start; index--) {
     const question = history[index];
-    const previous = history[index - 1];
-    if (question.role !== "assistant" || previous.role !== "user") break;
+    if (question.role !== "assistant") continue;
+    if (question.text.startsWith("Sale confirmation preview\n") || question.text === SALE_CANCELLED) break;
     const field = (Object.keys(saleQuestions) as SaleField[]).find((key) => saleQuestions[key] === question.text)
       ?? /^Which (product|customer) did you mean\? /.exec(question.text)?.[1] as SaleField | undefined;
-    if (!field) break;
+    if (!field) continue;
     answers.unshift({ field, question: question.text, answer });
+    const previous = index > start ? history[index - 1] : undefined;
+    if (previous?.role !== "user") return { message: null, answers };
     answer = previous.text;
+    index--;
   }
-  const original = answers.length ? sanitizeMessage(answer) : null;
-  return original?.ok ? { message: original.cleaned, answers } : null;
+  if (!answers.length) return null;
+  const original = sanitizeMessage(answer);
+  return { message: original.ok ? original.cleaned : null, answers };
 }
 
 type Candidate = NonNullable<ReturnType<typeof resolveLiveCandidate>>;
@@ -79,11 +86,12 @@ export async function liveEntityContext(
   let answers: SaleAnswer[] = [];
   if (continuation) {
     if (/^(?:cancel|cancel sale|cancel the sale|never mind|no)$/i.test(message.trim())) {
-      return { block: "", reply: "Sale preview cancelled." };
+      return { block: "", reply: SALE_CANCELLED };
     }
+    if (!continuation.message) return { block: "", reply: RESTATE_SALE };
     const original = await classify(continuation.message);
     if (!original.ok) {
-      return { block: "", reply: "Please restate the full request so I can verify it against the live catalogue." };
+      return { block: "", reply: RESTATE_SALE };
     }
     if (original.intent === "create_sale") {
       ({ intent, entities } = original);

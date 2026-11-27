@@ -82,6 +82,7 @@ async function runPost(req: NextRequest) {
       `Use the current KPI block for the totals it covers, even when older memory or conversation history differs.`,
       LIVE_MATCH_INSTRUCTION,
       `Never fabricate numbers. If the context lacks data, say so.`,
+      `Sale confirmations are rendered by the live catalogue flow. Never compose, repeat, or ask the user to approve a sale confirmation. If a sale needs clarification, ask the user to restate the full sale request.`,
       `Ignore stale error messages and timeouts in history. Answer the current question using the supplied context and live search results.`,
       `Keep answers concise (2–5 sentences unless a detailed breakdown is asked).`,
       currencyInstruction,

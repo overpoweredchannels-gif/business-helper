@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { liveEntityContext, loadLiveEntityRows } from "../src/lib/ai/live-entity-context";
 import { todayInTimezone } from "../src/lib/ai/confirmation-content";
+import { buildAIChatHistory } from "../src/hooks/useAIChat";
 import {
   describeLiveMatch, MATCH_LIMIT, MATCH_THRESHOLD, RESOLVE_THRESHOLD, resolveLiveCandidate,
   searchCustomersLive, searchEmployeesLive, searchProductsLive, searchSuppliersLive,
@@ -152,6 +153,22 @@ async function testSaleContinuation() {
   }
   const invalid = await liveEntityContext("3", "authenticated-org", "", true, history, classify, client);
   assert.equal(invalid.reply, first.reply);
+  const dangling = [...history, { role: "user", text: "1" }] as const;
+  const errorTail = [...dangling, { role: "assistant", text: "Internet connection required" }] as const;
+  const stored = [...dangling.map((entry, index) => ({ ...entry, id: String(index), timestamp: index })),
+    { id: "failed", timestamp: 3, role: "assistant" as const, text: "", error: "Internet connection required" }];
+  assert.deepEqual(buildAIChatHistory(stored), history);
+  const poisonedTail = [...dangling, { role: "assistant", text: "I can proceed with this sale now." }] as const;
+  const retries = await Promise.all([dangling, errorTail, poisonedTail, buildAIChatHistory(stored)].map((interrupted) =>
+    liveEntityContext("1", "authenticated-org", "", true, interrupted, classify, client)));
+  assert.deepEqual(retries.map((retry) => retry.reply), [expected, expected, expected, expected]);
+  const truncated = await liveEntityContext("1", "authenticated-org", "", true, errorTail.slice(1), classify, client);
+  assert.equal(truncated.reply, "Please restate the full sale request so I can verify it against the live catalogue.");
+  for (const terminal of [expected, "Sale preview cancelled."]) {
+    const closed = [...dangling, { role: "assistant", text: terminal }] as const;
+    const after = await liveEntityContext("1", "authenticated-org", "", true, closed, classify, client);
+    assert.equal(after.reply, null);
+  }
   const oneTurn = await liveEntityContext(sale, "authenticated-org", "", true, [], classify, () => client(false));
   assert.equal(oneTurn.reply, expected);
 }
