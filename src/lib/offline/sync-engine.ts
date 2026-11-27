@@ -85,6 +85,7 @@ import {
 import {
   drainPendingPayments,
   retryPaymentSyncIssue,
+  type PaymentSyncOptions,
   type PaymentDrainResult,
 } from "@/lib/offline/payment-sync";
 import {
@@ -321,6 +322,7 @@ export async function retrySyncIssue(
   supabase: SupabaseClient,
   scope: string,
   issueId: string,
+  onPaymentConfirmed?: PaymentSyncOptions["onConfirmed"],
 ): Promise<{ confirmed: boolean; notRetryable: boolean; reason: string | null; kind: "sale" | "customer" | "supplier" | "purchase" | "return" | "payment" | "expense" }> {
   const backend = getSyncIssuesBackend();
   const issues = await backend.list(scope);
@@ -342,7 +344,7 @@ export async function retrySyncIssue(
     return { ...outcome, kind: "return" as const };
   }
   if (issue && issue.paymentId) {
-    const outcome = await retryPaymentSyncIssue(supabase, scope, issueId);
+    const outcome = await retryPaymentSyncIssue(supabase, scope, issueId, { onConfirmed: onPaymentConfirmed });
     return { ...outcome, kind: "payment" as const };
   }
   if (issue && issue.expenseId) {

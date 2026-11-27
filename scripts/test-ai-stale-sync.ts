@@ -339,7 +339,7 @@ function main(): void {
 
   console.log("(g) regeneration runs silently and on fresh state");
   check(
-    generatorSource.includes("async (options?: { silent?: boolean })") &&
+    generatorSource.includes("options?: { silent?: boolean;") &&
       generatorSource.includes("const silent = options?.silent === true;"),
     "generator accepts a silent option",
   );

@@ -403,7 +403,7 @@ export interface PaymentDrainResult {
   /** True when a network failure stopped the loop early. */
   stoppedEarly: boolean;
   /** Confirmed payments, so the caller can refresh the derived figures. */
-  confirmed: Array<{ localId: string; serverId: string | null; kind: PaymentKind | null }>;
+  confirmed: Array<{ localId: string; serverId: string | null; kind: PaymentKind | null; action: LocalPaymentRow["action"] }>;
 }
 
 /**
@@ -433,7 +433,7 @@ export async function drainPendingPayments(
   const drainOptions: PaymentSyncOptions = {
     ...options,
     onConfirmed: (row, serverId) => {
-      result.confirmed.push({ localId: row.id, serverId, kind: paymentKindOf(row) });
+      result.confirmed.push({ localId: row.id, serverId, kind: paymentKindOf(row), action: row.action });
       options.onConfirmed?.(row, serverId);
     },
   };

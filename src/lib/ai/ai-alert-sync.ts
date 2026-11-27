@@ -82,12 +82,15 @@
  */
 
 import { dayKeyedAlertEntityId } from "./ai-alert-entity-ids";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type AiAlertSyncSaveKind =
   | "sale"
   | "purchase"
   | "customer_payment"
   | "supplier_payment"
+  | "customer_payment_void"
+  | "supplier_payment_void"
   | "sales_return"
   | "purchase_return"
   | "expense";
@@ -123,6 +126,8 @@ export const AI_ALERT_SYNC_SAVE_KIND_LABEL: Record<AiAlertSyncSaveKind, string> 
   purchase: "purchase",
   customer_payment: "customer payment",
   supplier_payment: "supplier payment",
+  customer_payment_void: "customer payment",
+  supplier_payment_void: "supplier payment",
   sales_return: "sales return",
   purchase_return: "purchase return",
   expense: "expense",
@@ -166,6 +171,7 @@ export function staleAiAlertUpdateTarget(
       ? { sourceType: "expenses", entityIds: expenseEntityIds }
       : save.kind === "sale" ||
           save.kind === "customer_payment" ||
+          save.kind === "customer_payment_void" ||
           save.kind === "sales_return"
         ? { sourceType: "customer_credit", entityIds: save.customerId ? [save.customerId] : [] }
         : { sourceType: "supplier_ledger", entityIds: save.supplierId ? [save.supplierId] : [] };
@@ -174,6 +180,32 @@ export function staleAiAlertUpdateTarget(
     .filter((id) => id !== "");
   if (entityIds.length === 0) return null;
   return { sourceType: target.sourceType, entityIds };
+}
+
+export function paymentVoidAlertSync(kind: "customer" | "supplier", partyId?: string | null): AiAlertSyncSave {
+  return kind === "customer"
+    ? { kind: "customer_payment_void", customerId: partyId }
+    : { kind: "supplier_payment_void", supplierId: partyId };
+}
+
+/** Recover the party from the exact, confirmed server row, including after a desktop drain. */
+export async function loadConfirmedVoidPartyId(
+  supabase: SupabaseClient,
+  organizationId: string,
+  kind: "customer" | "supplier",
+  paymentId: string,
+): Promise<string | null> {
+  const partyColumn = kind === "customer" ? "customer_id" : "supplier_id";
+  const { data, error } = await supabase
+    .from(kind === "customer" ? "customer_payments" : "supplier_payments")
+    .select(partyColumn)
+    .eq("organization_id", organizationId)
+    .eq("id", paymentId)
+    .not("voided_at", "is", null)
+    .maybeSingle();
+  if (error) throw error;
+  const partyId = (data as Record<string, unknown> | null)?.[partyColumn];
+  return typeof partyId === "string" ? partyId : null;
 }
 
 /**

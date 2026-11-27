@@ -138,7 +138,10 @@ import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
 import { smartModuleRows, urgentReorderRows } from "@/lib/dashboard/smart-modules";
 import { countExpiringStockChecks, isUnpaidPurchase, matchesPurchasePaymentFilter, NEEDS_ATTENTION_OUTSTANDING_PAYMENT_FILTER, NEEDS_ATTENTION_URGENT_REORDER_FILTER, reorderRecommendationMatchesFilter, taskFilterForNeedsAttentionTile, taskMatchesTypeFilter } from "@/lib/dashboard/needs-attention";
 import { accumulateVoiceTranscript, aiSectionKind, floatingAiDestination, voiceListenEndOutcome, voiceListenStartDecision, voiceOperatorCleanupOnLeave, type VoiceRecognitionResult } from "@/lib/ai/voice-operator";
-import { AI_ALERT_SYNC_SAVE_KIND_LABEL, SHOWN_AI_ALERT_STATUSES, shouldRegenerateAiAlertsAfterSave, staleAiAlertUpdateTarget, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
+import { AI_ALERT_SYNC_SAVE_KIND_LABEL, SHOWN_AI_ALERT_STATUSES, loadConfirmedVoidPartyId, paymentVoidAlertSync, shouldRegenerateAiAlertsAfterSave, staleAiAlertUpdateTarget, type AiAlertSyncSave } from "@/lib/ai/ai-alert-sync";
+import { buildCustomerLedger } from "@/lib/ai/customer-ledger";
+import { buildSupplierLedger } from "@/lib/ai/supplier-ledger";
+import { loadRawBusinessData } from "@/lib/brain/supabase-loader";
 import { broadcastAiAlertsInvalidated, subscribeAiAlertsInvalidated } from "@/lib/ai/ai-alert-sync-broadcast";
 import { dayKeyedAlertEntityId } from "@/lib/ai/ai-alert-entity-ids";
 import { aiAlertDedupeKey, buildActiveAiAlertKeySet, filterNewAlertCandidates } from "@/lib/ai/ai-alert-dedupe";
@@ -928,6 +931,7 @@ export default function Home() {
   // to re-resolve the profile only when the signed-in user actually changes.
   const lastResolvedAuthUserIdRef = useRef<string | null>(null);
   const dashboardAccountIdRef = useRef<string | null>(null);
+  const paymentVoidAlertSyncQueue = useRef(Promise.resolve());
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   // HYBRID must-have 2 (Slice 1): provision succeeded but the org claim is
@@ -6079,6 +6083,7 @@ export default function Home() {
       return;
     }
     setVoidingPaymentId(paymentId);
+    const profileRequest = profileLoadRequestRef.current;
     const setVoidedMessage = () => {
       if (kind === "customer") {
         setCustomerPaymentMessage(t('payments.paymentVoided'));
@@ -6136,7 +6141,10 @@ export default function Home() {
         // Online: try the live void; a network failure parks the void
         // locally instead of failing it.
         try {
-          await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+          const confirmed = await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+          if (profileLoadRequestRef.current === profileRequest) {
+            refreshAiAlertsAfterConfirmedVoid(kind, confirmed.payment_id, confirmed.party_id);
+          }
         } catch (caught) {
           if (isUncertainPaymentError(caught) && scope) {
             await getLocalPaymentsBackend().upsert(scope, newLocalVoidRow({ kind, paymentId, reason: null }));
@@ -6151,7 +6159,10 @@ export default function Home() {
         await refreshAfterVoid(true);
         return;
       }
-      await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+      const confirmed = await voidPaymentAtomic(supabase, { kind, paymentId, reason: null }, createPaymentAttemptKey());
+      if (profileLoadRequestRef.current === profileRequest) {
+        refreshAiAlertsAfterConfirmedVoid(kind, confirmed.payment_id, confirmed.party_id);
+      }
       setVoidedMessage();
       await refreshAfterVoid(true);
     } catch (err) {
@@ -7619,7 +7630,13 @@ export default function Home() {
     const scope = `${currentOrganizationId}:${currentProfile.id}`;
     setRetryingSyncIssueId(issue.id);
     try {
-      const outcome = await retrySyncIssue(supabase, scope, issue.id);
+      const profileRequest = profileLoadRequestRef.current;
+      const outcome = await retrySyncIssue(supabase, scope, issue.id, (row, serverId) => {
+        const kind = row.input.kind;
+        if (profileLoadRequestRef.current === profileRequest && row.action === "void" && serverId && (kind === "customer" || kind === "supplier")) {
+          refreshAiAlertsAfterConfirmedVoid(kind, serverId);
+        }
+      });
       if (outcome.confirmed) {
         if (outcome.kind === "customer") {
           setSalesMessage(t('syncIssues.customerRetryConfirmed'));
@@ -7787,6 +7804,11 @@ export default function Home() {
       // order step 4); a confirmed payment or void refreshes the
       // payment lists so the derived balances follow at once.
       onPaymentsDrained: (paymentsDrained) => {
+        for (const { action, serverId, kind } of paymentsDrained.confirmed) {
+          if (action === "void" && kind && serverId) {
+            refreshAiAlertsAfterConfirmedVoid(kind, serverId);
+          }
+        }
         if (paymentsDrained.confirmedCount > 0) {
           fetchCustomerPayments();
           fetchSupplierPayments();
@@ -16769,7 +16791,7 @@ export default function Home() {
     downloadCsv("tradeos-profit-loss-report.csv", [...summaryRows, ...categoryRows]);
   };
 
-  const getCustomerCreditSummary = (customer: Customer) => {
+  const getCustomerCreditSummary = (customer: Pick<Customer, "id">) => {
     const customerCreditTransactionIds = salesTransactions
       .filter(
         (transaction) =>
@@ -17431,7 +17453,7 @@ export default function Home() {
   // regeneration must not flash briefing messages/toasts at the user
   // while they are saving a sale, purchase or payment. Failures are
   // still logged to the console in both modes.
-  const generateAiBusinessAlerts = async (options?: { silent?: boolean }) => {
+  const generateAiBusinessAlerts = async (options?: { silent?: boolean; confirmedVoid?: boolean }) => {
     const silent = options?.silent === true;
     if (!silent) {
       setAiBriefingMessage(null);
@@ -17464,7 +17486,18 @@ export default function Home() {
     // they track the business instead of a hardcoded PKR-era constant or
     // a stored exchange rate that can go stale. The supplier and customer
     // lists are computed once here and reused by their sections below.
-    const supplierPayables = suppliers.map((supplier) => {
+    // A post-void callback can still see its pre-void React render. Build the
+    // amounts from fresh server rows using the same shared allocation engines.
+    const liveLedger = options?.confirmedVoid && currentOrganizationId
+      ? await loadRawBusinessData(supabase, currentOrganizationId)
+      : null;
+    if (options?.confirmedVoid && !liveLedger?.assistantKpiReady) {
+      throw new Error("Post-void alert regeneration requires complete ledger reads");
+    }
+    const liveSuppliers = liveLedger ? buildSupplierLedger(liveLedger).byId : null;
+    const liveCustomers = liveLedger ? buildCustomerLedger(liveLedger, new Date(todayDateValue + "T12:00:00Z")).byId : null;
+    const supplierPayables = (liveLedger?.suppliers ?? suppliers).map((supplier) => {
+      if (liveSuppliers) return { supplier, payable: liveSuppliers.get(supplier.id)?.payableAmount ?? 0 };
       const transactionIds = purchaseTransactions
         .filter((transaction) => transaction.supplier_id === supplier.id)
         .map((transaction) => transaction.id);
@@ -17476,9 +17509,12 @@ export default function Home() {
       return { supplier, payable };
     });
     const totalOutstandingPayables = supplierPayables.reduce((sum, item) => sum + item.payable, 0);
-    const customerOverdues = customers.map((customer) => ({ customer, summary: getCustomerCreditSummary(customer) }));
+    const customerOverdues = (liveLedger?.customers ?? customers).map((customer) => ({
+      customer,
+      summary: liveCustomers ? liveCustomers.get(customer.id) : getCustomerCreditSummary(customer),
+    }));
     const totalOutstandingReceivables = customerOverdues.reduce(
-      (sum, item) => sum + Math.max(0, item.summary.overdueAmount),
+      (sum, item) => sum + Math.max(0, item.summary?.overdueAmount ?? 0),
       0
     );
     // Trailing 30 days inclusive of today, from the fully-loaded expenses
@@ -17560,10 +17596,11 @@ export default function Home() {
       });
 
     customerOverdues
-      .filter((item) => item.summary.overdueAmount > 0)
-      .sort((a, b) => b.summary.overdueAmount - a.summary.overdueAmount)
+      .filter((item) => (item.summary?.overdueAmount ?? 0) > 0)
+      .sort((a, b) => (b.summary?.overdueAmount ?? 0) - (a.summary?.overdueAmount ?? 0))
       .slice(0, 10)
       .forEach(({ customer, summary }) => {
+        if (!summary) return;
         candidates.push({
           alert_type: "payment",
           title: t('page.overdueReceivable').replace('{customer}', customer.customer_name),
@@ -17656,10 +17693,11 @@ export default function Home() {
     // (null) — and that fallback writes an Audit Log entry, never
     // silently.
     const serverKeys = await fetchActiveAiAlertKeys(currentOrganizationId);
-    const knownKeys = serverKeys ?? buildActiveAiAlertKeySet(aiAlerts);
     if (serverKeys === null) {
       await auditAiAlertDedupeReadFailure("generator dedupe");
+      if (options?.confirmedVoid) throw new Error("Post-void alert regeneration requires server dedupe keys");
     }
+    const knownKeys = serverKeys ?? buildActiveAiAlertKeySet(aiAlerts);
     const newCandidates = filterNewAlertCandidates(uniqueCandidates, knownKeys);
 
     if (newCandidates.length === 0) {
@@ -17700,6 +17738,7 @@ export default function Home() {
       const storedKeysResult = await fetchActiveAiAlertKeys(currentOrganizationId);
       if (storedKeysResult === null) {
         await auditAiAlertDedupeReadFailure("per-row retry after failed batch");
+        if (options?.confirmedVoid) throw new Error("Post-void alert retry requires server dedupe keys");
       }
       const storedKeys = storedKeysResult ?? new Set<string>();
       const insertedCandidates: typeof newCandidates = [];
@@ -17789,10 +17828,14 @@ export default function Home() {
   // Staff saves invalidate only (the generator is owner-gated); owner /
   // admin saves invalidate AND regenerate. Offline-parked saves never
   // call this — their figures have not reached the server yet.
-  const refreshAiAlertsAfterSave = (save: AiAlertSyncSave): void => {
-    void (async () => {
+  const refreshAiAlertsAfterSave = (mutation: AiAlertSyncSave | (() => Promise<AiAlertSyncSave>)): void => {
+    const confirmedVoid = typeof mutation === "function";
+    const profileRequest = profileLoadRequestRef.current;
+    const sync = async () => {
       try {
-        if (!currentOrganizationId) return;
+        if (!currentOrganizationId || profileLoadRequestRef.current !== profileRequest) return;
+        const save = typeof mutation === "function" ? await mutation() : mutation;
+        if (profileLoadRequestRef.current !== profileRequest) return;
         // ONE atomic update, not read-then-write: the target (source
         // type + entity ids) comes from the save itself, and the
         // WHERE clause resolves exactly the shown (active/new) alerts
@@ -17803,6 +17846,7 @@ export default function Home() {
         // 2026-11-23). `.select("id")` returns the resolved ids for
         // the audit entry below.
         const target = staleAiAlertUpdateTarget(save);
+        if (confirmedVoid && !target) return;
         if (target !== null) {
           const now = new Date().toISOString();
           const { data: resolvedRows, error } = await supabase
@@ -17814,19 +17858,20 @@ export default function Home() {
             .in("status", [...SHOWN_AI_ALERT_STATUSES])
             .select("id");
           if (error) {
-            console.error("Supabase AI alert sync after save error:", JSON.stringify(error, null, 2));
-            return;
+            throw error;
           }
           const staleIds = (resolvedRows ?? []).map((row) => row.id);
           if (staleIds.length > 0) {
             // One audit entry for the batch (best-effort: never blocks).
             try {
+              const auditMessage = t(confirmedVoid ? 'page.aiAlertsInvalidatedAfterVoid' : 'page.aiAlertsInvalidatedAfterSave')
+                .replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length));
               await createAuditLog({
                 action: "updated",
                 entity_type: "ai_alert",
                 entity_id: null,
-                entity_label: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
-                description: t('page.aiAlertsInvalidatedAfterSave').replace('{kind}', AI_ALERT_SYNC_SAVE_KIND_LABEL[save.kind]).replace('{count}', String(staleIds.length)),
+                entity_label: auditMessage,
+                description: auditMessage,
                 new_values: { count: staleIds.length, alert_ids: staleIds },
               });
             } catch (auditError) {
@@ -17841,8 +17886,10 @@ export default function Home() {
             broadcastAiAlertsInvalidated(currentOrganizationId);
           }
         }
-        if (shouldRegenerateAiAlertsAfterSave(currentProfile?.role ?? null)) {
-          await generateAiBusinessAlerts({ silent: true });
+        if (profileLoadRequestRef.current === profileRequest && shouldRegenerateAiAlertsAfterSave(currentProfile?.role ?? null)) {
+          await (confirmedVoid
+            ? generateAiBusinessAlerts({ silent: true, confirmedVoid: true })
+            : generateAiBusinessAlerts({ silent: true }));
           // Cross-tab: the fresh alerts are on the server now, so the
           // other tabs pick them up. Staff saves skip this block, but
           // a staff save that resolved alerts already broadcast above.
@@ -17850,9 +17897,28 @@ export default function Home() {
         }
       } catch (err) {
         // Fail-open: a sync failure must never surface in the save flow.
-        console.error("AI alert sync after save failed (non-fatal):", err);
+        console.error(confirmedVoid ? "AI alert sync after void failed (non-fatal):" : "AI alert sync after save failed (non-fatal):", err);
+      }
+    };
+    void (async () => {
+      if (confirmedVoid) {
+        paymentVoidAlertSyncQueue.current = paymentVoidAlertSyncQueue.current.then(sync);
+        await paymentVoidAlertSyncQueue.current;
+      } else {
+        await sync();
       }
     })();
+  };
+
+  const refreshAiAlertsAfterConfirmedVoid = (kind: "customer" | "supplier", paymentId: string, confirmedPartyId?: string) => {
+    if (!currentOrganizationId) return;
+    const organizationId = currentOrganizationId;
+    // Editing a payment can reassign it. Use the RPC party captured before
+    // the refresh, or recover it from the exact voided row after a drain.
+    refreshAiAlertsAfterSave(async () => {
+      const partyId = confirmedPartyId || await loadConfirmedVoidPartyId(supabase, organizationId, kind, paymentId);
+      return paymentVoidAlertSync(kind, partyId);
+    });
   };
 
   // AI Insight cross-tab sync: a save in ANOTHER tab resolves /
