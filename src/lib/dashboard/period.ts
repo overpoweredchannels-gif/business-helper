@@ -24,6 +24,6 @@ export function inDashboardRange(day: string | null, range: DashboardRange) {
 export function activityDay(timestamp: string, timeZone: string | null) {
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timeZone ?? "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timeZone ?? undefined, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
   return ["year", "month", "day"].map(type => parts.find(part => part.type === type)?.value).join("-");
 }

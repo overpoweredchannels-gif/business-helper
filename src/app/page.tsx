@@ -20982,9 +20982,8 @@ export default function Home() {
     setSecurityCheckMessage(t('page.securityCheckMarked').replace('{status}', status));
   };
 
-  const role = currentProfile?.role;
   const dashboardWideAccess = currentProfile?.is_active !== false && Boolean(currentOrganizationId) && (
-    role === "owner" || (
+    isOwnerOrAdmin() || (
       selfEmployee?.designation === "manager" && selfEmployee.is_active && selfEmployee.status === "active" &&
       selfEmployee.organization_id === currentOrganizationId && selfEmployee.profile_id === currentProfile?.id
     )
@@ -21088,7 +21087,7 @@ export default function Home() {
       .sort((a, b) => Date.parse(b.tx.created_at) - Date.parse(a.tx.created_at))
       .slice(0, 10_000);
     exportBusinessActivityCsv(range.start, range.end, entries.map(({ tx, type, party }) => [
-      dashboardTimeZone ? formatDateTime(tx.created_at) : new Date(tx.created_at).toLocaleString("en-CA", { timeZone: "Asia/Karachi" }),
+      formatDateTime(tx.created_at),
       type, tx.invoice_number, party, tx.total_amount ?? "", currency,
     ]));
   };
