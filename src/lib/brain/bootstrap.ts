@@ -151,7 +151,8 @@ export function initializeBusinessBrain(
           sessionId,
           orgId,
           profileId,
-          kpis
+          kpis,
+          raw
         );
 
         if (runtimeResult.state === "idle" && runtimeResult.actionType === null) {

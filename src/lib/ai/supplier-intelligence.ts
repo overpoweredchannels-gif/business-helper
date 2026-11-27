@@ -1,3 +1,4 @@
+import { resolveLiveCandidate, searchSuppliersLive } from "./entity-match";
 import type { MemoryStore } from "../brain/memory/business-memory";
 import { buildSupplierLedger, SupplierLedger, SupplierLedgerEntry } from "./supplier-ledger";
 import { formatAiMoney } from "./ai-money";
@@ -62,37 +63,21 @@ function productSummary(invoice: { items: Array<{ productName: string; quantity:
   return ` (${parts.join(", ")}${extra})`;
 }
 
-function findSupplierEntry(ledger: SupplierLedger, store: MemoryStore, name: string | null): SupplierLedgerEntry | null {
-  if (!name) return null;
-  const normalized = name.toLowerCase().trim();
-  const exact = ledger.suppliers.find(
-    (entry) => entry.supplierName.toLowerCase() === normalized
-  );
-  if (exact) return exact;
-
-  const fuzzy = store.searchSuppliers(normalized, 0.35, 10);
-  if (fuzzy.length === 0) return null;
-  const best = fuzzy[0];
-  if (best.score < 0.5) return null;
-  return ledger.byId.get(String(best.item.id)) ?? null;
+function findSupplierMatches(ledger: SupplierLedger, name: string) {
+  return searchSuppliersLive(name, ledger.suppliers.map((row) => ({ id: row.supplierId, supplier_name: row.supplierName })));
 }
 
-function findManySupplierEntries(ledger: SupplierLedger, store: MemoryStore, name: string): SupplierLedgerEntry[] {
-  const normalized = name.toLowerCase().trim();
-  const exact = ledger.suppliers.filter(
-    (entry) => entry.supplierName.toLowerCase() === normalized
-  );
-  if (exact.length > 0) return exact;
-  const termTokens = normalized.split(/\s+/).filter((token) => token.length > 0);
-  const firstToken = termTokens[0] ?? "";
-  const fuzzy = store.searchSuppliers(normalized, 0.3, 8);
-  return fuzzy
-    .filter((result) => {
-      const candidateName = result.item.name.toLowerCase();
-      return firstToken.length > 0 && candidateName.includes(firstToken) && result.score >= 0.45;
-    })
-    .map((result) => ledger.byId.get(String(result.item.id)))
-    .filter((entry): entry is SupplierLedgerEntry => Boolean(entry));
+function findSupplierEntry(ledger: SupplierLedger, name: string | null): SupplierLedgerEntry | null {
+  if (!name) return null;
+  const match = resolveLiveCandidate(findSupplierMatches(ledger, name));
+  return match ? ledger.byId.get(match.id) ?? null : null;
+}
+
+function findManySupplierEntries(ledger: SupplierLedger, name: string): SupplierLedgerEntry[] {
+  return findSupplierMatches(ledger, name).flatMap((candidate) => {
+    const entry = ledger.byId.get(candidate.id);
+    return entry ? [entry] : [];
+  });
 }
 
 function entryLabel(entry: SupplierLedgerEntry): string {
@@ -219,7 +204,7 @@ export function processSupplierQuery(
         };
       }
 
-      const matches = findManySupplierEntries(ledger, store, searchTerm);
+      const matches = findManySupplierEntries(ledger, searchTerm);
       if (matches.length === 0) {
         return { ok: false, error: "SUPPLIER_NOT_FOUND", queryType, message: `I couldn't find any supplier matching "${searchTerm}".` };
       }
@@ -232,7 +217,7 @@ export function processSupplierQuery(
 
     case "balance":
     case "all_outstanding": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         return { ok: true, queryType, message: balanceMessage(entry, currency) };
       }
@@ -298,7 +283,7 @@ export function processSupplierQuery(
     }
 
     case "credit_limit": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         if (entry.creditLimit === null || entry.creditLimit <= 0) {
           return { ok: true, queryType, message: `${entry.supplierName} has no credit limit set.` };
@@ -328,7 +313,7 @@ export function processSupplierQuery(
     }
 
     case "credit_days": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         if (entry.creditDaysRemaining === null || entry.creditDays === null) {
           return { ok: true, queryType, message: `${entry.supplierName} has no credit-day terms.` };
@@ -386,7 +371,7 @@ export function processSupplierQuery(
     }
 
     case "history": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         if (entry.invoices.length === 0) {
           return { ok: true, queryType, message: `${entry.supplierName} has no purchases yet.` };
@@ -420,7 +405,7 @@ export function processSupplierQuery(
     }
 
     case "payment_history": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         if (entry.payments.length === 0) {
           return { ok: true, queryType, message: `${entry.supplierName} has no payment records.` };
@@ -453,7 +438,7 @@ export function processSupplierQuery(
     }
 
     case "last_transaction": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       const candidate = entry ?? ledger.suppliers
         .filter((s) => s.lastInvoice)
         .sort((a, b) => (b.lastPurchaseDate ?? "").localeCompare(a.lastPurchaseDate ?? ""))[0];
@@ -469,7 +454,7 @@ export function processSupplierQuery(
     }
 
     case "frequency": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         if (entry.invoiceCount === 0) {
           return { ok: true, queryType, message: `No purchases from ${entry.supplierName} yet.` };
@@ -496,7 +481,7 @@ export function processSupplierQuery(
     }
 
     case "avg_order": {
-      const entry = findSupplierEntry(ledger, store, supplierName);
+      const entry = findSupplierEntry(ledger, supplierName);
       if (entry) {
         if (entry.invoiceCount === 0) {
           return { ok: true, queryType, message: `No purchases from ${entry.supplierName} yet.` };

@@ -31,7 +31,7 @@ export async function loadRawBusinessData(
     alertsRes,
   ] = await Promise.all([
     supabase.from("products").select("id, name, brand_id, category_id, unit_type, last_purchase_price, default_selling_price, current_stock, units_per_pack, minimum_stock_level, reorder_level, track_batch, track_expiry, is_active, created_at, updated_at").eq("organization_id", organizationId).order("name", { ascending: true }),
-    supabase.from("customers").select("id, customer_name, shop_name, phone, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, created_at, updated_at").eq("organization_id", organizationId).order("customer_name", { ascending: true }),
+    supabase.from("customers").select("id, customer_name, shop_name, phone, city, area, customer_type, credit_policy, credit_limit, credit_days, allow_over_limit, allow_overdue_sales, preferred_payment_method, is_active, created_at, updated_at").eq("organization_id", organizationId).order("customer_name", { ascending: true }),
     supabase.from("suppliers").select("id, supplier_name, contact_person, phone, city, notes, created_at, updated_at").eq("organization_id", organizationId).order("supplier_name", { ascending: true }),
     supabase.from("profiles").select("id, display_name, email, role, is_active").eq("organization_id", organizationId).order("email", { ascending: true }),
     supabase.from("sales_transactions").select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, total_amount, discount_amount, tax_rate").eq("organization_id", organizationId).order("created_at", { ascending: false }),

@@ -417,6 +417,7 @@ export interface MemoryWriterRawData {
   products: Array<{
     id: number | string;
     name: string;
+    is_active?: boolean | null;
     brand_id?: string | null;
     category_id?: string | null;
     brand_name?: string | null;
@@ -435,6 +436,7 @@ export interface MemoryWriterRawData {
   customers: Array<{
     id: string;
     customer_name: string;
+    is_active?: boolean | null;
     shop_name?: string | null;
     phone?: string | null;
     address?: string | null;

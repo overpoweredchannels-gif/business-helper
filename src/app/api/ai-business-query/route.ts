@@ -4,6 +4,8 @@ import { requirePermission } from "@/lib/identity/authorization";
 import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 import { aiCurrencyPromptLine, formatAiMoney } from "@/lib/ai/ai-money";
 import { RegionalPreferencesRepository } from "@/lib/regional/repository";
+import { LIVE_MATCH_INSTRUCTION } from "@/lib/ai/entity-match";
+import { liveEntityContext } from "@/lib/ai/live-entity-context";
 
 export const runtime = "nodejs";
 
@@ -146,6 +148,11 @@ async function runPost(request: NextRequest) {
     const kpiText = safeText(businessSummary.balances?.assistant_kpis?.text ?? businessSummary.assistant_kpis?.text, 1800);
     const summaryText = safeText(JSON.stringify(businessSummary), 24000);
     const isAnalyticsExplainer = queryType === "analytics_explainer";
+    const live = !isAnalyticsExplainer && permission.actor?.organizationId
+      ? await liveEntityContext(question, permission.actor.organizationId, typeof booksCurrency === "string" ? booksCurrency : "")
+      : { block: "", reply: null };
+    if (live.reply) return NextResponse.json({ ok: true, provider: "live_catalogue", model: "entity_match",
+      result: { answer: live.reply, query_type: queryType, language, key_points: [], warnings: [] } });
     const prompt = isAnalyticsExplainer
       ? `
 You are OP OWNER AI Analytics Explainer for a Pakistani wholesale/trading business.
@@ -187,7 +194,9 @@ ${summaryText}
 `
       : `
 You are Aankh Business Assistant for Pakistani wholesalers, traders, distributors, and general store suppliers.
-Answer only from the provided business_summary. Do not invent data. If data is missing, say it is not available.
+Answer from the provided business_summary and live search results. If data is missing, say it is not available.
+${LIVE_MATCH_INSTRUCTION}
+${live.block}
 Do not execute actions or suggest that you changed records.
 ${currencyInstruction}
 Use the current KPI block below for totals it covers.

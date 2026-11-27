@@ -1,3 +1,4 @@
+import { describeLiveMatch, resolveLiveCandidate, searchProductsLive, type MatchingLists } from "./entity-match";
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { ProductMemory } from "../brain/contracts/memory";
 import { formatAiMoney } from "./ai-money";
@@ -25,15 +26,15 @@ export interface InventoryQueryResult {
 export function processInventoryQuery(
   queryType: InventoryQueryIntent | null,
   productName: string | null,
-  store: MemoryStore
+  store: MemoryStore,
+  products?: MatchingLists["products"],
 ): InventoryQueryResult {
   const allProducts = Array.from(store.products.values()).filter((p) => p.isActive !== false);
   const inventory = store.inventory;
-  const product = productName ? resolveProduct(productName, store) : null;
 
   switch (queryType) {
     case "quantity_lookup":
-      return handleQuantityLookup(product, productName);
+      return handleQuantityLookup(productName, products);
     case "low_stock":
       return handleLowStock(allProducts, inventory);
     case "reorder":
@@ -59,31 +60,13 @@ export function processInventoryQuery(
   }
 }
 
-function resolveProduct(name: string, store: MemoryStore): ProductMemory | null {
-  const results = store.searchProducts(name, 0.4, 1);
-  if (results.length > 0 && results[0].score >= 0.5) {
-    return results[0].item;
-  }
-  const exact = store.findExactProduct(name);
-  if (exact) return exact;
-  for (const [id, p] of store.products.entries()) {
-    if (p.name.toLowerCase() === name.toLowerCase()) return p;
-  }
-  return null;
-}
-
-function handleQuantityLookup(product: ProductMemory | null, productName: string | null): InventoryQueryResult {
-  if (!product || !productName) {
-    const msg = productName
-      ? `I could not find a product called ${productName}. Please check the name and try again.`
-      : "Please tell me which product you want to check the stock for.";
-    return { ok: false, message: msg, error: "PRODUCT_NOT_FOUND", queryType: "quantity_lookup" };
-  }
-  return {
-    ok: true,
-    message: formatQuantityResponse(product),
-    queryType: "quantity_lookup",
-  };
+function handleQuantityLookup(name: string | null, products?: MatchingLists["products"]): InventoryQueryResult {
+  const matches = name && products ? searchProductsLive(name, products) : null;
+  const product = resolveLiveCandidate(matches ?? []);
+  const message = product
+    ? `${product.name}: ${product.currentStock == null ? "stock unavailable" : `${product.currentStock} units available`}.`
+    : name ? describeLiveMatch("product", name, matches) : "Please tell me which product you want to check the stock for.";
+  return { ok: Boolean(product), message, queryType: "quantity_lookup" };
 }
 
 function handleLowStock(allProducts: ProductMemory[], inventory: { lowStockCount: number }): InventoryQueryResult {
@@ -270,22 +253,4 @@ function fallbackInventoryResponse(allProducts: ProductMemory[], inventory: { to
     message: parts.join(" "),
     queryType: null,
   };
-}
-
-function formatQuantityResponse(product: ProductMemory): string {
-  const parts: string[] = [`${product.name}: ${product.currentStock} units available.`];
-  if (product.stockStatus === "out_of_stock") {
-    parts.push("This product is out of stock.");
-  } else if (product.stockStatus === "urgent") {
-    parts.push("Stock is critically low.");
-  } else if (product.stockStatus === "overstocked") {
-    parts.push("Stock is higher than usual.");
-  }
-  if (product.estimatedDaysLeft !== null && product.estimatedDaysLeft <= 30) {
-    parts.push(`Estimated ${product.estimatedDaysLeft} days of stock remaining.`);
-  }
-  if (product.needsReorder) {
-    parts.push("This product needs reordering.");
-  }
-  return parts.join(" ");
 }

@@ -79,7 +79,8 @@ export class ModuleExecutor {
         const result = processInventoryQuery(
           (intent.queryType as Parameters<typeof processInventoryQuery>[0]) ?? "quantity_lookup",
           entities.product ? entities.product.name : null,
-          store
+          store,
+          this.context.data?.products
         );
         return result.ok ? result.message : `I couldn't answer that: ${result.error ?? result.message}`;
       }

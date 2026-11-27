@@ -56,6 +56,7 @@
 
 import type { ActionType } from "./conversation-engine";
 import { aiCurrencyPromptLine } from "./ai-money";
+import { LIVE_MATCH_INSTRUCTION } from "./entity-match";
 
 export type BusinessQueryLanguage = "auto" | "english" | "urdu" | "roman_urdu";
 
@@ -107,6 +108,7 @@ export function buildBusinessQueryDirectPrompt(input: {
     `You are the AI assistant for a Pakistani retail/wholesale business called Aankh.`,
     `Answer the user's question concisely using the business context below.`,
     `Use the current KPI block, when present, for outstanding balances, stock value, and business health.`,
+    LIVE_MATCH_INSTRUCTION,
     `If the user greets you, greet back and ask how you can help.`,
     aiCurrencyPromptLine(input.currency),
     businessQueryLanguageLine(input.language),

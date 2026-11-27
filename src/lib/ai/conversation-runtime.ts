@@ -1,3 +1,4 @@
+import { describeLiveMatch, resolveLiveCandidate, searchCustomersLive, searchEmployeesLive, searchProductsLive, searchSuppliersLive, type MatchingLists } from "./entity-match";
 import { callAiProviderRouter } from "./provider-router";
 import {
   buildBusinessQueryDirectPrompt,
@@ -245,7 +246,7 @@ export class ConversationRuntime {
 
   getOrCreateSession(sessionId: string, organizationId: string, profileId: string | null): ConversationContext {
     let session = this.sessions.get(sessionId);
-    if (!session) {
+    if (!session || session.organizationId !== organizationId || session.profileId !== profileId) {
       session = createConversationContext(sessionId, organizationId, profileId);
       this.sessions.set(sessionId, session);
     }
@@ -257,7 +258,8 @@ export class ConversationRuntime {
     sessionId: string,
     organizationId: string,
     profileId: string | null,
-    kpis?: AssistantKpiBlock | null
+    kpis?: AssistantKpiBlock | null,
+    catalog?: MatchingLists | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     let context = this.getOrCreateSession(sessionId, organizationId, profileId);
 
@@ -276,7 +278,7 @@ export class ConversationRuntime {
       const resume = await this.checkIsResume(message);
       if (resume) {
         context = this.resetSession(context);
-        return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis);
+        return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis, catalog);
       }
       context = addConversationMessage(context, "assistant", "text", "The previous operation failed. Say yes to try again or provide a new command.");
       this.sessions.set(sessionId, context);
@@ -285,17 +287,17 @@ export class ConversationRuntime {
 
     if (context.state === "completed" || context.state === "cancelled") {
       context = this.resetSession(context);
-      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis);
+      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis, catalog);
     }
 
     if (context.state === "idle") {
-      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis);
+      return await this.handleNewIntent(message, context, sessionId, organizationId, profileId, kpis, catalog);
     }
 
     if (context.state === "waiting_for_confirmation") {
       const isConfirm = this.isExplicitConfirmation(message);
       if (isConfirm) {
-        return await this.executeAction(context, sessionId);
+        return await this.executeAction(context, sessionId, catalog);
       }
       const isExplicitCancel = this.isExplicitCancellation(message);
       if (isExplicitCancel) {
@@ -304,7 +306,7 @@ export class ConversationRuntime {
         this.sessions.set(sessionId, context);
         return { response: "Alright, cancelled. What would you like to do next?", state: "cancelled", actionType: null };
       }
-      return await this.handleFieldUpdate(message, context, sessionId);
+      return await this.handleFieldUpdate(message, context, sessionId, catalog);
     }
 
     if (this.isExplicitCancellation(message)) {
@@ -314,7 +316,7 @@ export class ConversationRuntime {
       return { response: "Cancelled. What would you like to do next?", state: "cancelled", actionType: null };
     }
 
-    return await this.handleFieldUpdate(message, context, sessionId);
+    return await this.handleFieldUpdate(message, context, sessionId, catalog);
   }
 
   private resetSession(context: ConversationContext): ConversationContext {
@@ -347,11 +349,12 @@ export class ConversationRuntime {
     sessionId: string,
     organizationId: string,
     profileId: string | null,
-    kpis?: AssistantKpiBlock | null
+    kpis?: AssistantKpiBlock | null,
+    catalog?: MatchingLists | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     context = updateConversationState(context, "waiting_for_intent");
 
-    const classification = await this.classifyIntent(message, context);
+    const classification = await this.classifyIntent(message);
 
     if (!classification.ok || classification.intent === "unknown") {
       return await this.fallbackToChat(message, context, sessionId, organizationId, profileId, kpis);
@@ -367,33 +370,33 @@ export class ConversationRuntime {
     }
 
     const entities = classification.entities || {};
-    const customerName = entities.customer_name as string | undefined;
-    const supplierName = entities.supplier_name as string | undefined;
-    const productName = entities.product_name as string | undefined;
+    const customerName = typeof entities.customer_name === "string" ? entities.customer_name : undefined;
+    const supplierName = typeof entities.supplier_name === "string" ? entities.supplier_name : undefined;
+    const productName = typeof entities.product_name === "string" ? entities.product_name : undefined;
     if (customerName && classification.intent === "create_sale") {
-      const customer = this.resolveCustomer(customerName);
+      const customer = this.resolveCustomer(customerName, catalog);
       if (customer) {
         context.collectedData.customer_id = customer.id;
         context.collectedData._customer_name = customer.name;
       } else context.collectedData["_customer_name_hint"] = customerName;
     }
     if (supplierName && classification.intent === "create_purchase") {
-      const supplier = this.resolveSupplier(supplierName);
+      const supplier = this.resolveSupplier(supplierName, catalog);
       if (supplier) {
         context.collectedData.supplier_id = supplier.id;
         context.collectedData._supplier_name = supplier.name;
       } else context.collectedData["_supplier_name_hint"] = supplierName;
     }
     if (productName) {
-      const product = this.resolveProduct(productName);
+      const product = this.resolveProduct(productName, catalog);
       if (product) {
         context.collectedData.product_id = product.id;
         context.collectedData._product_name = product.name;
       } else context.collectedData["_product_name_hint"] = productName;
     }
-    const employeeName = entities.employee_name as string | undefined;
+    const employeeName = typeof entities.employee_name === "string" ? entities.employee_name : undefined;
     if (employeeName && ["assign_staff", "reassign_staff", "remove_staff", "staff_query"].includes(classification.intent)) {
-      const employee = this.resolveEmployee(employeeName);
+      const employee = this.resolveEmployee(employeeName, catalog);
       if (employee) {
         context.collectedData.employee_id = employee.id;
         context.collectedData["_employee_name"] = employee.name;
@@ -414,7 +417,7 @@ export class ConversationRuntime {
     }
     if (entities.purchase_price) context.collectedData.purchase_price = entities.purchase_price;
     if (entities.payment_type) context.collectedData.payment_type = entities.payment_type;
-    this.applySaleDefaults(context);
+    this.applySaleDefaults(context, catalog);
     if (entities.credit_days && entities.payment_type === "credit") context.collectedData["credit_days"] = entities.credit_days;
     // A skip phrase from the classifier ("none", "nahi", ...) is NULL,
     // never a raw string in the record (Area J confirmation fix).
@@ -434,7 +437,11 @@ export class ConversationRuntime {
           organizationId,
           profileId,
           classification.language,
-          kpis
+          kpis,
+          `LIVE ENTITY SEARCH\n${JSON.stringify([
+            ...(productName ? [{ kind: "product", query: productName, candidates: this.searchLiveField("product_id", productName, catalog) }] : []),
+            ...(customerName ? [{ kind: "customer", query: customerName, candidates: this.searchLiveField("customer_id", customerName, catalog) }] : []),
+          ])}`
         );
       }
       return await this.fallbackToChat(message, context, sessionId, organizationId, profileId, kpis);
@@ -447,8 +454,7 @@ export class ConversationRuntime {
         return { response: "Inventory data is not available right now. Please ensure your business data is loaded.", state: "idle", actionType: null };
       }
       const queryType = (entities.query_type as InventoryQueryIntent) || null;
-      const resolvedProduct = productName ? this.store.searchProducts(productName, 0.4, 1)[0]?.item || null : null;
-      const result = processInventoryQuery(queryType, productName || null, this.store);
+      const result = processInventoryQuery(queryType, productName || null, this.store, catalog?.products);
       context = addConversationMessage(context, "assistant", "text", result.message);
       context = updateConversationState(context, "idle");
       context.actionType = null;
@@ -504,7 +510,7 @@ export class ConversationRuntime {
 
     context = updateConversationState(context, this.getStateForField(nextField || ""));
     context.pendingField = nextField;
-    const question = this.getQuestionForField(context, nextField);
+    const question = this.getQuestionForField(context, nextField, catalog);
     context = addConversationMessage(context, "assistant", "question", question, nextField || undefined);
     this.sessions.set(sessionId, context);
     return { response: question, state: context.state, actionType: context.actionType };
@@ -525,7 +531,8 @@ export class ConversationRuntime {
     organizationId: string,
     profileId: string | null,
     language?: string,
-    kpis?: AssistantKpiBlock | null
+    kpis?: AssistantKpiBlock | null,
+    liveMatches = "",
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     const ctx = this.getBusinessContextText(organizationId, kpis);
     const recentConv = this.store?.meta.organizationId === organizationId ? this.store.getConversationContext(5) : [];
@@ -536,7 +543,7 @@ export class ConversationRuntime {
       prompt: buildBusinessQueryDirectPrompt({
         question: message,
         language: resolveBusinessQueryLanguage(language),
-        businessContext: ctx,
+        businessContext: [ctx, liveMatches].filter(Boolean).join("\n\n"),
         history,
         currency: kpis ? kpis.booksCurrency : this.orgCurrency(),
       }),
@@ -598,7 +605,7 @@ export class ConversationRuntime {
     return await this.answerBusinessQuestionDirectly(message, context, sessionId, organizationId, profileId, undefined, kpis);
   }
 
-  private async classifyIntent(message: string, context: ConversationContext): Promise<{
+  async classifyIntent(message: string): Promise<{
     ok: boolean;
     intent: ActionType;
     entities: Record<string, unknown>;
@@ -636,13 +643,14 @@ export class ConversationRuntime {
   private async handleFieldUpdate(
     message: string,
     context: ConversationContext,
-    sessionId: string
+    sessionId: string,
+    catalog?: MatchingLists | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
     const schema = getActionSchema(context.actionType || "unknown");
     const currentField = context.pendingField;
 
     if (currentField && schema.fieldDefinitions[currentField]) {
-      const extracted = await this.extractFieldValue(message, currentField, context);
+      const extracted = await this.extractFieldValue(message, currentField, context, catalog);
       if (context.actionType === "create_sale" && currentField === "selling_price" && !extracted.found) {
         const question = "Please give a number for the selling price per unit.";
         context = addConversationMessage(context, "assistant", "question", question, currentField);
@@ -651,6 +659,12 @@ export class ConversationRuntime {
       }
       if (context.actionType === "create_sale" && currentField === "invoice_date" && !extracted.found) {
         const question = "Please enter the invoice date as YYYY-MM-DD, or say today.";
+        context = addConversationMessage(context, "assistant", "question", question, currentField);
+        this.sessions.set(sessionId, context);
+        return { response: question, state: context.state, actionType: context.actionType };
+      }
+      if (!extracted.found && ["product_id", "customer_id", "supplier_id", "employee_id"].includes(currentField)) {
+        const question = this.getQuestionForField(context, currentField, catalog);
         context = addConversationMessage(context, "assistant", "question", question, currentField);
         this.sessions.set(sessionId, context);
         return { response: question, state: context.state, actionType: context.actionType };
@@ -670,7 +684,7 @@ export class ConversationRuntime {
       }
     }
 
-    this.applySaleDefaults(context);
+    this.applySaleDefaults(context, catalog);
     const missingFields = this.getMissingRequiredFields(context);
     if (missingFields.length > 0) {
       let nextField = missingFields[0];
@@ -678,19 +692,19 @@ export class ConversationRuntime {
       for (const field of missingFields) {
         if (field === "customer_id" && context.collectedData["_customer_name_hint"]) {
           const name = context.collectedData["_customer_name_hint"] as string;
-          const customer = this.resolveCustomer(name);
+          const customer = this.resolveCustomer(name, catalog);
           if (customer) {
             context.collectedData.customer_id = customer.id;
             context.collectedData._customer_name = customer.name;
             delete context.collectedData["_customer_name_hint"];
-            this.applySaleDefaults(context);
+            this.applySaleDefaults(context, catalog);
             needFieldUpdate = false;
             continue;
           }
         }
         if (field === "supplier_id" && context.collectedData["_supplier_name_hint"]) {
           const name = context.collectedData["_supplier_name_hint"] as string;
-          const supplier = this.resolveSupplier(name);
+          const supplier = this.resolveSupplier(name, catalog);
           if (supplier) {
             context.collectedData.supplier_id = supplier.id;
             context.collectedData._supplier_name = supplier.name;
@@ -701,12 +715,12 @@ export class ConversationRuntime {
         }
         if (field === "product_id" && context.collectedData["_product_name_hint"]) {
           const name = context.collectedData["_product_name_hint"] as string;
-          const product = this.resolveProduct(name);
+          const product = this.resolveProduct(name, catalog);
           if (product) {
             context.collectedData.product_id = product.id;
             context.collectedData._product_name = product.name;
             delete context.collectedData["_product_name_hint"];
-            this.applySaleDefaults(context);
+            this.applySaleDefaults(context, catalog);
             needFieldUpdate = false;
             continue;
           }
@@ -727,7 +741,7 @@ export class ConversationRuntime {
 
       context.pendingField = nextField;
       context = updateConversationState(context, this.getStateForField(nextField));
-      const question = this.getQuestionForField(context, nextField);
+      const question = this.getQuestionForField(context, nextField, catalog);
       context = addConversationMessage(context, "assistant", "question", question, nextField);
       this.sessions.set(sessionId, context);
       return { response: question, state: context.state, actionType: context.actionType };
@@ -782,94 +796,26 @@ export class ConversationRuntime {
     return stateMap[field] || "waiting_for_notes";
   }
 
-  private getQuestionForField(context: ConversationContext, fieldKey: string | null): string {
+  private getQuestionForField(context: ConversationContext, fieldKey: string | null, catalog?: MatchingLists | null): string {
     if (!fieldKey || !context.actionType) return "What would you like to do?";
     const schema = getActionSchema(context.actionType);
     const def = schema.fieldDefinitions[fieldKey];
     if (!def) return `Please provide ${fieldKey.replace(/_/g, " ")}`;
 
     const collected = context.collectedData;
-    const store = this.store;
-
-    if (fieldKey === "customer_id" && store) {
-      const hint = collected["_customer_name_hint"];
-      if (hint) {
-        const searchResult = store.searchCustomers(hint as string, 0.3, 3);
-        if (searchResult.length === 1) {
-          return `Did you mean ${searchResult[0].item.name}? Say yes or tell me the full name.`;
-        }
-        if (searchResult.length > 1) {
-          const names = searchResult.map((r, i) => `${i + 1}. ${r.item.name}${r.item.shopName ? `, ${r.item.shopName}` : ""}`).join(". ");
-          return `I found a few customers: ${names}. Which one? Or tell me the full name to search again.`;
-        }
+    const kind = { customer_id: "customer", product_id: "product", supplier_id: "supplier", employee_id: "employee" }[fieldKey];
+    if (kind) {
+      const hint = collected[`_${kind}_name_hint`];
+      if (typeof hint === "string") {
+        const matches = this.searchLiveField(fieldKey, hint, catalog);
+        collected[`_${kind}_choices`] = matches?.map((candidate) => candidate.id);
+        return describeLiveMatch(kind, hint, matches);
       }
-      const allCustomers = Array.from(store.customers.values()).slice(0, 5);
-      if (allCustomers.length > 0) {
-        const customerList = allCustomers.map((c) => `${c.name}${c.shopName ? `, ${c.shopName}` : ""}`).join(", ");
-        return `${def.question} Known customers: ${customerList}.`;
-      }
+      const names = (kind === "product" ? catalog?.products.filter((row) => row.is_active !== false).slice(0, 5).map((row) => row.name) : null);
+      return names?.length ? `${def.question} Available: ${names.join(", ")}.` : def.question;
     }
 
-    if (fieldKey === "supplier_id" && store) {
-      const hint = collected["_supplier_name_hint"];
-      if (hint) {
-        const searchResult = store.searchSuppliers(hint as string, 0.3, 3);
-        if (searchResult.length === 1) {
-          return `Did you mean ${searchResult[0].item.name}? Say yes or tell me the full name.`;
-        }
-        if (searchResult.length > 1) {
-          const names = searchResult.map((r, i) => `${i + 1}. ${r.item.name}`).join(". ");
-          return `I found a few suppliers: ${names}. Which one? Or tell me the full name to search again.`;
-        }
-      }
-      const allSuppliers = Array.from(store.suppliers.values()).slice(0, 5);
-      if (allSuppliers.length > 0) {
-        const supplierList = allSuppliers.map((s) => s.name).join(", ");
-        return `${def.question} Known suppliers: ${supplierList}.`;
-      }
-    }
-
-    if (fieldKey === "product_id" && store) {
-      const hint = collected["_product_name_hint"];
-      if (hint) {
-        const searchResult = store.searchProducts(hint as string, 0.3, 3);
-        if (searchResult.length === 1) {
-          return `Did you mean ${searchResult[0].item.name}? Say yes or tell me the product name.`;
-        }
-        if (searchResult.length > 1) {
-          const names = searchResult.map((r, i) => `${i + 1}. ${r.item.name}`).join(". ");
-          return `I found a few products: ${names}. Which one? Or tell me the product name.`;
-        }
-      }
-      const allProducts = Array.from(store.products.values()).slice(0, 5);
-      if (allProducts.length > 0) {
-        const productList = allProducts.map((p) => `${p.name}, stock ${p.currentStock}`).join("; ");
-        return `${def.question} Available: ${productList}.`;
-      }
-    }
-
-    if (fieldKey === "payment_type") {
-      return "Is this cash or credit?";
-    }
-
-    if (fieldKey === "employee_id" && store) {
-      const hint = collected["_employee_name_hint"];
-      if (hint) {
-        const searchResult = store.searchStaff(hint as string, 0.3, 3);
-        if (searchResult.length === 1) {
-          return `Did you mean ${searchResult[0].item.name}? Say yes or tell me the full name.`;
-        }
-        if (searchResult.length > 1) {
-          const names = searchResult.map((r, i) => `${i + 1}. ${r.item.name}`).join(". ");
-          return `I found a few employees: ${names}. Which one? Or tell me the full name.`;
-        }
-      }
-      const allStaff = Array.from(store.staff.values()).slice(0, 5);
-      if (allStaff.length > 0) {
-        const staffList = allStaff.map((s) => `${s.name}${s.role ? `, ${s.role}` : ""}`).join("; ");
-        return `${def.question} Known staff: ${staffList}.`;
-      }
-    }
+    if (fieldKey === "payment_type") return "Is this cash or credit?";
 
     if (fieldKey === "quantity") {
       const hasHint = collected["_product_name_hint"];
@@ -896,7 +842,8 @@ export class ConversationRuntime {
   private async extractFieldValue(
     message: string,
     fieldKey: string,
-    context: ConversationContext
+    context: ConversationContext,
+    catalog?: MatchingLists | null
   ): Promise<{ found: boolean; value: unknown }> {
     const schema = getActionSchema(context.actionType || "unknown");
     const def = schema.fieldDefinitions[fieldKey];
@@ -906,12 +853,26 @@ export class ConversationRuntime {
       const price = this.parseSalePrice(message);
       return { found: price !== null, value: price };
     }
-    if (context.actionType === "create_sale" && fieldKey === "product_id") {
-      const product = this.resolveProduct(message.trim());
-      if (product) {
-        context.collectedData._product_name = product.name;
-        return { found: true, value: product.id };
+    const kind = { customer_id: "customer", product_id: "product", supplier_id: "supplier", employee_id: "employee" }[fieldKey];
+    if (kind) {
+      const hintKey = `_${kind}_name_hint`;
+      const previousHint = context.collectedData[hintKey];
+      const choice = /^([1-3])$/.exec(message.trim());
+      const previous = typeof previousHint === "string" && (choice || this.isExplicitConfirmation(message))
+        ? this.searchLiveField(fieldKey, previousHint, catalog)
+        : null;
+      const matches = previous ?? this.searchLiveField(fieldKey, message.trim(), catalog);
+      const offered = context.collectedData[`_${kind}_choices`];
+      const candidate = choice
+        ? previous?.find((row) => Array.isArray(offered) && row.id === offered[Number(choice[1]) - 1])
+        : resolveLiveCandidate(matches ?? []);
+      if (candidate?.status === "active") {
+        context.collectedData[`_${kind}_name`] = candidate.name;
+        delete context.collectedData[hintKey];
+        return { found: true, value: candidate.id };
       }
+      context.collectedData[hintKey] = (choice || previous) && typeof previousHint === "string" ? previousHint : message.trim();
+      return { found: false, value: null };
     }
 
     // Deterministic answers first (Area J confirmation fix, 2026-11-20):
@@ -985,49 +946,28 @@ export class ConversationRuntime {
     return { found: true, value: message };
   }
 
-  private resolveCustomer(name: string): { id: string; name: string } | null {
-    if (!this.store) return null;
-    const results = this.store.searchCustomers(name, 0.4, 1);
-    if (results.length > 0 && results[0].score >= 0.5) {
-      return { id: results[0].item.id, name: results[0].item.name };
-    }
-    const exact = this.store.findExactCustomer(name);
-    if (exact) return { id: exact.id, name: exact.name };
-    return null;
+  private searchLiveField(field: string, name: string, catalog?: MatchingLists | null) {
+    if (!catalog) return null;
+    if (field === "customer_id") return searchCustomersLive(name, catalog.customers);
+    if (field === "supplier_id") return searchSuppliersLive(name, catalog.suppliers);
+    if (field === "employee_id") return searchEmployeesLive(name, catalog.staff);
+    return searchProductsLive(name, catalog.products);
   }
 
-  private resolveSupplier(name: string): { id: string; name: string } | null {
-    if (!this.store) return null;
-    const results = this.store.searchSuppliers(name, 0.4, 1);
-    if (results.length > 0 && results[0].score >= 0.5) {
-      return { id: results[0].item.id, name: results[0].item.name };
-    }
-    const exact = this.store.findExactSupplier(name);
-    if (exact) return { id: exact.id, name: exact.name };
-    return null;
+  private resolveCustomer(name: string, catalog?: MatchingLists | null) {
+    return resolveLiveCandidate(this.searchLiveField("customer_id", name, catalog) ?? []);
   }
 
-  private resolveEmployee(name: string): { id: string; name: string } | null {
-    if (!this.store) return null;
-    const results = this.store.searchStaff(name, 0.4, 1);
-    if (results.length > 0 && results[0].score >= 0.5) {
-      return { id: results[0].item.id, name: results[0].item.name };
-    }
-    for (const s of this.store.staff.values()) {
-      if (s.name.toLowerCase() === name.toLowerCase()) return { id: s.id, name: s.name };
-    }
-    return null;
+  private resolveSupplier(name: string, catalog?: MatchingLists | null) {
+    return resolveLiveCandidate(this.searchLiveField("supplier_id", name, catalog) ?? []);
   }
 
-  private resolveProduct(name: string): { id: string; name: string } | null {
-    if (!this.store) return null;
-    const results = this.store.searchProducts(name, 0.4, 1);
-    if (results.length > 0 && results[0].score >= 0.5) {
-      return { id: results[0].item.id, name: results[0].item.name };
-    }
-    const exact = this.store.findExactProduct(name);
-    if (exact) return { id: exact.id, name: exact.name };
-    return null;
+  private resolveEmployee(name: string, catalog?: MatchingLists | null) {
+    return resolveLiveCandidate(this.searchLiveField("employee_id", name, catalog) ?? []);
+  }
+
+  private resolveProduct(name: string, catalog?: MatchingLists | null) {
+    return resolveLiveCandidate(this.searchLiveField("product_id", name, catalog) ?? []);
   }
 
   private parseSalePrice(value: unknown): number | null {
@@ -1043,17 +983,19 @@ export class ConversationRuntime {
     return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
   }
 
-  private applySaleDefaults(context: ConversationContext): void {
+  private applySaleDefaults(context: ConversationContext, catalog?: MatchingLists | null): void {
     if (context.actionType !== "create_sale") return;
     const customerId = context.collectedData.customer_id;
     if (context.collectedData.payment_type == null && typeof customerId === "string" &&
-      this.store?.getCustomer(customerId)?.creditPolicy === "cash_only") {
+      catalog?.customers.find((row) => row.id === customerId)?.credit_policy === "cash_only") {
       context.collectedData.payment_type = "cash";
     }
-    if (context.collectedData.selling_price != null) return;
     const productId = context.collectedData.product_id;
     if (typeof productId !== "string") return;
-    const price = this.store?.getProduct(productId)?.defaultSellingPrice;
+    const product = catalog?.products.find((row) => String(row.id) === productId);
+    context.collectedData._product_stock = product?.current_stock ?? null;
+    if (context.collectedData.selling_price != null) return;
+    const price = product?.default_selling_price;
     // Product memory uses zero when a default selling price is unset.
     if (typeof price === "number" && Number.isFinite(price) && price > 0) {
       context.collectedData.selling_price = price;
@@ -1071,6 +1013,9 @@ export class ConversationRuntime {
     context.confirmationSummary = formatConfirmationSummary(context, {
       currency: this.orgCurrency(),
     });
+    if (typeof context.collectedData._product_stock === "number") {
+      context.confirmationSummary += `\nStock: ${context.collectedData._product_stock}.`;
+    }
     context = updateConversationState(context, "waiting_for_confirmation");
 
     const stockCheck = this.checkStockAvailability(context);
@@ -1101,12 +1046,12 @@ export class ConversationRuntime {
   }
 
   private checkStockAvailability(context: ConversationContext): string | null {
-    if (!this.store || context.actionType !== "create_sale") return null;
+    if (context.actionType !== "create_sale") return null;
     const productId = context.collectedData.product_id as string;
     const quantity = Number(context.collectedData.quantity) || 0;
-    const product = this.store.getProduct(productId);
-    if (product && quantity > product.currentStock) {
-      return `Insufficient stock for ${product.name}: requested ${quantity}, available ${product.currentStock}.`;
+    const stock = context.collectedData._product_stock;
+    if (typeof stock === "number" && quantity > stock) {
+      return `Insufficient stock for ${context.collectedData._product_name ?? productId}: requested ${quantity}, available ${stock}.`;
     }
     return null;
   }
@@ -1149,8 +1094,14 @@ export class ConversationRuntime {
 
   private async executeAction(
     context: ConversationContext,
-    sessionId: string
+    sessionId: string,
+    catalog?: MatchingLists | null
   ): Promise<{ response: string; state: ConversationState; actionType: ActionType | null }> {
+    if (context.actionType === "create_sale" && (!catalog ||
+      !catalog.products.some((row) => String(row.id) === context.collectedData.product_id && row.is_active !== false) ||
+      !catalog.customers.some((row) => row.id === context.collectedData.customer_id && row.is_active !== false))) {
+      return { response: "The live sale records could not be verified as active. Please start the sale again.", state: "waiting_for_confirmation", actionType: context.actionType };
+    }
     if (context.actionType) {
       const denied = this.permissionDenialResponse(context, context.actionType, sessionId);
       if (denied.response !== "") {

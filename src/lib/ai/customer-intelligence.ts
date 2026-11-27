@@ -1,3 +1,4 @@
+import { resolveLiveCandidate, searchCustomersLive } from "./entity-match";
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { CustomerLedger, CustomerLedgerEntry } from "./customer-ledger";
 import { formatAiMoney } from "./ai-money";
@@ -63,39 +64,21 @@ function productSummary(invoice: { items: Array<{ productName: string; quantity:
   return ` (${parts.join(", ")}${extra})`;
 }
 
-function findCustomerEntry(ledger: CustomerLedger, store: MemoryStore, name: string | null): CustomerLedgerEntry | null {
-  if (!name) return null;
-  const normalized = name.toLowerCase().trim();
-  const exact = ledger.customers.find(
-    (entry) => entry.customerName.toLowerCase() === normalized || (entry.shopName ?? "").toLowerCase() === normalized
-  );
-  if (exact) return exact;
-
-  const fuzzy = store.searchCustomers(normalized, 0.35, 10);
-  if (fuzzy.length === 0) return null;
-  const best = fuzzy[0];
-  if (best.score < 0.5) return null;
-  return ledger.byId.get(String(best.item.id)) ?? null;
+function findCustomerMatches(ledger: CustomerLedger, name: string) {
+  return searchCustomersLive(name, ledger.customers.map((row) => ({ id: row.customerId, customer_name: row.customerName, shop_name: row.shopName })));
 }
 
-function findManyCustomerEntries(ledger: CustomerLedger, store: MemoryStore, name: string): CustomerLedgerEntry[] {
-  const normalized = name.toLowerCase().trim();
-  const exact = ledger.customers.filter(
-    (entry) =>
-      entry.customerName.toLowerCase() === normalized ||
-      (entry.shopName ?? "").toLowerCase() === normalized
-  );
-  if (exact.length > 0) return exact;
-  const termTokens = normalized.split(/\s+/).filter((token) => token.length > 0);
-  const firstToken = termTokens[0] ?? "";
-  const fuzzy = store.searchCustomers(normalized, 0.3, 8);
-  return fuzzy
-    .filter((result) => {
-      const candidateName = result.item.name.toLowerCase();
-      return firstToken.length > 0 && candidateName.includes(firstToken) && result.score >= 0.45;
-    })
-    .map((result) => ledger.byId.get(String(result.item.id)))
-    .filter((entry): entry is CustomerLedgerEntry => Boolean(entry));
+function findCustomerEntry(ledger: CustomerLedger, name: string | null): CustomerLedgerEntry | null {
+  if (!name) return null;
+  const match = resolveLiveCandidate(findCustomerMatches(ledger, name));
+  return match ? ledger.byId.get(match.id) ?? null : null;
+}
+
+function findManyCustomerEntries(ledger: CustomerLedger, name: string): CustomerLedgerEntry[] {
+  return findCustomerMatches(ledger, name).flatMap((candidate) => {
+    const entry = ledger.byId.get(candidate.id);
+    return entry ? [entry] : [];
+  });
 }
 
 function entryLabel(entry: CustomerLedgerEntry): string {
@@ -250,7 +233,7 @@ export function processCustomerQuery(
         };
       }
 
-      const matches = findManyCustomerEntries(ledger, store, searchTerm);
+      const matches = findManyCustomerEntries(ledger, searchTerm);
       if (matches.length === 0) {
         return { ok: false, error: "CUSTOMER_NOT_FOUND", queryType, message: `I couldn't find any customer matching "${searchTerm}".` };
       }
@@ -263,7 +246,7 @@ export function processCustomerQuery(
 
     case "balance":
     case "all_outstanding": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       if (entry) {
         return { ok: true, queryType, message: balanceMessage(entry, currency) };
       }
@@ -329,7 +312,7 @@ export function processCustomerQuery(
     }
 
     case "credit_limit": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       if (entry) {
         if (entry.creditLimit === null || entry.creditLimit <= 0) {
           return { ok: true, queryType, message: `${entry.customerName} has no credit limit set.` };
@@ -359,7 +342,7 @@ export function processCustomerQuery(
     }
 
     case "credit_days": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       if (entry) {
         if (entry.creditDaysRemaining === null || entry.creditDays === null) {
           return { ok: true, queryType, message: `${entry.customerName} has no credit-day terms.` };
@@ -417,7 +400,7 @@ export function processCustomerQuery(
     }
 
     case "history": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       if (entry) {
         if (entry.invoices.length === 0) {
           return { ok: true, queryType, message: `${entry.customerName} has no sales yet.` };
@@ -451,7 +434,7 @@ export function processCustomerQuery(
     }
 
     case "last_transaction": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       const candidate = entry ?? ledger.customers
         .filter((c) => c.lastInvoice)
         .sort((a, b) => (b.lastSaleDate ?? "").localeCompare(a.lastSaleDate ?? ""))[0];
@@ -467,7 +450,7 @@ export function processCustomerQuery(
     }
 
     case "frequency": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       if (entry) {
         if (entry.invoiceCount === 0) {
           return { ok: true, queryType, message: `${entry.customerName} hasn't purchased yet.` };
@@ -494,7 +477,7 @@ export function processCustomerQuery(
     }
 
     case "avg_order": {
-      const entry = findCustomerEntry(ledger, store, customerName);
+      const entry = findCustomerEntry(ledger, customerName);
       if (entry) {
         if (entry.invoiceCount === 0) {
           return { ok: true, queryType, message: `${entry.customerName} hasn't purchased yet.` };

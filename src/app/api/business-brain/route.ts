@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiProviderRouter } from "@/lib/ai/provider-router";
 import { aiCurrencyPromptLine } from "@/lib/ai/ai-money";
+import { LIVE_MATCH_INSTRUCTION } from "@/lib/ai/entity-match";
+import { liveEntityContext } from "@/lib/ai/live-entity-context";
 import { cleanChatHistoryForPrompt } from "@/lib/ai/chat-history-hygiene";
 import { sanitizeMessage, sanitizeHistory } from "@/lib/brain/sanitize";
 import { checkRateLimit } from "@/lib/brain/rate-limit";
@@ -57,6 +59,8 @@ async function runPost(req: NextRequest) {
       return NextResponse.json({ ok: false, error: sanitized.error }, { status: 400 });
     }
     const message = sanitized.cleaned;
+    const live = await liveEntityContext(message, auth.actor.organizationId, String(body.booksCurrency ?? ""), true);
+    if (live.reply) return NextResponse.json({ ok: true, message: filterResponse(live.reply), provider: "live_catalogue" });
     // History hygiene (2026-11-16): stored history can contain the legacy
     // runtime's verbatim failure replies ("Sorry, I couldn't process
     // that…", "The previous operation failed…", "Please confirm with yes
@@ -73,17 +77,18 @@ async function runPost(req: NextRequest) {
     const prompt = [
       `You are the AI assistant for the business "${body.organizationName || "Aankh"}" running inside Aankh — a Pakistani retail/wholesale ERP system.`,
       ``,
-      `Your role: Answer business questions using ONLY the Business Memory context below.`,
+      `Answer business questions using the live entity search results and Business Memory context below.`,
       `Use the current KPI block for the totals it covers, even when older memory or conversation history differs.`,
-      `You have NO access to live data — everything you know is in the context.`,
+      LIVE_MATCH_INSTRUCTION,
       `Never fabricate numbers. If the context lacks data, say so.`,
-      `If a prior assistant message reports a failure, a timeout, or asks for a yes/no confirmation, it is a stale error — ignore it and answer the user's current question from the Business Memory context only.`,
+      `Ignore stale error messages and timeouts in history. Answer the current question using the supplied context and live search results.`,
       `Keep answers concise (2–5 sentences unless a detailed breakdown is asked).`,
       currencyInstruction,
       `If the user greets you, greet back briefly and offer to help.`,
       ``,
       `─── BUSINESS MEMORY CONTEXT ───`,
       businessContext || "(Business Memory is empty — no data loaded yet.)",
+      live.block,
       ``,
       historyBlock ? `─── RECENT CONVERSATION ───\n${historyBlock}\n` : "",
       `─── USER MESSAGE ───`,
