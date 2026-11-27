@@ -1222,6 +1222,12 @@ export default function Home() {
   };
 
   const clearDashboardSourceData = () => {
+    setSalesReturns([]);
+    setSalesReturnItems([]);
+    setPurchaseReturns([]);
+    setPurchaseReturnItems([]);
+    setBrands([]);
+    setCategories([]);
     setProducts([]);
     setCustomers([]);
     setSuppliers([]);
@@ -2384,15 +2390,11 @@ export default function Home() {
     fetchPurchaseOrders(resolvedProfile.organization_id).then(() =>
       fetchPurchaseOrderItems(resolvedProfile.organization_id)
     );
-    fetchPurchaseReturns(resolvedProfile.organization_id).then(() =>
-      fetchPurchaseReturnItems(resolvedProfile.organization_id)
-    );
+    Promise.all([fetchPurchaseReturns(resolvedProfile.organization_id), fetchPurchaseReturnItems(resolvedProfile.organization_id)]);
     fetchSalesOrders(resolvedProfile.organization_id, resolvedProfile).then(() =>
       fetchSalesOrderItems(resolvedProfile.organization_id)
     );
-    fetchSalesReturns(resolvedProfile.organization_id).then(() =>
-      fetchSalesReturnItems(resolvedProfile.organization_id)
-    );
+    Promise.all([fetchSalesReturns(resolvedProfile.organization_id), fetchSalesReturnItems(resolvedProfile.organization_id)]);
     fetchSalesTransactions(resolvedProfile.organization_id, resolvedProfile);
     fetchCustomerPayments(resolvedProfile.organization_id);
     fetchCustomerPaymentAllocations(resolvedProfile.organization_id);
@@ -2670,20 +2672,16 @@ export default function Home() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("brands")
-      .select("id, name")
-      .eq("organization_id", orgId)
-      .order("name", { ascending: true });
-
+    await readDashboardSource("brands", orgId, async () => {
+      const { data, error } = await supabase
+        .from("brands")
+        .select("id, name")
+        .eq("organization_id", orgId)
+        .order("name", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    }, setBrands, (error) => console.error("Supabase fetch brands error:", error));
     setBrandsLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch brands error:", error);
-      return;
-    }
-
-    setBrands(data ?? []);
   };
 
   const clearCreditOverrideState = () => {
@@ -6512,20 +6510,16 @@ export default function Home() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("categories")
-      .select("id, name, parent_category_id, overselling_policy")
-      .eq("organization_id", orgId)
-      .order("name", { ascending: true });
-
+    await readDashboardSource("categories", orgId, async () => {
+      const { data, error } = await supabase
+        .from("categories")
+        .select("id, name, parent_category_id, overselling_policy")
+        .eq("organization_id", orgId)
+        .order("name", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    }, setCategories, (error) => console.error("Supabase fetch categories error:", error));
     setCategoriesLoading(false);
-
-    if (error) {
-      console.error("Supabase fetch categories error:", error);
-      return;
-    }
-
-    setCategories(data ?? []);
   };
 
   // Phase E1: the offline cache is scoped exactly like the sale queue
@@ -6933,44 +6927,33 @@ export default function Home() {
         return rows;
       }
     };
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      const mirrored = await loadMirror();
-      setPurchaseReturnsLoading(false);
-      if (mirrored) {
-        setPurchaseReturns(await mergeLocal(mirrored));
-        return;
+    await readDashboardSource("purchase-returns", orgId, async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocal(mirrored);
+        throw new Error("Offline and no cached purchase returns");
       }
-      console.error("Supabase fetch purchase returns error:", new Error("Offline and no cached purchase returns"));
-      return;
-    }
 
-    const { data, error } = await supabase
-      .from("purchase_returns")
-      .select("id, organization_id, return_number, supplier_id, purchase_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("purchase_returns")
+        .select("id, organization_id, return_number, supplier_id, purchase_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: false });
 
+      if (error) {
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocal(mirrored);
+        throw error;
+      }
+
+      const rows = data ?? [];
+      if (scope && isDesktopApp()) void saveHistoryMirror("purchase_return", scope, rows);
+      return mergeLocal(rows);
+    }, setPurchaseReturns, (error) => console.error("Supabase fetch purchase returns error:", error));
     setPurchaseReturnsLoading(false);
-
-    if (error) {
-      const mirrored = await loadMirror();
-      if (mirrored) {
-        setPurchaseReturns(await mergeLocal(mirrored));
-        return;
-      }
-      console.error("Supabase fetch purchase returns error:", error);
-      return;
-    }
-
-    const rows = data ?? [];
-    if (scope && isDesktopApp()) void saveHistoryMirror("purchase_return", scope, rows);
-    setPurchaseReturns(await mergeLocal(rows));
   };
 
-  const fetchPurchaseReturnItems = async (
-    organizationId?: string | null,
-    returnIds?: string[]
-  ) => {
+  const fetchPurchaseReturnItems = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setPurchaseReturnItems([]);
@@ -6978,8 +6961,7 @@ export default function Home() {
     }
 
     // Slice S7 — desktop reads the SQLite purchase-return-items
-    // mirror on the full-fetch path only (a scoped fetch is a live
-    // detail view), and merges the pending (unsynced) purchase
+    // mirror on desktop and merges the pending (unsynced) purchase
     // return lines into the list. A synced return's `request_key`
     // drops its pending twin. The mirror always stores server rows
     // only. The web build keeps its live-only fetch.
@@ -7002,67 +6984,46 @@ export default function Home() {
         return rows;
       }
     };
-    if (returnIds === undefined && typeof navigator !== "undefined" && !navigator.onLine) {
-      const mirrored = await loadMirror();
-      if (mirrored) {
-        setPurchaseReturnItems(await mergeLocalItems(mirrored, new Set()));
-        return;
+    await readDashboardSource("purchase-return-items", orgId, async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocalItems(mirrored, new Set());
+        throw new Error("Offline and no cached purchase return items");
       }
-    }
 
-    let ids = returnIds;
-    let syncedRequestKeys = new Set<string>();
-    if (!ids || ids.length === 0) {
-      if (returnIds !== undefined) {
-        setPurchaseReturnItems([]);
-        return;
-      }
       const { data: returnRows, error: returnsError } = await supabase
         .from("purchase_returns")
         .select("id, request_key")
         .eq("organization_id", orgId);
       if (returnsError) {
-        console.error("Supabase fetch purchase return ids error:", returnsError);
-        return;
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocalItems(mirrored, new Set());
+        throw returnsError;
       }
-      ids = (returnRows ?? []).map((row) => row.id);
-      syncedRequestKeys = new Set(
+      const ids = (returnRows ?? []).map((row) => row.id);
+      const syncedRequestKeys = new Set(
         (returnRows ?? [])
           .map((row) => (typeof row.request_key === "string" ? row.request_key : ""))
           .filter((key) => key.length > 0),
       );
-    }
+      if (ids.length === 0) return mergeLocalItems([], syncedRequestKeys);
 
-    if (ids.length === 0) {
-      setPurchaseReturnItems(returnIds === undefined ? await mergeLocalItems([], new Set()) : []);
-      return;
-    }
+      const { data, error } = await supabase
+        .from("purchase_return_items")
+        .select("id, purchase_return_id, product_id, quantity, unit_price, unit_mode, batch_number, expiry_date, created_at")
+        .in("purchase_return_id", ids)
+        .order("created_at", { ascending: true });
 
-    const { data, error } = await supabase
-      .from("purchase_return_items")
-      .select("id, purchase_return_id, product_id, quantity, unit_price, unit_mode, batch_number, expiry_date, created_at")
-      .in("purchase_return_id", ids)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      if (returnIds === undefined) {
+      if (error) {
         const mirrored = await loadMirror();
-        if (mirrored) {
-          setPurchaseReturnItems(await mergeLocalItems(mirrored, syncedRequestKeys));
-          return;
-        }
+        if (mirrored) return mergeLocalItems(mirrored, syncedRequestKeys);
+        throw error;
       }
-      console.error("Supabase fetch purchase return items error:", error);
-      return;
-    }
 
-    const rows = data ?? [];
-    if (returnIds === undefined) {
+      const rows = data ?? [];
       if (scope && isDesktopApp()) void saveHistoryMirror("purchase_return_item", scope, rows);
-      setPurchaseReturnItems(await mergeLocalItems(rows, syncedRequestKeys));
-      return;
-    }
-    setPurchaseReturnItems(rows);
+      return mergeLocalItems(rows, syncedRequestKeys);
+    }, setPurchaseReturnItems, (error) => console.error("Supabase fetch purchase return items error:", error));
   };
 
   const fetchSalesOrders = async (organizationId?: string | null, actor = currentProfile) => {
@@ -7188,53 +7149,41 @@ export default function Home() {
         return rows;
       }
     };
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      const mirrored = await loadMirror();
-      setSalesReturnsLoading(false);
-      if (mirrored) {
-        setSalesReturns(await mergeLocal(mirrored));
-        return;
+    await readDashboardSource("sales-returns", orgId, async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocal(mirrored);
+        throw new Error("Offline and no cached sales returns");
       }
-      console.error("Supabase fetch sales returns error:", new Error("Offline and no cached sales returns"));
-      return;
-    }
 
-    const { data, error } = await supabase
-      .from("sales_returns")
-      .select("id, organization_id, return_number, customer_id, sales_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("sales_returns")
+        .select("id, organization_id, return_number, customer_id, sales_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: false });
 
+      if (error) {
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocal(mirrored);
+        throw error;
+      }
+
+      const rows = data ?? [];
+      if (scope && isDesktopApp()) void saveHistoryMirror("sales_return", scope, rows);
+      noteLedgerMirror("sales_return", null, false);
+      return mergeLocal(rows);
+    }, setSalesReturns, (error) => console.error("Supabase fetch sales returns error:", error));
     setSalesReturnsLoading(false);
-
-    if (error) {
-      const mirrored = await loadMirror();
-      if (mirrored) {
-        setSalesReturns(await mergeLocal(mirrored));
-        return;
-      }
-      console.error("Supabase fetch sales returns error:", error);
-      return;
-    }
-
-    const rows = data ?? [];
-    if (scope && isDesktopApp()) void saveHistoryMirror("sales_return", scope, rows);
-    noteLedgerMirror("sales_return", null, false);
-    setSalesReturns(await mergeLocal(rows));
   };
 
-  const fetchSalesReturnItems = async (
-    organizationId?: string | null,
-    returnIds?: string[]
-  ) => {
+  const fetchSalesReturnItems = async (organizationId?: string | null) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setSalesReturnItems([]);
       return;
     }
 
-    // Slice S5 — desktop reads the SQLite sales-return-items mirror on
-    // the full-fetch path only (a scoped fetch is a live detail view).
+    // Slice S5 — desktop reads the SQLite sales-return-items mirror on desktop.
     // The offline credit-balance derivation needs the return lines.
     // Slice S7 — desktop merges the pending (unsynced) sales return
     // lines into the list on the full-fetch path, so the history badge
@@ -7260,68 +7209,47 @@ export default function Home() {
         return rows;
       }
     };
-    if (returnIds === undefined && typeof navigator !== "undefined" && !navigator.onLine) {
-      const mirrored = await loadMirror();
-      if (mirrored) {
-        setSalesReturnItems(await mergeLocalItems(mirrored, new Set()));
-        return;
+    await readDashboardSource("sales-return-items", orgId, async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocalItems(mirrored, new Set());
+        throw new Error("Offline and no cached sales return items");
       }
-    }
 
-    let ids = returnIds;
-    let syncedRequestKeys = new Set<string>();
-    if (!ids || ids.length === 0) {
-      if (returnIds !== undefined) {
-        setSalesReturnItems([]);
-        return;
-      }
       const { data: returnRows, error: returnsError } = await supabase
         .from("sales_returns")
         .select("id, request_key")
         .eq("organization_id", orgId);
       if (returnsError) {
-        console.error("Supabase fetch sales return ids error:", returnsError);
-        return;
+        const mirrored = await loadMirror();
+        if (mirrored) return mergeLocalItems(mirrored, new Set());
+        throw returnsError;
       }
-      ids = (returnRows ?? []).map((row) => row.id);
-      syncedRequestKeys = new Set(
+      const ids = (returnRows ?? []).map((row) => row.id);
+      const syncedRequestKeys = new Set(
         (returnRows ?? [])
           .map((row) => (typeof row.request_key === "string" ? row.request_key : ""))
           .filter((key) => key.length > 0),
       );
-    }
+      if (ids.length === 0) return mergeLocalItems([], syncedRequestKeys);
 
-    if (ids.length === 0) {
-      setSalesReturnItems(returnIds === undefined ? await mergeLocalItems([], new Set()) : []);
-      return;
-    }
+      const { data, error } = await supabase
+        .from("sales_return_items")
+        .select("id, sales_return_id, product_id, quantity, unit_price, discount, unit_mode, batch_number, expiry_date, created_at")
+        .in("sales_return_id", ids)
+        .order("created_at", { ascending: true });
 
-    const { data, error } = await supabase
-      .from("sales_return_items")
-      .select("id, sales_return_id, product_id, quantity, unit_price, discount, unit_mode, batch_number, expiry_date, created_at")
-      .in("sales_return_id", ids)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      if (returnIds === undefined) {
+      if (error) {
         const mirrored = await loadMirror();
-        if (mirrored) {
-          setSalesReturnItems(await mergeLocalItems(mirrored, syncedRequestKeys));
-          return;
-        }
+        if (mirrored) return mergeLocalItems(mirrored, syncedRequestKeys);
+        throw error;
       }
-      console.error("Supabase fetch sales return items error:", error);
-      return;
-    }
 
-    const rows = data ?? [];
-    if (returnIds === undefined) {
+      const rows = data ?? [];
       if (scope && isDesktopApp()) void saveHistoryMirror("sales_return_item", scope, rows);
       noteLedgerMirror("sales_return_item", null, false);
-      setSalesReturnItems(await mergeLocalItems(rows, syncedRequestKeys));
-      return;
-    }
-    setSalesReturnItems(rows);
+      return mergeLocalItems(rows, syncedRequestKeys);
+    }, setSalesReturnItems, (error) => console.error("Supabase fetch sales return items error:", error));
   };
 
   // Purchase & Sales items + Sales transactions (for dashboard & history)
@@ -11960,8 +11888,7 @@ export default function Home() {
       setReturnReason("");
       setReturnPurchaseTransactionId("");
       setReturnLines([]);
-      await fetchPurchaseReturns();
-      await fetchPurchaseReturnItems();
+      await Promise.all([fetchPurchaseReturns(), fetchPurchaseReturnItems()]);
     };
     if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
       const savedRow = await savePurchaseReturnLocally();
@@ -12045,8 +11972,7 @@ export default function Home() {
       setReturnReason("");
       setReturnPurchaseTransactionId("");
       setReturnLines([]);
-      await fetchPurchaseReturns();
-      await fetchPurchaseReturnItems();
+      await Promise.all([fetchPurchaseReturns(), fetchPurchaseReturnItems()]);
       fetchProducts();
     } catch (err) {
       setReturnError(err instanceof Error ? err.message : t('page.createPurchaseReturnFailed'));
@@ -12091,8 +12017,7 @@ export default function Home() {
       }
       setReturnMessage(t('page.purchaseReturnCancelled'));
       setReturnError(null);
-      await fetchPurchaseReturns();
-      await fetchPurchaseReturnItems();
+      await Promise.all([fetchPurchaseReturns(), fetchPurchaseReturnItems()]);
       return;
     }
 
@@ -12105,8 +12030,7 @@ export default function Home() {
       refreshAiAlertsAfterSave({ kind: "purchase_return", supplierId: purchaseReturn.supplier_id });
       setReturnMessage(t('page.purchaseReturnCancelled'));
       setReturnError(null);
-      await fetchPurchaseReturns();
-      await fetchPurchaseReturnItems();
+      await Promise.all([fetchPurchaseReturns(), fetchPurchaseReturnItems()]);
       await fetchInventoryTransactions();
       await fetchProducts();
       await fetchAuditLogs(currentOrganizationId);
@@ -12816,8 +12740,7 @@ export default function Home() {
       setSrReturnDate(toDateInputValue(new Date()));
       setSrReturnReason("");
       setSrLines([]);
-      await fetchSalesReturns();
-      await fetchSalesReturnItems();
+      await Promise.all([fetchSalesReturns(), fetchSalesReturnItems()]);
     };
     if (isDesktopApp() && typeof navigator !== "undefined" && !navigator.onLine) {
       const savedRow = await saveSalesReturnLocally();
@@ -12909,8 +12832,7 @@ export default function Home() {
       setSrReturnDate(toDateInputValue(new Date()));
       setSrReturnReason("");
       setSrLines([]);
-      await fetchSalesReturns();
-      await fetchSalesReturnItems();
+      await Promise.all([fetchSalesReturns(), fetchSalesReturnItems()]);
       await fetchInventoryTransactions();
       await fetchProducts();
     } catch (err) {
@@ -12957,8 +12879,7 @@ export default function Home() {
       }
       setSrMessage(t('page.salesReturnCancelled'));
       setSrError(null);
-      await fetchSalesReturns();
-      await fetchSalesReturnItems();
+      await Promise.all([fetchSalesReturns(), fetchSalesReturnItems()]);
       return;
     }
 
@@ -12971,8 +12892,7 @@ export default function Home() {
       refreshAiAlertsAfterSave({ kind: "sales_return", customerId: salesReturn.customer_id });
       setSrMessage(t('page.salesReturnCancelled'));
       setSrError(null);
-      await fetchSalesReturns();
-      await fetchSalesReturnItems();
+      await Promise.all([fetchSalesReturns(), fetchSalesReturnItems()]);
       await fetchInventoryTransactions();
       await fetchProducts();
       await fetchAuditLogs(currentOrganizationId);
@@ -21065,6 +20985,10 @@ export default function Home() {
       switch (source) {
         case "sales-transactions": void fetchSalesTransactions(currentOrganizationId, currentProfile); break;
         case "sales-items": void fetchSalesItems(currentOrganizationId, currentProfile); break;
+        case "sales-returns": void fetchSalesReturns(currentOrganizationId); break;
+        case "sales-return-items": void fetchSalesReturnItems(currentOrganizationId); break;
+        case "brands": void fetchBrands(currentOrganizationId); break;
+        case "categories": void fetchCategories(currentOrganizationId); break;
         case "products": void fetchProducts(currentOrganizationId); break;
         case "customers": void fetchCustomers(currentOrganizationId); break;
         case "customer-payments": void fetchCustomerPayments(currentOrganizationId); break;
@@ -21073,6 +20997,8 @@ export default function Home() {
         case "suppliers": void fetchSuppliers(currentOrganizationId); break;
         case "purchase-transactions": void fetchPurchaseTransactions(currentOrganizationId); break;
         case "purchase-items": void fetchPurchaseItems(currentOrganizationId); break;
+        case "purchase-returns": void fetchPurchaseReturns(currentOrganizationId); break;
+        case "purchase-return-items": void fetchPurchaseReturnItems(currentOrganizationId); break;
         case "supplier-payments": void fetchSupplierPayments(currentOrganizationId); break;
         case "supplier-payment-allocations": void fetchSupplierPaymentAllocations(currentOrganizationId); break;
         case "tasks": void fetchTasks(currentOrganizationId); break;
@@ -21267,11 +21193,13 @@ export default function Home() {
           description: t('summary.customerPaymentsDesc'),
           onOpen: () => handleSectionChange("customer-payments"),
           metrics: [
-            { label: t('summary.payments'), value: String(customerPayments.length) },
-            { label: t('summary.totalReceived'), value: money(excludeVoidedPayments(customerPayments).reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+            { label: t('summary.payments'), value: String(customerPayments.length), readStatus: dashboardReadStatusFor("customer-payments"), lastSuccessfulAt: dashboardLastSuccessFor("customer-payments") },
+            { label: t('summary.totalReceived'), value: money(excludeVoidedPayments(customerPayments).reduce((total, payment) => total + safeNumber(payment?.amount), 0)), readStatus: dashboardReadStatusFor("customer-payments"), lastSuccessfulAt: dashboardLastSuccessFor("customer-payments") },
           ],
           rowsLabel: t('summary.recentPayments'),
           rows: [...customerPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
+          rowsReadStatus: dashboardReadStatusFor("customer-payments"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("customer-payments"),
           emptyText: t('payments.noneYet'),
         };
       case "supplier-payments":
@@ -21280,11 +21208,13 @@ export default function Home() {
           description: t('summary.supplierPaymentsDesc'),
           onOpen: () => handleSectionChange("supplier-payments"),
           metrics: [
-            { label: t('summary.payments'), value: String(supplierPayments.length) },
-            { label: t('summary.totalPaid'), value: money(excludeVoidedPayments(supplierPayments).reduce((total, payment) => total + safeNumber(payment?.amount), 0)) },
+            { label: t('summary.payments'), value: String(supplierPayments.length), readStatus: dashboardReadStatusFor("supplier-payments"), lastSuccessfulAt: dashboardLastSuccessFor("supplier-payments") },
+            { label: t('summary.totalPaid'), value: money(excludeVoidedPayments(supplierPayments).reduce((total, payment) => total + safeNumber(payment?.amount), 0)), readStatus: dashboardReadStatusFor("supplier-payments"), lastSuccessfulAt: dashboardLastSuccessFor("supplier-payments") },
           ],
           rowsLabel: t('summary.recentPayments'),
           rows: [...supplierPayments].reverse().slice(0, 4).map((payment) => ({ label: formatDateTime(payment?.payment_date ?? payment?.created_at), value: money(payment?.amount) })),
+          rowsReadStatus: dashboardReadStatusFor("supplier-payments"),
+          rowsLastSuccessfulAt: dashboardLastSuccessFor("supplier-payments"),
           emptyText: t('summary.noSupplierPayments'),
         };
       case "expenses":
@@ -21750,7 +21680,7 @@ export default function Home() {
             lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
             healthScore={businessHealthScore.score}
             healthMetrics={[
-              { label: t('dashboard.cashFlow'), value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables), status: businessHealthCashFlowStatus(totalReceivables, totalPayables) },
+              { label: t('dashboard.cashFlow'), readStatus: dashboardMetricReadStates["cash-flow"], value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables), status: businessHealthCashFlowStatus(totalReceivables, totalPayables) },
               { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(lowStockProducts.length)), status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
               { label: t('dashboard.profitMargin'), value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: businessHealthProfitMarginStatus(businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? (businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100 : 0) },
               { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(reorderRecommendationSummary.outOfStockCount)), status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },

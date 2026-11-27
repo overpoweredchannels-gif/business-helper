@@ -1,11 +1,12 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { DashboardReadStatus } from "@/lib/dashboard/data-read-state";
+import { dashboardReadStatusLabel, type DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 import { businessHealthRingColor } from "@/lib/dashboard/health";
 import { useRegional } from "@/components/regional/RegionalProvider";
 
-interface Metric {
+export interface BusinessHealthMetric {
+  readStatus?: DashboardReadStatus;
   label: string;
   value: string;
   status: "good" | "warning" | "critical";
@@ -13,7 +14,7 @@ interface Metric {
 
 interface BusinessHealthCardProps {
   score: number;
-  metrics: Metric[];
+  metrics: BusinessHealthMetric[];
   readStatus?: DashboardReadStatus;
   lastSuccessfulAt?: string;
   onRetry?: () => void;
@@ -70,7 +71,7 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
             <div key={m.label} className="flex items-center justify-between">
               <span className="text-xs text-light-text">{m.label}</span>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold tabular-nums text-foreground">{m.value}</span>
+                <span className="text-sm font-semibold tabular-nums text-foreground">{(m.readStatus && dashboardReadStatusLabel(m.readStatus)) || m.value}</span>
                 <span className={cn(
                   "size-2 rounded-full",
                   m.status === "good" && "bg-success",

@@ -1,7 +1,11 @@
 export const dashboardReadSources = [
   "sales-transactions",
   "sales-items",
+  "sales-returns",
+  "sales-return-items",
   "products",
+  "brands",
+  "categories",
   "customers",
   "customer-payments",
   "customer-payment-allocations",
@@ -9,6 +13,8 @@ export const dashboardReadSources = [
   "suppliers",
   "purchase-transactions",
   "purchase-items",
+  "purchase-returns",
+  "purchase-return-items",
   "supplier-payments",
   "supplier-payment-allocations",
   "tasks",
@@ -26,35 +32,25 @@ export interface DashboardSourceState {
 
 export type DashboardSourceStates = Record<DashboardReadSource, DashboardSourceState>;
 
+const receivablesDependencies = ["customers", "sales-transactions", "sales-items", "customer-payments", "customer-payment-allocations", "sales-returns", "sales-return-items"] as const;
+const payablesDependencies = ["suppliers", "purchase-transactions", "purchase-items", "supplier-payments", "supplier-payment-allocations", "purchase-returns", "purchase-return-items"] as const;
+const cashFlowDependencies = [...receivablesDependencies, ...payablesDependencies] as const;
+
 export const dashboardMetricDependencies = {
   "today-sales": ["sales-transactions", "sales-items"],
   "today-profit": ["sales-transactions", "sales-items", "products"],
   "inventory-value": ["products"],
-  receivables: ["customers", "sales-transactions", "sales-items", "customer-payments", "customer-payment-allocations"],
-  payables: ["suppliers", "purchase-transactions", "purchase-items", "supplier-payments", "supplier-payment-allocations"],
+  receivables: receivablesDependencies,
+  payables: payablesDependencies,
   "low-stock": ["products"],
   "pending-approvals": ["sales-orders"],
   "collection-tasks": ["tasks"],
-  "unpaid-purchases": ["suppliers", "purchase-transactions", "purchase-items", "supplier-payments", "supplier-payment-allocations"],
+  "unpaid-purchases": payablesDependencies,
+  "cash-flow": cashFlowDependencies,
   "urgent-reorders": ["products"],
   "customer-follow-ups": ["tasks"],
   "expiring-stock-checks": ["tasks"],
-  "business-health": [
-    // Score and profit margin: sales revenue/costs, collections, and expenses.
-    "sales-transactions",
-    "sales-items",
-    "products",
-    "customer-payments",
-    "expenses",
-    // Cash Flow: complete receivables and payables allocations.
-    "customers",
-    "customer-payment-allocations",
-    "suppliers",
-    "purchase-transactions",
-    "purchase-items",
-    "supplier-payments",
-    "supplier-payment-allocations",
-  ],
+  "business-health": [...cashFlowDependencies, "products", "expenses", "brands", "categories"],
 } as const satisfies Record<string, readonly DashboardReadSource[]>;
 
 export type DashboardMetricKey = keyof typeof dashboardMetricDependencies;

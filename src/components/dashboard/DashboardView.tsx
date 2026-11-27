@@ -18,6 +18,7 @@ import { DEFAULT_DASHBOARD_ORDER } from "@/lib/preferences/dashboard-order";
 import { DashboardWidget } from "./DashboardWidget";
 import { useRegional } from "@/components/regional/RegionalProvider";
 import type { DashboardWidgetId } from "@/lib/preferences/dashboard-widgets";
+import type { BusinessHealthMetric } from "./widgets/BusinessHealthCard";
 import type { DashboardMetricKey, DashboardMetricStates, DashboardReadStatus } from "@/lib/dashboard/data-read-state";
 
 interface SmartModuleConfig {
@@ -63,7 +64,7 @@ interface DashboardViewProps {
   healthScore?: number;
   healthReadStatus?: DashboardReadStatus;
   healthLastSuccessfulAt?: string;
-  healthMetrics?: Array<{ label: string; value: string; status: "good" | "warning" | "critical" }>;
+  healthMetrics?: BusinessHealthMetric[];
   recentActivities?: Array<{
     id: string;
     type: "sale" | "purchase" | "payment" | "stock" | "customer" | "task";
