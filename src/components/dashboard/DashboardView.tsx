@@ -264,7 +264,9 @@ export function DashboardView({
     ]),
     ...(cashFlow ? [{
       id: "kpi-cash-flow" as DashboardWidgetId,
-      node: <KPICard title={t("dashboard.cashFlow")} value={cashFlow} readStatus={getMetricStatus("business-health")} icon={<DollarSign className="size-4" />} definition="As of now" />,
+      node: <KPICard title={t("dashboard.cashFlow")} value={cashFlow} readStatus={getMetricStatus("cash-flow")}
+        lastSuccessfulAt={metricLastSuccessfulAt?.["cash-flow"]} onRetry={onRetryFailedReads}
+        icon={<DollarSign className="size-4" />} definition="As of now" />,
     }] : []),
     ...(inventoryValue ? [{
       id: "kpi-inventory-value" as DashboardWidgetId,
