@@ -47,7 +47,7 @@ export interface CustomerQueryContext {
 
 const MAX_LIST = 5;
 
-function formatMoney(value: number, currency: unknown = "PKR"): string {
+function formatMoney(value: number, currency?: unknown): string {
   return formatAiMoney(value, currency);
 }
 
@@ -125,7 +125,7 @@ function detectPeriodDays(message: string | null | undefined): number | null {
   return null;
 }
 
-function balanceMessage(entry: CustomerLedgerEntry, currency: unknown = "PKR"): string {
+function balanceMessage(entry: CustomerLedgerEntry, currency?: unknown): string {
   const parts: string[] = [];
   if (entry.outstandingBalance > 0) {
     parts.push(`${entry.customerName} currently owes ${formatMoney(entry.outstandingBalance, currency)}.`);

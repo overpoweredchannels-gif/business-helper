@@ -481,7 +481,7 @@ function generatePriorityActions(payload: BusinessIntelligencePayload): string[]
 function generateMorningBriefing(
   payload: BusinessIntelligencePayload,
   language: "english" | "urdu" | "roman_urdu",
-  currency: unknown = "PKR"
+  currency?: unknown
 ): string {
   if (language === "urdu") {
     return `صبحانہ بریفنگ:\n` +

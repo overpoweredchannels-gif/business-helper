@@ -22,7 +22,7 @@ export interface BusinessIntelligenceResult {
 
 // Helper to format money in the app-wide active currency (see tradeos/formatters)
 import { formatAiMoney } from "./ai-money";
-export function formatRs(amount: number, currency: unknown = "PKR"): string {
+export function formatRs(amount: number, currency?: unknown): string {
   return formatAiMoney(amount, currency);
 }
 

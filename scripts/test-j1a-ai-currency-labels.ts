@@ -13,7 +13,7 @@ import { processCustomerQuery } from "../src/lib/ai/customer-intelligence";
 import { processSupplierQuery } from "../src/lib/ai/supplier-intelligence";
 import { processFinancialQuery } from "../src/lib/ai/financial-intelligence";
 import { processInventoryQuery } from "../src/lib/ai/inventory-intelligence";
-import { processBusinessIntelligenceQuery } from "../src/lib/ai/business-intelligence";
+import { formatRs, processBusinessIntelligenceQuery } from "../src/lib/ai/business-intelligence";
 import { buildBusinessQueryDirectPrompt } from "../src/lib/ai/business-query-direct";
 import { generateExecutiveReport, explainKPI } from "../src/lib/ai/executive-ai";
 import { formatBooksMoney } from "../src/lib/tradeos/formatters";
@@ -107,6 +107,8 @@ function financialIntent(): AssistantIntent {
 }
 
 async function main(): Promise<void> {
+  check(!hasPkrLabel(formatRs(100)), "BI formatter leaves missing currency unlabeled");
+  check(hasPkrLabel(formatRs(100, "PKR")), "BI formatter labels explicit PKR");
   // --- (a) The shared helper: books currency, no conversion. ---
   console.log("(a) formatAiMoney labels with the org's books currency");
   // The helper module does not exist yet on unmodified code — record the
@@ -220,6 +222,8 @@ async function main(): Promise<void> {
   check(eurSupplier.ok && eurSupplier.message.includes("€"), "EUR supplier summary carries €");
   check(!hasPkrLabel(eurSupplier.message), "EUR supplier summary carries no PKR/Rs label");
   const eurFinancial = processFinancialQuery("financial_summary", eurFinancialLedger, financialIntent(), "summary", "EUR");
+  const unlabeledFinancial = processFinancialQuery("financial_summary", eurFinancialLedger, financialIntent(), "summary");
+  check(!hasPkrLabel(JSON.stringify(unlabeledFinancial)), "financial summary leaves missing currency unlabeled");
   check(eurFinancial.ok && eurFinancial.message.includes("€"), "EUR financial summary carries €");
   check(!hasPkrLabel(eurFinancial.message), "EUR financial summary carries no PKR/Rs label");
   const eurInventory = processInventoryQuery("inventory_value", null, eur.store);

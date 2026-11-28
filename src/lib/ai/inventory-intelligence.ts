@@ -146,7 +146,7 @@ function handleOverstocked(allProducts: ProductMemory[], inventory: { overstocke
   };
 }
 
-function handleInventoryValue(allProducts: ProductMemory[], inventory: { totalStockValue: number; totalStockCost: number }, currency: unknown = "PKR"): InventoryQueryResult {
+function handleInventoryValue(allProducts: ProductMemory[], inventory: { totalStockValue: number; totalStockCost: number }, currency?: unknown): InventoryQueryResult {
   const value = inventory.totalStockValue;
   const cost = inventory.totalStockCost;
   const unique = allProducts.length;

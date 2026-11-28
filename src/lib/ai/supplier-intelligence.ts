@@ -46,7 +46,7 @@ export interface SupplierQueryContext {
 
 const MAX_LIST = 5;
 
-function formatMoney(value: number, currency: unknown = "PKR"): string {
+function formatMoney(value: number, currency?: unknown): string {
   return formatAiMoney(value, currency);
 }
 
@@ -123,7 +123,7 @@ function detectPeriodDays(message: string | null | undefined): number | null {
   return null;
 }
 
-function balanceMessage(entry: SupplierLedgerEntry, currency: unknown = "PKR"): string {
+function balanceMessage(entry: SupplierLedgerEntry, currency?: unknown): string {
   const parts: string[] = [];
   if (entry.payableAmount > 0) {
     parts.push(`We owe ${entry.supplierName} ${formatMoney(entry.payableAmount, currency)}.`);

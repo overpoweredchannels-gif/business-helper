@@ -22,7 +22,7 @@ export interface FinancialInsight {
   detail: string;
 }
 
-function formatRs(amount: number, currency: unknown = "PKR"): string {
+function formatRs(amount: number, currency?: unknown): string {
   return formatAiMoney(amount, currency);
 }
 
@@ -62,7 +62,7 @@ export function processFinancialQuery(
   ledger: FinancialLedger,
   intent: AssistantIntent,
   message: string, // Original message for context
-  currency: unknown = "PKR"
+  currency?: unknown
 ): { ok: boolean; message: string; insights?: FinancialInsight[] } {
   let response = "";
 
@@ -205,7 +205,7 @@ export function processFinancialQuery(
   return { ok: true, message: response.trim() };
 }
 
-export function generateFinancialInsights(ledger: FinancialLedger, currency: unknown = "PKR"): FinancialInsight[] {
+export function generateFinancialInsights(ledger: FinancialLedger, currency?: unknown): FinancialInsight[] {
   const insights: FinancialInsight[] = [];
   const thisMonth = ledger.periods.thisMonth;
   const lastMonth = ledger.periods.lastMonth;
