@@ -28,7 +28,8 @@ async function runPost(request: NextRequest) {
       lines: [{ product_id: body.product_id, quantity: body.quantity, purchase_price: body.purchase_price }],
     });
     return NextResponse.json({ ok: true, purchaseId: result.transaction.id,
-      invoiceNumber: result.transaction.invoice_number, quantity: body.quantity, total: result.transaction.total_amount });
+      invoiceNumber: result.transaction.invoice_number, quantity: body.quantity, total: result.transaction.total_amount,
+      paymentType: result.transaction.payment_type });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Purchase failed" }, { status: 400 });
   }

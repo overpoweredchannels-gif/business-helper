@@ -2,6 +2,11 @@ import "./validation-environment";
 import assert from "node:assert/strict";
 import { buildSupplierLedger } from "../src/lib/ai/supplier-ledger";
 import { buildFinancialLedger } from "../src/lib/ai/financial-ledger";
+import { formatPurchaseSuccessMessage } from "../src/lib/ai/purchase-executor";
+
+assert.match(formatPurchaseSuccessMessage({ total: 12, paymentType: "cash" }, "EUR"), /€12\.00.*Cash \(paid at entry\)/);
+assert.match(formatPurchaseSuccessMessage({ total: 12, paymentType: "credit" }, "EUR"), /€12\.00.*Credit \(payable until paid\)/);
+assert.doesNotMatch(formatPurchaseSuccessMessage({ total: 12 }, "EUR"), /Payment type/);
 import {
   computeReturnedValueByPurchaseTransaction,
   isPaidAtEntryPurchasePaymentType,

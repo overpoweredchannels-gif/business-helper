@@ -96,7 +96,7 @@ export async function executePurchaseDraft(
   }
 }
 
-export function formatPurchaseSuccessMessage(result: { invoiceNumber?: string; supplierName?: string; productName?: string; quantity?: number; total?: number }, currency?: unknown): string {
+export function formatPurchaseSuccessMessage(result: { invoiceNumber?: string; supplierName?: string; productName?: string; quantity?: number; total?: number; paymentType?: string | null }, currency?: unknown): string {
   const supplier = result.supplierName || "";
   const product = result.productName || "";
   const qty = result.quantity || 0;
@@ -108,6 +108,8 @@ export function formatPurchaseSuccessMessage(result: { invoiceNumber?: string; s
   if (product) parts.push(`Product: ${product}.`);
   if (qty) parts.push(`Quantity: ${qty}.`);
   if (total) parts.push(`Total: ${formatAiMoney(total, currency)}.`);
+  if (result.paymentType === "cash") parts.push("Payment type: Cash (paid at entry).");
+  if (result.paymentType === "credit") parts.push("Payment type: Credit (payable until paid).");
   if (inv) parts.push(`Invoice number: ${inv}.`);
 
   return parts.join(" ");
