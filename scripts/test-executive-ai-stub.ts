@@ -2,6 +2,7 @@ import "./validation-environment";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { calculateBusinessIntelligence } from "../src/lib/ai/business-intelligence";
+import { buildAssistantKpiBlock } from "../src/lib/ai/assistant-kpi-block";
 import { analyzeProactiveAlerts, explainKPI, prioritizeAIRecommendations } from "../src/lib/ai/executive-ai";
 import { getExecutiveAIResponse, getExecutiveDashboardData } from "../src/lib/ai/executive-conversation";
 import { MemoryStore } from "../src/lib/brain/memory/business-memory";
@@ -17,13 +18,15 @@ async function main() {
   new MemoryWriter(store, new PreferenceStore()).writeRaw(data);
   const organizationId = data.organizationId;
   const real = calculateBusinessIntelligence(store, data);
+  const dashboardKpis = buildAssistantKpiBlock(data, data.currency, data.timezone);
+  assert.ok(dashboardKpis);
   assert.ok(Number.isFinite(real.businessHealth.score));
   assert.ok(Number.isFinite(real.salesForecasting.tomorrow));
 
   // The Executive GET and POST routes delegate to these entry points.
   const dashboard = await getExecutiveDashboardData(organizationId, undefined, "english", "morning", store, data);
   assert.equal(dashboard.success, true);
-  assert.equal(dashboard.executiveReport.summary.healthScore, real.businessHealth.score);
+  assert.equal(dashboard.executiveReport.summary.healthScore, dashboardKpis.health.score);
   assert.equal(dashboard.executiveReport.summary.revenue, real.salesForecasting.tomorrow);
   assert.equal(dashboard.executiveReport.summary.profit, real.salesForecasting.tomorrow * 0.15);
   assert.ok(dashboard.executiveReport.summary.priorityActions.includes("Immediate inventory procurement needed"));

@@ -54,7 +54,7 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
     const message = readStatus === "loading" ? t('dashboard.healthLoading') : readStatus === "not-loaded" ? t('dashboard.healthNotLoaded') : t('dashboard.healthUnavailable');
     return (
       <div role="status" aria-live="polite" className="aankh-card rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-2 text-sm font-semibold text-foreground">{t('dashboard.businessHealth')}</h3>
+        <h3 className="mb-2 text-sm font-semibold text-foreground">{t('dashboard.businessHealth')} · {t('bi.rangeLast30')}</h3>
         <p className="text-sm text-muted-foreground">{message}</p>
         {readStatus === "failed" && lastSuccessfulAt && <p className="mt-1 text-xs text-muted-foreground">{t('dashboard.lastSuccessful')}: {new Date(lastSuccessfulAt).toLocaleString(dateLocale)}</p>}
         {(readStatus === "failed" || readStatus === "not-loaded") && onRetry && <button type="button" onClick={onRetry} className="mt-2 min-h-11 rounded-md px-2 text-xs font-semibold text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('dashboard.retryReads')}</button>}
@@ -63,7 +63,7 @@ export function BusinessHealthCard({ score, metrics, readStatus = "successful-po
   }
   return (
     <div className="aankh-card rounded-xl border border-border bg-card p-6 transition-all duration-200">
-      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.businessHealth')}</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-3">{t('dashboard.businessHealth')} · {t('bi.rangeLast30')}</h3>
       <div className="flex flex-col items-start gap-4 sm:flex-row">
         <CircularScore score={score} />
         <div className="flex-1 grid gap-3">

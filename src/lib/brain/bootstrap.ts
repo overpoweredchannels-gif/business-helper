@@ -44,7 +44,6 @@ export interface BusinessBrain {
     byteSize: number;
     isStale: boolean;
   };
-  refreshAnalytics(): void;
   chat(message: string): Promise<ChatResult>;
 }
 
@@ -110,9 +109,6 @@ export function initializeBusinessBrain(
       byteSize: store.byteSize,
       isStale: store.isStale,
     }),
-    refreshAnalytics: () => {
-      writer.refreshAnalytics();
-    },
     chat: async (rawMessage: string): Promise<ChatResult> => {
       try {
         const rl = checkRateLimit("brain_chat_instance", 60, 60_000);

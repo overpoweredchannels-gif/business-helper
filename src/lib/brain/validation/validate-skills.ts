@@ -31,7 +31,7 @@ export function validateSkills() {
       assert(typeof hs.score === "number", "Score is number");
       assert(hs.score >= 0 && hs.score <= 100, "Score in 0-100 range");
       assert(["Critical", "Needs Attention", "Average", "Good", "Excellent"].includes(hs.label), "Valid label");
-      assert(hs.breakdown.revenueHealth !== undefined, "Revenue health in breakdown");
+      assert(hs.breakdown.sales !== undefined, "Sales points in shared breakdown");
       assert(hs.contributingFactors.length > 0, "Contributing factors present");
       assert(typeof hs.trend === "string", "Trend present");
     }),

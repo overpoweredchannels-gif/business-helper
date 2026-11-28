@@ -1,5 +1,6 @@
 "use client";
 
+import { buildBusinessHealthOverview } from "@/lib/dashboard/health-overview";
 import { entryNavigationHandlers, focusNextEntryField } from "@/components/invoices/entry-navigation";
 import { PhoneWithCode } from "@/components/customers/PhoneWithCode";
 import { initKeyboardModality, wasLastInputKeyboard } from "@/lib/keyboard-modality";
@@ -15497,7 +15498,11 @@ export default function Home() {
     setBiMessage(t('page.biExpenseCsvExported'));
     setBiError(null);
   };
-  const businessHealthScore = getBusinessHealthScore(businessIntelligenceAnalytics.overview, t);
+  const healthOverview = buildBusinessHealthOverview(
+    { products, salesTransactions, salesItems, customerPayments, expenses },
+    currentOrganization?.regional_preferences?.timeZone,
+  );
+  const businessHealthScore = getBusinessHealthScore(healthOverview, t);
   const buildCurrentAssistantKpiBlock = () => buildAssistantKpiBlock(
     brainReady && getBusinessBrain()?.getMemorySnapshot().organizationId === currentOrganizationId
       ? {
@@ -15505,7 +15510,7 @@ export default function Home() {
           receivables: totalReceivables,
           customersOwing: receivablesStats.filter(({ outstanding }) => outstanding > 0).length,
           inventoryValue,
-          health: businessIntelligenceAnalytics.overview,
+          health: healthOverview,
         }
       : null,
     assistantBooksCurrency,
@@ -21747,9 +21752,9 @@ export default function Home() {
             healthScore={businessHealthScore.score}
             healthMetrics={[
               { label: t('dashboard.cashFlow'), readStatus: dashboardMetricReadStates["cash-flow"], value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables), status: businessHealthCashFlowStatus(totalReceivables, totalPayables) },
-              { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(lowStockProducts.length)), status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
-              { label: t('dashboard.profitMargin'), value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: businessHealthProfitMarginStatus(businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? (businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100 : 0) },
-              { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(reorderRecommendationSummary.outOfStockCount)), status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
+              { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(healthOverview.lowStockCount)), status: healthOverview.lowStockCount > 5 ? "critical" as const : healthOverview.lowStockCount > 2 ? "warning" as const : "good" as const },
+              { label: t('dashboard.profitMargin'), value: healthOverview.totalSalesAmount > 0 ? `${((healthOverview.estimatedNetProfit / healthOverview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: businessHealthProfitMarginStatus(healthOverview.totalSalesAmount > 0 ? (healthOverview.estimatedNetProfit / healthOverview.totalSalesAmount) * 100 : 0) },
+              { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(healthOverview.outOfStockCount)), status: healthOverview.outOfStockCount > 3 ? "critical" as const : "good" as const },
             ]}
             lowStockItems={reorderRecommendationSummary.urgentReorderCount}
             pendingTasks={pendingTasks.map((t) => ({ id: t.id, title: t.title, priority: t.priority, dueDate: t.due_date ?? undefined }))}

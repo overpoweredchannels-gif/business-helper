@@ -1,3 +1,5 @@
+import { getBusinessHealthScore } from "../dashboard/health";
+import { buildBusinessHealthOverview } from "../dashboard/health-overview";
 import type { MemoryStore } from "../brain/memory/business-memory";
 import type { MemoryWriterRawData } from "../brain/contracts/memory";
 import { buildCustomerLedger } from "./customer-ledger";
@@ -433,50 +435,8 @@ export function calculateBusinessIntelligence(store: MemoryStore, data: MemoryWr
       marginPct: p.defaultSellingPrice > 0 ? ((p.defaultSellingPrice - p.lastPurchasePrice) / p.defaultSellingPrice) * 100 : 0
     }));
 
-  // 7. Business Health Score (0-100)
-  // sales trend (15 pts)
-  // cash flow (15 pts)
-  // receivables (15 pts)
-  // payables (15 pts)
-  // inventory health (15 pts)
-  // customer activity (12 pts)
-  // supplier activity (13 pts)
-  let salesTrendScore = 15;
-  if (financialLedger.periods.thisMonth.revenue < financialLedger.periods.lastMonth.revenue) {
-    salesTrendScore = 5;
-  }
-  
-  const cashFlowScore = financialLedger.cash.balance >= 0 ? 15 : 5;
-  
-  const totalReceivables = financialLedger.receivables.total || 1;
-  const recOverdueRatio = financialLedger.receivables.overdue / totalReceivables;
-  const receivablesScore = recOverdueRatio < 0.1 ? 15 : recOverdueRatio < 0.3 ? 10 : 5;
-
-  const totalPayables = financialLedger.payables.total || 1;
-  const payOverdueRatio = financialLedger.payables.overdue / totalPayables;
-  const payablesScore = payOverdueRatio < 0.1 ? 15 : payOverdueRatio < 0.3 ? 10 : 5;
-
-  const totalInvProducts = products.length || 1;
-  const outOfStock = products.filter(p => p.currentStock <= 0).length;
-  const invHealthRatio = 1 - (outOfStock / totalInvProducts);
-  const inventoryHealthScore = Math.round(invHealthRatio * 15);
-
-  const activeCust = customers.filter(c => (c.daysSinceLastSale ?? 99) < 30).length;
-  const totalCust = customers.length || 1;
-  const customerActivityScore = Math.round((activeCust / totalCust) * 12);
-
-  const activeSupp = suppliers.filter(s => (s.daysSinceLastPurchase ?? 99) < 30).length;
-  const totalSupp = suppliers.length || 1;
-  const supplierActivityScore = Math.round((activeSupp / totalSupp) * 13);
-
-  const healthScore = salesTrendScore + cashFlowScore + receivablesScore + payablesScore + inventoryHealthScore + customerActivityScore + supplierActivityScore;
-  
-  let explanation = "Your business health is excellent. All KPIs look stable, cash flow is positive, and receivables are collected on time.";
-  if (healthScore < 50) {
-    explanation = "Your business health is critical. High overdue payables/receivables and negative cash flow are affecting performance. Prioritize collections and outstanding supplier balances.";
-  } else if (healthScore < 75) {
-    explanation = "Your business health is average. There is room for improvement in inventory turnover and collection of overdue customer balances.";
-  }
+  const health = getBusinessHealthScore(buildBusinessHealthOverview(data, data.timezone, now));
+  const explanation = `${health.label}. Last 30 days, whole organization.`;
 
   // 8. AI Recommendations
   const recommendations: Array<{ id: string; priority: "high" | "medium" | "low"; title: string; description: string; expectedImpact: string }> = [];
@@ -572,19 +532,7 @@ export function calculateBusinessIntelligence(store: MemoryStore, data: MemoryWr
       highMargin,
       lowMargin
     },
-    businessHealth: {
-      score: healthScore,
-      explanation,
-      breakdown: {
-        salesTrend: salesTrendScore,
-        cashFlow: cashFlowScore,
-        receivables: receivablesScore,
-        payables: payablesScore,
-        inventoryHealth: inventoryHealthScore,
-        customerActivity: customerActivityScore,
-        supplierActivity: supplierActivityScore
-      }
-    },
+    businessHealth: { ...health, explanation },
     recommendations
   };
 }

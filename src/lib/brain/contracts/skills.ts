@@ -41,14 +41,7 @@ export interface SkillRegistryEntry {
 export interface HealthScoreOutput {
   score: number;
   label: "Critical" | "Needs Attention" | "Average" | "Good" | "Excellent";
-  breakdown: {
-    revenueHealth: number;
-    profitHealth: number;
-    inventoryHealth: number;
-    receivableHealth: number;
-    expenseHealth: number;
-    cashflowHealth: number;
-  };
+  breakdown: Record<string, number>;
   reasons: string[];
   contributingFactors: Array<{ factor: string; impact: "positive" | "negative"; weight: number; detail: string }>;
   trend: "improving" | "declining" | "stable";

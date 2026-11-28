@@ -1,3 +1,5 @@
+import { buildBusinessHealthOverview } from "../../dashboard/health-overview";
+import { getBusinessHealthScore } from "../../dashboard/health";
 import { MemoryStore } from "./business-memory";
 import {
   MemoryWriterRawData,
@@ -6,7 +8,6 @@ import {
   SupplierMemory,
   StaffMemory,
   KpiItem,
-  HealthScoreResult,
 } from "../contracts/memory";
 import { PreferenceStore } from "../learning/preference-store";
 import { formatAiMoney } from "../../ai/ai-money";
@@ -36,7 +37,7 @@ export class MemoryWriter {
     this.writePayments(data.customerPayments, data.supplierPayments);
 
     this.computeInventory();
-    this.computeAnalytics();
+    this.computeAnalytics(data);
     this.store.entityIndex.buildIndex(
       this.store.sections.products,
       this.store.sections.customers,
@@ -631,47 +632,25 @@ export class MemoryWriter {
     }
   }
 
-  private computeAnalytics(): void {
+  private computeAnalytics(data: MemoryWriterRawData): void {
     const sales = this.store.sections.sales;
     const expenses = this.store.sections.expenses;
-    const inv = this.store.sections.inventory;
-    const products = this.store.sections.products;
     const analytics = this.store.sections.analytics;
 
     const totalRevenue = sales.allTime.revenue;
     const totalProfit = sales.allTime.profit;
     const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
-    const expenseRatio = sales.thisMonth.revenue > 0 ? (expenses.thisMonth.totalAmount / sales.thisMonth.revenue) * 100 : 0;
     const avgSaleValue = sales.allTime.invoiceCount > 0 ? totalRevenue / sales.allTime.invoiceCount : 0;
-    const overstockedRatio = inv.totalProducts > 0 ? (inv.overstockedCount / inv.totalProducts) * 100 : 0;
-
-    // Health score
-    const scoreComponents: Record<string, number> = {
-      revenueHealth: Math.min(100, (sales.last30Days.revenue / (sales.allTime.revenue || 1)) * 100),
-      profitMarginHealth: Math.max(0, Math.min(100, profitMargin)),
-      expenseHealth: Math.max(0, Math.min(100, 100 - expenseRatio)),
-      inventoryHealth: Math.max(0, Math.min(100, 100 - overstockedRatio)),
-      customerHealth: products.size > 0 ? Math.min(100, (inv.activeProductCount / products.size) * 100) : 100,
-    };
-    const avgScore = Object.values(scoreComponents).reduce((s, v) => s + v, 0) / Object.keys(scoreComponents).length;
-    const overallScore = Math.round(avgScore);
-    const label: HealthScoreResult["label"] =
-      overallScore >= 80 ? "Excellent" : overallScore >= 60 ? "Good" : overallScore >= 40 ? "Average" : overallScore >= 20 ? "Needs Attention" : "Critical";
-    const contributingFactors: Array<{ factor: string; impact: "positive" | "negative"; weight: number; detail: string }> = [];
-    for (const [key, val] of Object.entries(scoreComponents)) {
-      if (val >= 60) contributingFactors.push({ factor: key, impact: "positive", weight: Math.round(val / 10), detail: `${Math.round(val)}% health` });
-      else contributingFactors.push({ factor: key, impact: "negative", weight: Math.round((100 - val) / 10), detail: `${Math.round(val)}% health` });
-    }
-
+    const now = new Date();
+    const health = getBusinessHealthScore(buildBusinessHealthOverview(data, data.timezone, now));
     analytics.healthScore = {
-      score: overallScore,
-      label,
-      breakdown: scoreComponents,
-      reasons: [],
-      contributingFactors,
+      ...health,
+      contributingFactors: Object.entries(health.breakdown).filter(([, points]) => points !== 0).map(([factor, points]) => ({
+        factor, impact: points > 0 ? "positive" : "negative", weight: Math.abs(points), detail: `${points} points`,
+      })),
       trend: "stable",
       trendEvidence: "",
-      lastCalculated: new Date().toISOString(),
+      lastCalculated: now.toISOString(),
     };
 
     // KPIs
@@ -690,11 +669,6 @@ export class MemoryWriter {
       profit: sales.monthly.map((m) => ({ date: m.month, value: m.profit, label: m.month })),
       expenses: expenses.monthly12m.map((m) => ({ date: m.month, value: m.total, label: m.month })),
     };
-  }
-
-  refreshAnalytics(): void {
-    this.computeInventory();
-    this.computeAnalytics();
   }
 
   clear(): void {
