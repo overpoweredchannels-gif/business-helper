@@ -1,3 +1,5 @@
+import type { DashboardPermissionFlags } from "../identity/dashboard-permissions";
+
 export interface Brand {
   id: string;
   name: string;
@@ -324,7 +326,7 @@ export interface StaffProfile {
   phone?: string | null;
 }
 
-export interface StaffPermission {
+export interface StaffPermission extends DashboardPermissionFlags {
   id?: string;
   organization_id: string;
   profile_id: string;

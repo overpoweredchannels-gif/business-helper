@@ -120,6 +120,8 @@ import { Bell, X, Package as CatalogPackageIcon, Shapes as CatalogCategoryIcon, 
 import { ensureOrganizationClaimInSession } from "@/lib/supabase/session-claim";
 import { cloudFetch, cloudFetchAi, fetchStaffMe, provisionViaCloud } from "@/lib/desktop/cloud-endpoint";
 import { DashboardLayout, DashboardView, StaffDashboardView, EmployeeLiveTracking, DashboardCustomizePanel, DashboardWidget, SectionSummaryCard, SetupImportPrompt, type SectionSummary } from "@/components/dashboard";
+import { PersonalActivityDashboard } from "@/components/dashboard/PersonalActivityDashboard";
+import { StaffDashboardGrants } from "@/components/identity/StaffDashboardGrants";
 import { RecordHistoryPanel } from "@/components/sales/RecordHistoryPanel";
 import { useDashboardOrder } from "@/lib/preferences/use-dashboard-order";
 import { cn } from "@/lib/utils";
@@ -127,14 +129,17 @@ import { useSetupCompletion } from "@/lib/setup/use-setup-completion";
 import { SETUP_BANNER_RETENTION_DAYS, hasSetupBannerRetired, rememberSetupBannerRetired } from "@/lib/setup/setup-progress";
 import { useDashboardWidgets } from "@/lib/preferences/use-dashboard-widgets";
 import { DASHBOARD_SECTION_DRAG_TYPE, dashboardSectionCardDefinition, dashboardSectionWidgetId } from "@/lib/dashboard/section-cards";
-import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, shouldRetryAuthForNotLoadedReads, type DashboardReadSource } from "@/lib/dashboard/data-read-state";
+import { DashboardReadTracker, dashboardReadSources, deriveDashboardMetricLastSuccessAt, deriveDashboardMetricStates, emptyDashboardSourceStates, runDashboardSourceRead, shouldRetryAuthForNotLoadedReads, type DashboardReadSource, type DashboardSourceState } from "@/lib/dashboard/data-read-state";
 import { loadDashboardExpenses } from "@/lib/dashboard/expenses-loader";
 import { businessHealthCashFlowStatus, businessHealthProfitMarginStatus, getBusinessHealthScore } from "@/lib/dashboard/health";
 import { buildAssistantKpiBlock, salesLineCogsInMainUnits } from "@/lib/ai/assistant-kpi-block";
 import { formatAiMoney } from "@/lib/ai/ai-money";
 import { buildProfitTrendData, buildRevenueTrendData, profitLineContribution } from "@/lib/dashboard/trends";
 import { activityDay, dashboardRange, inDashboardRange, type DashboardRange } from "@/lib/dashboard/period";
-import { exportBusinessActivityCsv } from "@/lib/dashboard/business-records-export";
+import { buildDashboardActivityCsvRows, exportBusinessActivityCsv } from "@/lib/dashboard/business-records-export";
+import { readGrantedDashboardSales, salesCreatorFilter, salesItemsQuery, salesOrdersQuery, salesReturnsQuery, salesTransactionsQuery, type DashboardSalesData } from "@/lib/dashboard/sales-read";
+import { dashboardPeriodSalesTotals } from "@/lib/dashboard/sales-metrics";
+import { dashboardPermissions, resolveDashboardAccess, type DashboardPermission } from "@/lib/identity/dashboard-permissions";
 import { buildTopProductRows, previousPeriodRange, topProductLineNetRevenue } from "@/lib/dashboard/top-products";
 import { buildTopCustomerRows } from "@/lib/dashboard/top-customers";
 import { dashboardAiInsightKind } from "@/lib/dashboard/ai-insight";
@@ -1334,7 +1339,8 @@ export default function Home() {
     const hasLegacyBusinessAccess =
       granted.length === 0 && legacySectionKeys.some((key) => Boolean(ownPermission?.[key]));
     const hasBusinessAccess =
-      granted.some((sectionId) => sectionId !== "dashboard") || hasLegacyBusinessAccess;
+      granted.some((sectionId) => sectionId !== "dashboard") || hasLegacyBusinessAccess ||
+      resolveDashboardAccess(currentProfile, currentOrganizationId, ownPermission).view;
     // Wait until both the org-wide client fetch AND the server-side
     // /api/identity/staff/me row have resolved so we do not wrongly bounce a
     // staff member who was granted business sections.
@@ -1343,7 +1349,7 @@ export default function Home() {
     if (!hasBusinessAccess) {
       router.replace("/salesman");
     }
-  }, [currentUser, currentProfile?.role, currentProfile?.id, staffPermissions, staffPermissionsLoaded, selfStaffPermission, selfStaffPermissionLoaded, router]);
+  }, [currentUser, currentProfile, currentOrganizationId, staffPermissions, staffPermissionsLoaded, selfStaffPermission, selfStaffPermissionLoaded, router]);
 
   useEffect(() => {
     aiVoiceOperatorLoadingRef.current = aiVoiceOperatorLoading;
@@ -1987,13 +1993,11 @@ export default function Home() {
         try {
           const response = await fetchStaffMe();
           const data = await response.json();
-          if (response.ok && data?.me?.permissions) {
-            setSelfStaffPermission(data.me.permissions);
+          if (response.ok) {
+            setSelfStaffPermission(data?.me?.permissions ?? null);
+            setSelfEmployee(data?.me?.employee ?? null);
+            return;
           }
-          if (response.ok && data?.me?.employee) {
-            setSelfEmployee(data.me.employee);
-          }
-          if (response.ok) return;
         } catch {
           // fall through to the retry below
         }
@@ -2001,6 +2005,7 @@ export default function Home() {
           await new Promise((resolve) => setTimeout(resolve, 400));
         }
       }
+      setSelfStaffPermission(null);
     } finally {
       setSelfStaffPermissionLoaded(true);
     }
@@ -2404,9 +2409,9 @@ export default function Home() {
     );
     Promise.all([fetchPurchaseReturns(resolvedProfile.organization_id), fetchPurchaseReturnItems(resolvedProfile.organization_id)]);
     fetchSalesOrders(resolvedProfile.organization_id, resolvedProfile).then(() =>
-      fetchSalesOrderItems(resolvedProfile.organization_id)
+      fetchSalesOrderItems(resolvedProfile.organization_id, undefined, resolvedProfile)
     );
-    Promise.all([fetchSalesReturns(resolvedProfile.organization_id), fetchSalesReturnItems(resolvedProfile.organization_id)]);
+    Promise.all([fetchSalesReturns(resolvedProfile.organization_id, resolvedProfile), fetchSalesReturnItems(resolvedProfile.organization_id, resolvedProfile)]);
     fetchSalesTransactions(resolvedProfile.organization_id, resolvedProfile);
     fetchCustomerPayments(resolvedProfile.organization_id);
     fetchCustomerPaymentAllocations(resolvedProfile.organization_id);
@@ -7054,12 +7059,7 @@ export default function Home() {
       return;
     }
 
-    let query = supabase
-      .from("sales_orders")
-      .select("id, organization_id, so_number, customer_id, order_date, expected_date, notes, status, payment_type, credit_days, invoice_discount, invoice_discount_type, tax_rate, cash_received, created_by_profile_id, created_at, updated_at")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
-    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+    const query = salesOrdersQuery(supabase, orgId, salesCreatorFilter(actor, currentUser?.id));
     await readDashboardSource(
       "sales-orders",
       orgId,
@@ -7083,7 +7083,8 @@ export default function Home() {
 
   const fetchSalesOrderItems = async (
     organizationId?: string | null,
-    orderIds?: string[]
+    orderIds?: string[],
+    actor = currentProfile,
   ) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -7097,10 +7098,13 @@ export default function Home() {
         setSalesOrderItems([]);
         return;
       }
-      const { data: soRows, error: soError } = await supabase
+      let query = supabase
         .from("sales_orders")
         .select("id")
         .eq("organization_id", orgId);
+      const creator = salesCreatorFilter(actor, currentUser?.id);
+      if (creator !== null) query = query.eq("created_by_profile_id", creator);
+      const { data: soRows, error: soError } = await query;
       if (soError) {
         console.error("Supabase fetch sales order ids error:", soError);
         setSalesOrdersError(t('page.salesOrderItemsLoadFailed').replace('{error}', soError.message));
@@ -7130,7 +7134,7 @@ export default function Home() {
     setSalesOrderItems(data ?? []);
   };
 
-  const fetchSalesReturns = async (organizationId?: string | null) => {
+  const fetchSalesReturns = async (organizationId?: string | null, actor = currentProfile) => {
     setSalesReturnsLoading(true);
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
@@ -7175,11 +7179,7 @@ export default function Home() {
         throw new Error("Offline and no cached sales returns");
       }
 
-      const { data, error } = await supabase
-        .from("sales_returns")
-        .select("id, organization_id, return_number, customer_id, sales_transaction_id, return_date, reason, status, created_by_profile_id, created_at, updated_at, request_key")
-        .eq("organization_id", orgId)
-        .order("created_at", { ascending: false });
+      const { data, error } = await salesReturnsQuery(supabase, orgId, salesCreatorFilter(actor, currentUser?.id));
 
       if (error) {
         const mirrored = await loadMirror();
@@ -7195,7 +7195,7 @@ export default function Home() {
     setSalesReturnsLoading(false);
   };
 
-  const fetchSalesReturnItems = async (organizationId?: string | null) => {
+  const fetchSalesReturnItems = async (organizationId?: string | null, actor = currentProfile) => {
     const orgId = organizationId ?? currentOrganizationId;
     if (!orgId) {
       setSalesReturnItems([]);
@@ -7235,10 +7235,7 @@ export default function Home() {
         throw new Error("Offline and no cached sales return items");
       }
 
-      const { data: returnRows, error: returnsError } = await supabase
-        .from("sales_returns")
-        .select("id, request_key")
-        .eq("organization_id", orgId);
+      const { data: returnRows, error: returnsError } = await salesReturnsQuery(supabase, orgId, salesCreatorFilter(actor, currentUser?.id));
       if (returnsError) {
         const mirrored = await loadMirror();
         if (mirrored) return mergeLocalItems(mirrored, new Set());
@@ -9793,12 +9790,7 @@ export default function Home() {
       return;
     }
 
-    let query = supabase
-      .from("sales_items")
-      .select("id, sales_transaction_id, product_id, quantity, selling_price, purchase_price_snapshot, discount, unit_mode, sales_transactions!inner(created_by_profile_id)")
-      .eq("organization_id", orgId)
-      .order("id", { ascending: true });
-    if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("sales_transactions.created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+    const query = salesItemsQuery(supabase, orgId, salesCreatorFilter(actor, currentUser?.id));
     await readDashboardSource(
       "sales-items",
       orgId,
@@ -10085,12 +10077,7 @@ export default function Home() {
       "sales-transactions",
       orgId,
       async () => {
-        let query = supabase
-          .from("sales_transactions")
-          .select("id, customer_id, invoice_number, created_at, sale_date, payment_type, credit_due_date, credit_limit_snapshot, credit_days_snapshot, total_amount, status, invoice_type, created_by_profile_id, discount_amount, tax_rate, tax_amount, cash_received, change_due, notes, request_id, provisional_receipt_number")
-          .eq("organization_id", orgId)
-          .order("created_at", { ascending: false });
-        if (actor?.role !== "owner" && actor?.role !== "admin") query = query.eq("created_by_profile_id", actor?.id ?? currentUser?.id ?? "00000000-0000-0000-0000-000000000000");
+        const query = salesTransactionsQuery(supabase, orgId, salesCreatorFilter(actor, currentUser?.id));
         // Slice S4 — desktop history reads the SQLite mirror when the
         // network is gone (or the live fetch fails), exactly like the
         // product catalogue does. A mirrored history is stamped with
@@ -14801,7 +14788,9 @@ export default function Home() {
   const addGroupedAmount = (groups: Record<string, number>, key: string, amount: number) => {
     groups[key] = (groups[key] ?? 0) + safeNumber(amount);
   };
-  const buildBusinessIntelligenceAnalytics = () => {
+  const analyticsSalesSources = { salesTransactions, salesItems, customerPayments };
+  const buildBusinessIntelligenceAnalytics = (salesSources = analyticsSalesSources) => {
+    const { salesTransactions, salesItems, customerPayments } = salesSources;
     const search = biSearch.trim().toLowerCase();
     const productById = products.reduce<Record<string, Product>>((lookup, product) => {
       lookup[String(product.id)] = product;
@@ -15788,8 +15777,8 @@ export default function Home() {
   // The amount column the widget renders was never filled by this feed; it
   // now shows the invoice total, the same formatBooksMoney value the
   // dashboard's smart modules already show for these invoices.
-  const recentActivities = buildRecentActivities([
-    ...recentSalesInvoices.map((inv) => ({
+  const dashboardRecentActivitiesFor = (saleInvoices: SalesTransaction[], purchaseInvoices: PurchaseTransaction[]) => buildRecentActivities([
+    ...saleInvoices.map((inv) => ({
       id: `sale-${inv.id}`,
       type: "sale" as const,
       description: t('dashboard.saleNumber').replace('{number}', inv.invoice_number),
@@ -15797,7 +15786,7 @@ export default function Home() {
       amount: formatBooksMoney(safeNumber(inv.total_amount)),
       createdAt: inv.created_at,
     })),
-    ...recentPurchaseInvoices.map((inv) => ({
+    ...purchaseInvoices.map((inv) => ({
       id: `purchase-${inv.id}`,
       type: "purchase" as const,
       description: t('dashboard.purchaseNumber').replace('{number}', inv.invoice_number),
@@ -20893,6 +20882,37 @@ export default function Home() {
     setStaffPermissionMessage(t('page.staffPermsSaved'));
   };
 
+  const saveStaffDashboardGrants = async (staffProfileId: string, flags: Record<DashboardPermission, boolean>) => {
+    if (!isOwnerOrAdmin() || !currentOrganizationId) return;
+    const target = staffProfiles.find(profile => profile.id === staffProfileId && profile.organization_id === currentOrganizationId);
+    if (!target || target.role === "owner" || target.role === "admin") return;
+    setStaffPermissionMessage(null);
+    setStaffPermissionError(null);
+    const previous = staffPermissions.find(permission => permission.profile_id === staffProfileId && permission.organization_id === currentOrganizationId);
+    const { error } = await supabase.from("staff_permissions").upsert({
+      organization_id: currentOrganizationId,
+      profile_id: staffProfileId,
+      dashboard_view: flags.dashboard_view,
+      dashboard_export: flags.dashboard_export,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "organization_id,profile_id" });
+    if (error) {
+      setStaffPermissionError(t("page.staffPermsSaveFailedErr").replace("{error}", error.message));
+      return;
+    }
+    await createAuditLog({
+      action: "updated",
+      entity_type: "staff_permissions",
+      entity_id: staffProfileId,
+      entity_label: target.display_name ?? target.email ?? staffProfileId,
+      description: t("page.updatedStaffPermissions").replace("{name}", target.display_name ?? target.email ?? staffProfileId),
+      old_values: { dashboard_view: previous?.dashboard_view === true, dashboard_export: previous?.dashboard_export === true },
+      new_values: flags,
+    });
+    await fetchStaffProfilesAndPermissions(currentOrganizationId);
+    setStaffPermissionMessage(t("page.staffPermsSaved"));
+  };
+
   const seedSecurityChecklist = async () => {
     setSecurityCheckMessage(null);
     setSecurityCheckError(null);
@@ -20982,18 +21002,50 @@ export default function Home() {
     setSecurityCheckMessage(t('page.securityCheckMarked').replace('{status}', status));
   };
 
-  const dashboardWideAccess = currentProfile?.is_active !== false && Boolean(currentOrganizationId) && (
-    isOwnerOrAdmin() || (
-      selfEmployee?.designation === "manager" && selfEmployee.is_active && selfEmployee.status === "active" &&
-      selfEmployee.organization_id === currentOrganizationId && selfEmployee.profile_id === currentProfile?.id
-    )
-  );
+  const dashboardAccess = resolveDashboardAccess(currentProfile, currentOrganizationId, selfStaffPermission);
+  const dashboardWideAccess = dashboardAccess.view;
+  const delegatedDashboard = dashboardWideAccess && !dashboardAccess.ownerOrAdmin;
+  const personalEmployee = selfEmployee?.organization_id === currentOrganizationId &&
+    selfEmployee?.profile_id === currentProfile?.id ? selfEmployee : null;
+  const ownActivityOnly = !dashboardWideAccess && (currentProfile?.role === "manager" || personalEmployee?.designation === "manager");
+  const [dashboardReadAttempt, setDashboardReadAttempt] = useState(0);
+  const [dashboardStaffRead, setDashboardStaffRead] = useState<{ key: string; rows: DashboardSalesData | null } | null>(null);
+  const dashboardReadKey = delegatedDashboard && activeSection === "dashboard"
+    ? JSON.stringify([currentOrganizationId, currentProfile?.id, dashboardReadAttempt]) : null;
+  useEffect(() => {
+    if (!dashboardReadKey || !currentOrganizationId) {
+      setDashboardStaffRead(null);
+      return;
+    }
+    const controller = new AbortController();
+    setDashboardStaffRead(null);
+    void readGrantedDashboardSales(supabase, currentOrganizationId, controller.signal).then(rows => {
+      if (!controller.signal.aborted) setDashboardStaffRead({ key: dashboardReadKey, rows });
+    }).catch(() => {
+      if (!controller.signal.aborted) setDashboardStaffRead({ key: dashboardReadKey, rows: null });
+    });
+    return () => controller.abort();
+  }, [currentOrganizationId, dashboardReadKey]);
+  const dashboardScopedRead = dashboardStaffRead?.key === dashboardReadKey ? dashboardStaffRead : null;
+  const dashboardScopedRows = dashboardScopedRead?.rows;
+  const dashboardSalesRows = delegatedDashboard ? dashboardScopedRows?.salesTransactions ?? [] : salesTransactions;
+  const dashboardSaleItems = delegatedDashboard ? dashboardScopedRows?.salesItems ?? [] : salesItems;
+  const dashboardPurchaseRows = delegatedDashboard ? dashboardScopedRows?.purchaseTransactions ?? [] : purchaseTransactions;
+  const dashboardReceivables = delegatedDashboard
+    ? dashboardScopedRows ? buildCustomerLedger({ products: products.map(({ id, name }) => ({ id, name })), customers, ...dashboardScopedRows }).totals.totalOutstanding : 0
+    : totalReceivables;
+  const dashboardAnalytics = delegatedDashboard
+    ? dashboardScopedRows ? buildBusinessIntelligenceAnalytics(dashboardScopedRows) : null
+    : businessIntelligenceAnalytics;
+  const dashboardOverview = dashboardAnalytics?.overview;
+  const dashboardProfitTrend = buildProfitTrendData(dashboardAnalytics?.dailyTrends ?? []);
   const dashboardPermission = currentStaffPermission?.organization_id === currentOrganizationId &&
     currentStaffPermission?.profile_id === currentProfile?.id && currentProfile?.is_active !== false
     ? currentStaffPermission : null;
   const dashboardGrants = dashboardPermission?.granted_sections ?? [];
   const dashboardSectionGranted = (section: SectionId) => {
-    if (dashboardWideAccess) return true;
+    if (dashboardWideAccess) return section === "profit-loss" ? dashboardAccess.profit : true;
+    if (ownActivityOnly) return false;
     const permission = sectionPermissionMap[section];
     if (!permission || permission === "owner_admin") return false;
     return dashboardGrants.length ? dashboardGrants.includes(section) : dashboardPermission?.[permission] === true;
@@ -21021,11 +21073,11 @@ export default function Home() {
     const range = dashboardRange("month", dashboardToday, { start: "", end: "" });
     if (!range) return [];
     const previous = previousPeriodRange(range);
-    const saleDays = new Map(salesTransactions.filter(isCurrentOrganizationRecord).map(tx => [
+    const saleDays = new Map(dashboardSalesRows.filter(isCurrentOrganizationRecord).map(tx => [
       tx.id, calendarDayOfRecord([tx.sale_date, tx.created_at]),
     ]));
     const totals = new Map<string, { quantitySold: number; previousQuantitySold: number; netRevenue: number }>();
-    for (const item of salesItems) {
+    for (const item of dashboardSaleItems) {
       const day = saleDays.get(item.sales_transaction_id) ?? null;
       const thisMonth = inDashboardRange(day, range);
       if (!thisMonth && !(previous && inDashboardRange(day, previous))) continue;
@@ -21051,23 +21103,8 @@ export default function Home() {
     }), value => formatDashboardMoney(displayCurrency, displayFxRate, value));
   };
   const dashboardPeriodMetrics = (range: DashboardRange) => {
-    const ids = new Set(salesTransactions.filter(tx =>
-      inDashboardRange(calendarDayOfRecord([tx.sale_date, tx.created_at]), range)
-    ).map(tx => tx.id));
-    let sales = 0;
-    let profit = 0;
-    let unknownCostLines = 0;
-    let unknownCostRevenue = 0;
-    for (const item of salesItems) {
-      if (!ids.has(item.sales_transaction_id)) continue;
-      const revenue = safeNumber(item.quantity) * safeNumber(item.selling_price) - safeNumber(item.discount);
-      if (dashboardSalesGrant) sales += revenue;
-      if (dashboardProfitGrant) {
-        const cogs = salesLineCogsInMainUnits(item, productById.get(String(item.product_id)));
-        if (cogs === null) { unknownCostLines++; unknownCostRevenue += revenue; }
-        else profit += revenue - cogs;
-      }
-    }
+    const { sales, profit, unknownCostLines, unknownCostRevenue } =
+      dashboardPeriodSalesTotals(dashboardSalesRows, dashboardSaleItems, productById, range, dashboardProfitGrant);
     const money = (value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value);
     return {
       sales: dashboardSalesGrant ? { value: money(sales) } : undefined,
@@ -21075,21 +21112,17 @@ export default function Home() {
     };
   };
   const exportDashboardActivity = (range: DashboardRange) => {
-    if (!dashboardWideAccess || !currentOrganizationId || !dashboardActivityReady) return;
-    const currency = getActiveBooksCurrency();
-    const customerNames = new Map(customers.map(customer => [customer.id, customer.customer_name]));
-    const supplierNames = new Map(suppliers.map(supplier => [supplier.id, supplier.supplier_name]));
-    const entries = [
-      ...salesTransactions.map(tx => ({ tx, type: "sale", party: customerNames.get(tx.customer_id) ?? "" })),
-      ...purchaseTransactions.map(tx => ({ tx, type: "purchase", party: supplierNames.get(tx.supplier_id) ?? "" })),
-    ].filter(({ tx }) => (!tx.organization_id || tx.organization_id === currentOrganizationId)
-      && inDashboardRange(activityDay(tx.created_at, dashboardTimeZone), range))
-      .sort((a, b) => Date.parse(b.tx.created_at) - Date.parse(a.tx.created_at))
-      .slice(0, 10_000);
-    exportBusinessActivityCsv(range.start, range.end, entries.map(({ tx, type, party }) => [
-      formatDateTime(tx.created_at),
-      type, tx.invoice_number, party, tx.total_amount ?? "", currency,
-    ]));
+    if (!dashboardAccess.export || !currentOrganizationId || !dashboardActivityReady) return;
+    exportBusinessActivityCsv(range.start, range.end, buildDashboardActivityCsvRows({
+      sales: dashboardSalesRows,
+      purchases: dashboardPurchaseRows,
+      customerNames: new Map(customers.map(customer => [customer.id, customer.customer_name])),
+      supplierNames: new Map(suppliers.map(supplier => [supplier.id, supplier.supplier_name])),
+      org: currentOrganizationId,
+      timeZone: dashboardTimeZone,
+      range,
+      currency: getActiveBooksCurrency(),
+    }));
   };
 
   const productTotals = new Map<string, { qty: number; value: number }>();
@@ -21138,16 +21171,31 @@ export default function Home() {
   const mySalesToday = mySales.filter((s) => (s.created_at ?? "").slice(0, 10) === todayStart);
   const todaySalesTotal = mySalesToday.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0);
 
-  const dashboardMetricReadStates = deriveDashboardMetricStates(dashboardSourceStates);
-  const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardSourceStates);
-  const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardSourceStates[source].status;
+  const scopedStatusFor = (count: number | undefined): DashboardSourceState => ({
+    status: dashboardScopedRows ? (count ? "successful-populated" : "successful-empty") : dashboardScopedRead ? "failed" : "loading",
+  });
+  const dashboardViewSources = delegatedDashboard ? {
+    ...dashboardSourceStates,
+    "sales-transactions": scopedStatusFor(dashboardScopedRows?.salesTransactions.length),
+    "sales-items": scopedStatusFor(dashboardScopedRows?.salesItems.length),
+    "sales-orders": scopedStatusFor(dashboardScopedRows?.salesOrders.length),
+    "sales-returns": scopedStatusFor(dashboardScopedRows?.salesReturns.length),
+    "sales-return-items": scopedStatusFor(dashboardScopedRows?.salesReturnItems.length),
+    "customer-payments": scopedStatusFor(dashboardScopedRows?.customerPayments.length),
+    "customer-payment-allocations": scopedStatusFor(dashboardScopedRows?.customerPaymentAllocations.length),
+    "purchase-transactions": scopedStatusFor(dashboardScopedRows?.purchaseTransactions.length),
+  } : dashboardSourceStates;
+  const dashboardMetricReadStates = deriveDashboardMetricStates(dashboardViewSources);
+  const dashboardMetricLastSuccessfulAt = deriveDashboardMetricLastSuccessAt(dashboardViewSources);
+  const dashboardReadStatusFor = (source: DashboardReadSource) => dashboardViewSources[source].status;
   const dashboardActivityReady = (["sales-transactions", "purchase-transactions"] as const).every(source =>
     ["successful-populated", "successful-empty"].includes(dashboardReadStatusFor(source))
   );
-  const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardSourceStates[source].lastSuccessAt;
+  const dashboardLastSuccessFor = (source: DashboardReadSource) => dashboardViewSources[source].lastSuccessAt;
   const healthReadStatus = dashboardMetricReadStates["business-health"];
   const healthLastSuccessfulAt = dashboardMetricLastSuccessfulAt["business-health"];
   const retryFailedDashboardReads = () => {
+    if (delegatedDashboard && !dashboardScopedRows) setDashboardReadAttempt(value => value + 1);
     // Slice 3 (HYBRID): when any source is "not-loaded" and no profile is
     // loaded, the read tracker was never activated (the profile load
     // failed) — the tracker's scope check would ignore every re-run read,
@@ -21213,6 +21261,12 @@ export default function Home() {
       dueDate: t.due_date ? formatDate(t.due_date) : undefined,
     })),
   };
+  const recentDashboardSales = delegatedDashboard ? dashboardSalesRows.slice(0, 10) : recentSalesInvoices;
+  const recentDashboardPurchases = delegatedDashboard
+    ? dashboardPurchaseRows.toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 10)
+    : recentPurchaseInvoices;
+  const recentDashboardSalesModule = delegatedDashboard ? smartModuleRows(recentDashboardSales) : recentSalesModule;
+  const recentDashboardPurchasesModule = delegatedDashboard ? smartModuleRows(recentDashboardPurchases) : recentPurchasesModule;
 
   // Dashboard global search wiring must remain above the logged-out return:
   // Home renders both before and after authentication, so its hooks must be
@@ -21593,7 +21647,6 @@ export default function Home() {
   // Profit Trend data for the dashboard (last 14 days): daily profit net
   // of line discounts, unknown-cost lines excluded and disclosed — the
   // same honest split as the Today's Profit KPI (todayProfitTotals).
-  const profitTrend = buildProfitTrendData(businessIntelligenceAnalytics.dailyTrends);
 
   return (
     <DashboardLayout
@@ -21799,8 +21852,20 @@ export default function Home() {
             </div>
           </div>
         )}
-        {activeSection === "dashboard" && staffDashboardData.isStaff && setupStage === "active" && !homeWidgets.isHidden("setup-import") && <div className="workspace-flow">{setupImportWidget}</div>}
-        {activeSection === "dashboard" && staffDashboardData.isStaff && (
+        {activeSection === "dashboard" && ownActivityOnly && currentOrganizationId && (
+          <PersonalActivityDashboard
+            key={JSON.stringify([currentOrganizationId, currentProfile?.id, personalEmployee?.id])}
+            userName={currentProfile?.full_name ?? currentUser.email ?? ""}
+            organizationId={currentOrganizationId}
+            employeeId={personalEmployee?.id ?? null}
+            sales={staffDashboardData.mySalesTotal}
+            returns={salesReturns.filter(row => row.organization_id === currentOrganizationId && row.created_by_profile_id === profileId && row.status === "confirmed").length}
+            salesStatus={dashboardReadStatusFor("sales-transactions")}
+            returnsStatus={dashboardReadStatusFor("sales-returns")}
+          />
+        )}
+        {activeSection === "dashboard" && staffDashboardData.isStaff && !ownActivityOnly && setupStage === "active" && !homeWidgets.isHidden("setup-import") && <div className="workspace-flow">{setupImportWidget}</div>}
+        {activeSection === "dashboard" && staffDashboardData.isStaff && !ownActivityOnly && (
           <StaffDashboardView
             userName={currentProfile?.full_name ?? currentUser.email}
             designation={selfEmployee?.designation ?? null}
@@ -21826,9 +21891,9 @@ export default function Home() {
           />
         )}
 
-        {activeSection === "dashboard" && staffDashboardData.isStaff && (<MySalesPerformance />)}
+        {activeSection === "dashboard" && staffDashboardData.isStaff && !ownActivityOnly && (<MySalesPerformance />)}
 
-        {activeSection === "dashboard" && staffDashboardData.isStaff && (
+        {activeSection === "dashboard" && staffDashboardData.isStaff && !ownActivityOnly && (
           <EmployeeLiveTracking />
         )}
 
@@ -21856,8 +21921,10 @@ export default function Home() {
             periodToday={dashboardToday}
             periodScope={dashboardPeriodScope}
             periodMetrics={dashboardPeriodMetrics}
-            exportActivity={dashboardActivityReady ? exportDashboardActivity : undefined}
-            cashFlow={formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables)}
+            showProfitInsights={dashboardAccess.profit}
+            showQuickActions={dashboardAccess.ownerOrAdmin}
+            exportActivity={dashboardAccess.export && dashboardActivityReady ? exportDashboardActivity : undefined}
+            cashFlow={formatDashboardMoney(displayCurrency, displayFxRate, dashboardReceivables - totalPayables)}
             currencyCode={displayCurrency}
             metricReadStates={dashboardMetricReadStates}
             metricLastSuccessfulAt={dashboardMetricLastSuccessfulAt}
@@ -21867,26 +21934,26 @@ export default function Home() {
             hiddenWidgets={homeWidgets.hidden}
             widgetOrder={homeOrder.order}
             onMoveWidget={homeOrder.move}
-            setupContent={setupImportWidget}
+            setupContent={dashboardAccess.ownerOrAdmin ? setupImportWidget : undefined}
             quickSaleContent={canUseSalesTool("invoice") ? quickSaleWidget : undefined}
             exportContent={businessRecordsExportWidget}
             onQuickSale={canUseSalesTool("invoice") ? () => { setQuickSaleMode(true); setSalesTab("invoice"); setSaleScanFocus(value => value + 1); handleSectionChange("sales"); } : undefined}
             customizingWidgets={homeWidgets.customizing}
             onRemoveWidget={homeWidgets.removeWidget}
             onToggleCustomize={() => homeWidgets.setCustomizing((value) => !value)}
-            droppedCards={droppedSectionCards}
+            droppedCards={dashboardAccess.ownerOrAdmin ? droppedSectionCards : []}
             userName={currentProfile?.full_name ?? currentUser.email}
             todaySales={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todaySalesAmount) }}
-            todayProfit={{ value: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitAmount), unknownCostLines: todayProfitTotals.unknownCostLines, unknownCostAmount: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitTotals.unknownCostRevenue) }}
-            inventoryValue={{ value: formatDashboardMoney(displayCurrency, displayFxRate, inventoryValue) }}
-            outstandingReceivables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables) }}
+            todayProfit={dashboardAccess.profit ? { value: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitAmount), unknownCostLines: todayProfitTotals.unknownCostLines, unknownCostAmount: formatDashboardMoney(displayCurrency, displayFxRate, todayProfitTotals.unknownCostRevenue) } : undefined}
+            inventoryValue={dashboardAccess.profit ? { value: formatDashboardMoney(displayCurrency, displayFxRate, inventoryValue) } : undefined}
+            outstandingReceivables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, dashboardReceivables) }}
             outstandingPayables={{ value: formatDashboardMoney(displayCurrency, displayFxRate, totalPayables) }}
             lowStockAlerts={{ value: String(reorderRecommendationSummary.urgentReorderCount), count: reorderRecommendationSummary.urgentReorderCount }}
-            healthScore={businessHealthScore.score}
+            healthScore={delegatedDashboard && dashboardOverview ? getBusinessHealthScore(dashboardOverview, t).score : businessHealthScore.score}
             healthMetrics={[
-              { label: t('dashboard.cashFlow'), readStatus: dashboardMetricReadStates["cash-flow"], value: formatDashboardMoney(displayCurrency, displayFxRate, totalReceivables - totalPayables), status: businessHealthCashFlowStatus(totalReceivables, totalPayables) },
+              { label: t('dashboard.cashFlow'), readStatus: dashboardMetricReadStates["cash-flow"], value: formatDashboardMoney(displayCurrency, displayFxRate, dashboardReceivables - totalPayables), status: businessHealthCashFlowStatus(dashboardReceivables, totalPayables) },
               { label: t('dashboard.inventoryHealth'), value: t('dashboard.lowStockCount').replace('{count}', String(lowStockProducts.length)), status: lowStockProducts.length > 5 ? "critical" as const : lowStockProducts.length > 2 ? "warning" as const : "good" as const },
-              { label: t('dashboard.profitMargin'), value: businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? `${((businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: businessHealthProfitMarginStatus(businessIntelligenceAnalytics.overview.totalSalesAmount > 0 ? (businessIntelligenceAnalytics.overview.estimatedNetProfit / businessIntelligenceAnalytics.overview.totalSalesAmount) * 100 : 0) },
+              { label: t('dashboard.profitMargin'), value: dashboardOverview && dashboardOverview.totalSalesAmount > 0 ? `${((dashboardOverview.estimatedNetProfit / dashboardOverview.totalSalesAmount) * 100).toFixed(1)}%` : "0%", status: businessHealthProfitMarginStatus(dashboardOverview && dashboardOverview.totalSalesAmount > 0 ? (dashboardOverview.estimatedNetProfit / dashboardOverview.totalSalesAmount) * 100 : 0) },
               { label: t('dashboard.stockHealth'), value: t('dashboard.outOfStockCount').replace('{count}', String(reorderRecommendationSummary.outOfStockCount)), status: reorderRecommendationSummary.outOfStockCount > 3 ? "critical" as const : "good" as const },
             ]}
             lowStockItems={reorderRecommendationSummary.urgentReorderCount}
@@ -21895,8 +21962,8 @@ export default function Home() {
             paymentsDue={paymentsDue}
             customersToFollowUp={customersToFollowUp}
             expiringProducts={expiringProducts}
-            pendingApprovals={salesOrders.filter((o) => o.status === "pending_approval").length}
-            recentActivities={recentActivities}
+            pendingApprovals={(delegatedDashboard ? dashboardScopedRows?.salesOrders ?? [] : salesOrders).filter((o) => o.status === "pending_approval").length}
+            recentActivities={dashboardRecentActivitiesFor(recentDashboardSales, recentDashboardPurchases)}
             smartModules={[
               { id: "products", title: t('stock.products'), summary: t('dashboard.productsInCatalog').replace('{count}', String(totalProducts)), readStatus: dashboardReadStatusFor("products"), lastSuccessfulAt: dashboardLastSuccessFor("products"), onOpen: () => handleSectionChange("products") },
               { id: "customers", title: t('nav.customers'), summary: t('dashboard.registeredCustomers').replace('{count}', String(totalCustomers)), readStatus: dashboardReadStatusFor("customers"), lastSuccessfulAt: dashboardLastSuccessFor("customers"), onOpen: () => handleSectionChange("customers") },
@@ -21904,13 +21971,13 @@ export default function Home() {
               {
                 id: "sales",
                 title: t('sell.salesColumn'),
-                summary: t('dashboard.recentSalesTransactions').replace('{count}', String(recentSalesModule.count)),
+                summary: t('dashboard.recentSalesTransactions').replace('{count}', String(recentDashboardSalesModule.count)),
                 readStatus: dashboardReadStatusFor("sales-transactions"),
                 lastSuccessfulAt: dashboardLastSuccessFor("sales-transactions"),
                 onOpen: () => handleSectionChange("sales"),
-                children: recentSalesModule.rows.length > 0 ? (
+                children: recentDashboardSalesModule.rows.length > 0 ? (
                   <div className="space-y-1 mt-1">
-                    {recentSalesModule.rows.map((inv) => (
+                    {recentDashboardSalesModule.rows.map((inv) => (
                       <div key={inv.id} className="flex items-center justify-between text-xs">
                         <span className="text-foreground/80 truncate">#{inv.invoice_number}</span>
                         <span className="text-light-text shrink-0">{formatDateTime(inv.created_at)}</span>
@@ -21922,13 +21989,13 @@ export default function Home() {
               {
                 id: "purchases",
                 title: t('buy.purchases'),
-                summary: t('dashboard.recentPurchasesCount').replace('{count}', String(recentPurchasesModule.count)),
+                summary: t('dashboard.recentPurchasesCount').replace('{count}', String(recentDashboardPurchasesModule.count)),
                 readStatus: dashboardReadStatusFor("purchase-transactions"),
                 lastSuccessfulAt: dashboardLastSuccessFor("purchase-transactions"),
                 onOpen: () => handleSectionChange("purchases"),
-                children: recentPurchasesModule.rows.length > 0 ? (
+                children: recentDashboardPurchasesModule.rows.length > 0 ? (
                   <div className="space-y-1 mt-1">
-                    {recentPurchasesModule.rows.map((inv) => (
+                    {recentDashboardPurchasesModule.rows.map((inv) => (
                       <div key={inv.id} className="flex items-center justify-between text-xs">
                         <span className="text-foreground/80 truncate">#{inv.invoice_number}</span>
                         <span className="text-light-text shrink-0">{formatDateTime(inv.created_at)}</span>
@@ -21963,7 +22030,7 @@ export default function Home() {
                 ) : undefined,
               },
             ]}
-            aiInsight={(() => {
+            aiInsight={dashboardAccess.ownerOrAdmin ? (() => {
               const latestAlert = visibleAiAlerts[0];
               const kind = dashboardAiInsightKind({
                 hasActiveAlert: latestAlert !== undefined,
@@ -21989,14 +22056,14 @@ export default function Home() {
                 };
               }
               return undefined;
-            })()}
-            revenueData={buildRevenueTrendData(businessIntelligenceAnalytics.dailyTrends)}
-            profitData={profitTrend.points}
-            profitUnknownCostLines={profitTrend.unknownCostLines}
-            profitUnknownCostAmount={formatDashboardMoney(displayCurrency, displayFxRate, profitTrend.unknownCostRevenue)}
+            })() : undefined}
+            revenueData={buildRevenueTrendData(dashboardAnalytics?.dailyTrends ?? [])}
+            profitData={dashboardAccess.profit ? dashboardProfitTrend.points : undefined}
+            profitUnknownCostLines={dashboardProfitTrend.unknownCostLines}
+            profitUnknownCostAmount={formatDashboardMoney(displayCurrency, displayFxRate, dashboardProfitTrend.unknownCostRevenue)}
             formatChartValue={(value: number) => formatDashboardMoney(displayCurrency, displayFxRate, value)}
             topCustomers={buildTopCustomerRows(
-              businessIntelligenceAnalytics.topCustomersBySales.map((c) => ({
+              (dashboardAnalytics?.topCustomersBySales ?? []).map((c) => ({
                 name: c.customerName,
                 totalSales: c.totalSales,
                 previousTotalSales: previousBiRange ? c.previousTotalSales : null,
@@ -22057,7 +22124,7 @@ export default function Home() {
             }}
           />
         )}
-        {activeSection === "dashboard" && staffDashboardData.isStaff && !homeWidgets.isHidden("quick-sale") && <div className="workspace-flow">{quickSaleWidget}</div>}
+        {activeSection === "dashboard" && staffDashboardData.isStaff && !ownActivityOnly && !homeWidgets.isHidden("quick-sale") && <div className="workspace-flow">{quickSaleWidget}</div>}
 
         {activeSectionAllowed && activeSection === "business-intelligence" && (
         <section className="workspace-section report-screen">
@@ -29911,6 +29978,8 @@ export default function Home() {
                         .map((sectionId) =>
                           navigationLabel(sectionId, navigationItems.find((item) => item.id === sectionId)?.label ?? sectionId, language)
                         );
+                      if (profilePermissions?.dashboard_view) grantedSectionLabels.push(t("staff.dashboardView"));
+                      if (profilePermissions?.dashboard_export) grantedSectionLabels.push(t("staff.dashboardExport"));
                       const permissionSummary = grantedSectionLabels;
                       const profileIsOwnerOrAdmin = profile.role === "owner" || profile.role === "admin";
 
@@ -30019,6 +30088,12 @@ export default function Home() {
               const selectedProfileIsOwner = selectedProfile?.role === "owner";
               const selectedProfileIsOwnerOrAdmin =
                 selectedProfile?.role === "owner" || selectedProfile?.role === "admin";
+              const selectedDashboardGrants = staffPermissions.find(permission =>
+                permission.profile_id === selectedStaffProfileId && permission.organization_id === currentOrganizationId
+              );
+              const dashboardGrantsAvailable = staffPermissions.some(permission =>
+                dashboardPermissions.every(key => typeof permission[key] === "boolean")
+              );
               // Payment action toggles, grouped per kind. An action is only
               // effective with its section ticked (the gate needs section +
               // boolean); the Supplier Ledger section counts as the supplier
@@ -30069,6 +30144,13 @@ export default function Home() {
                     <div className="mb-4 rounded border border-primary/20 bg-primary/5 p-3 text-sm text-primary">
                       {t('staff.ownerNote')}
                     </div>
+                  )}
+                  {isOwnerOrAdmin() && !selectedProfileIsOwnerOrAdmin && dashboardGrantsAvailable && (
+                    <StaffDashboardGrants
+                      key={JSON.stringify([selectedProfile.id, selectedDashboardGrants?.dashboard_view, selectedDashboardGrants?.dashboard_export])}
+                      grants={selectedDashboardGrants ?? {}}
+                      onSave={flags => saveStaffDashboardGrants(selectedProfile.id, flags)}
+                    />
                   )}
 
                   <div className="mb-4 rounded border border-border bg-muted/30 p-4 text-sm text-foreground/80">

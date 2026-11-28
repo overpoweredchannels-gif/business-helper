@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { hasSalesTool, configureSalesTools, salesTools } from "../src/lib/sales/access";
 import { filterPerformance, performanceAmount, type PerformanceSale } from "../src/lib/sales/performance";
+import { testManagerDashboardRls } from "./test-manager-dashboard-rls";
 
 async function main() {
   const basic = { role: "salesman", granted_sections: ["sales"] };
@@ -72,4 +73,4 @@ async function main() {
   await db.close();
   console.log("Sales access: permission matrix, own sales, tenant isolation, approval-only writes, self-escalation denial, returns, inactive staff and repeat migration passed. Performance filters and totals passed.");
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().then(testManagerDashboardRls).catch(error => { console.error(error); process.exitCode = 1; });

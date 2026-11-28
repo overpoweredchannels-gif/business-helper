@@ -108,7 +108,9 @@ function toNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function buildCustomerLedger(data: MemoryWriterRawData, now: Date = new Date()): CustomerLedger {
+export function buildCustomerLedger(data: Pick<MemoryWriterRawData,
+  "products" | "customers" | "salesTransactions" | "salesItems" | "salesReturns" | "salesReturnItems" |
+  "customerPayments" | "customerPaymentAllocations">, now: Date = new Date()): CustomerLedger {
   const productNames = new Map<string, string>();
   for (const product of data.products ?? []) {
     productNames.set(String(product.id), product.name);

@@ -42,6 +42,8 @@ interface DashboardViewProps {
   periodMetrics?: (range: DashboardRange) => { sales?: PeriodMetric; profit?: PeriodMetric };
   exportActivity?: (range: DashboardRange) => void;
   restricted?: boolean;
+  showProfitInsights?: boolean;
+  showQuickActions?: boolean;
   cashFlow?: string;
   userName: string;
   /** Display currency code (e.g. PKR) shown on KPI definition lines. */
@@ -120,6 +122,8 @@ export function DashboardView({
   periodMetrics,
   exportActivity,
   restricted = false,
+  showProfitInsights = true,
+  showQuickActions = true,
   cashFlow,
   currencyCode,
   setupContent,
@@ -299,10 +303,9 @@ export function DashboardView({
   ].filter((card) => !widgetHidden(card.id));
 
   const chartCards: Array<{ id: DashboardWidgetId; node: React.ReactNode }> = [
-    // Both trend cards are always on the dashboard: with no data they
-    // show their empty state instead of vanishing.
+    // Visible trend cards keep their empty states.
     { id: "chart-revenue" as DashboardWidgetId, node: <RevenueTrendCard data={revenueData ?? []} formatValue={formatChartValue} /> },
-    { id: "chart-profit" as DashboardWidgetId, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> },
+    ...(showProfitInsights ? [{ id: "chart-profit" as const, node: <ProfitTrendCard data={profitData ?? []} formatValue={formatChartValue} unknownCostLines={profitUnknownCostLines} unknownCostAmount={profitUnknownCostAmount} /> }] : []),
     // The Top Products card is always on the dashboard too: with no
     // selling products it shows its empty state instead of vanishing.
     { id: "chart-top-products" as DashboardWidgetId, node: <TopProductsCard items={topProducts ?? []} periodLabel={periodToday ? t("bi.rangeThisMonth") : undefined} /> },
@@ -317,7 +320,7 @@ export function DashboardView({
     ...(setupContent ? [{ id: "setup-import" as const, node: setupContent, width: "full" as const }] : []),
     ...(quickSaleContent ? [{ id: "quick-sale" as const, node: quickSaleContent, width: "full" as const }] : []),
     ...(exportContent ? [{ id: "business-records-export" as const, node: exportContent, width: "half" as const }] : []),
-    { id: "quick-actions", node: <QuickActions onAction={onQuickAction} />, width: "full" },
+    ...(showQuickActions ? [{ id: "quick-actions" as const, node: <QuickActions onAction={onQuickAction} />, width: "full" as const }] : []),
     ...kpiCards.map(card => ({ ...card, width: "metric" as const })),
     ...chartCards.map(card => ({ ...card, width: "half" as const })),
     ...(recentActivities.length || exportActivity ? [{ id: "recent-activity" as const, node: <RecentActivity activities={recentActivities} onViewAll={onViewAllActivity} onExport={exportActivity && range ? () => exportActivity(range) : undefined} />, width: "full" as const }] : []),
@@ -356,7 +359,7 @@ export function DashboardView({
               </div>
             )}
           </div>), width: "half" as const }] : []),
-    { id: "business-health", node: <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt ?? metricLastSuccessfulAt?.["business-health"]} onRetry={onRetryFailedReads} />, width: "half" },
+    ...(showProfitInsights ? [{ id: "business-health" as const, node: <BusinessHealthCard score={healthScore} metrics={healthMetrics} readStatus={effectiveHealthReadStatus} lastSuccessfulAt={healthLastSuccessfulAt ?? metricLastSuccessfulAt?.["business-health"]} onRetry={onRetryFailedReads} />, width: "half" as const }] : []),
     ...(smartModules.length ? [{ id: "smart-modules" as const, node: (<div className="space-y-2">
             <h2 className="text-sm font-semibold text-foreground">{t('dashboard.businessOverview')}</h2>
             <div className="overview-grid">

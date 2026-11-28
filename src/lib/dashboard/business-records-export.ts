@@ -19,6 +19,38 @@
  * component directly.
  */
 
+import { formatDateTime } from "@/lib/tradeos/formatters";
+import { activityDay, inDashboardRange, type DashboardRange } from "./period";
+
+type ActivityInvoice = {
+  organization_id?: string;
+  created_at: string;
+  invoice_number: string;
+  total_amount?: number | null;
+};
+
+export function buildDashboardActivityCsvRows({ sales, purchases, customerNames, supplierNames, org, timeZone, range, currency }: {
+  sales: readonly (ActivityInvoice & { customer_id: string })[];
+  purchases: readonly (ActivityInvoice & { supplier_id: string })[];
+  customerNames: ReadonlyMap<string, string>;
+  supplierNames: ReadonlyMap<string, string>;
+  org: string;
+  timeZone: string | null;
+  range: DashboardRange;
+  currency: string;
+}) {
+  const entries = [
+    ...sales.map(tx => ({ tx, type: "sale", party: customerNames.get(tx.customer_id) ?? "" })),
+    ...purchases.map(tx => ({ tx, type: "purchase", party: supplierNames.get(tx.supplier_id) ?? "" })),
+  ].filter(({ tx }) => (!tx.organization_id || tx.organization_id === org)
+    && inDashboardRange(activityDay(tx.created_at, timeZone), range))
+    .sort((a, b) => Date.parse(b.tx.created_at) - Date.parse(a.tx.created_at))
+    .slice(0, 10_000);
+  return entries.map(({ tx, type, party }) => [
+    formatDateTime(tx.created_at), type, tx.invoice_number, party, tx.total_amount ?? "", currency,
+  ]);
+}
+
 export interface RecordsExportPopup {
   document: {
     open(): void;
