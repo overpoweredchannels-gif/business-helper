@@ -1,8 +1,9 @@
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requirePermission } from "@/lib/identity/authorization";
 import { EmployeeService } from "@/lib/identity/services/employee-service";
 
-export async function GET(request: NextRequest) {
+async function runGET(request: NextRequest) {
   const permission = await requirePermission(request, "administration");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function runPOST(request: NextRequest) {
   const permission = await requireOwner(request);
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
@@ -33,4 +34,28 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ employee: result.employee });
+}
+
+export function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "GET, POST");
+}
+
+export async function GET(request: NextRequest) {
+  const headers = corsHeadersFor(request);
+  try {
+    return applyCors(await runGET(request), headers);
+  } catch (error) {
+    console.error("Cloud identity/employees GET failed:", error);
+    return applyCors(NextResponse.json({ error: "Unable to complete the request." }, { status: 500 }), headers);
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const headers = corsHeadersFor(request);
+  try {
+    return applyCors(await runPOST(request), headers);
+  } catch (error) {
+    console.error("Cloud identity/employees POST failed:", error);
+    return applyCors(NextResponse.json({ error: "Unable to complete the request." }, { status: 500 }), headers);
+  }
 }

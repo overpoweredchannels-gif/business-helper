@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { Customer, Employee, EmployeeDesignation, SalesRoute, SalesRouteStop, Territory } from "@/lib/tradeos/types";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import { readJsonBody } from "@/lib/tradeos/safe-json";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
@@ -126,9 +127,9 @@ export default function EmployeeManagement() {
       setLoading(true);
       loadOrganization();
       const [res, optionsRes, summariesRes] = await Promise.all([
-        authorizedFetch("/api/identity/employees"),
-        authorizedFetch("/api/customers/assignment-options"),
-        authorizedFetch("/api/identity/employees/summaries"),
+        cloudFetch("/api/identity/employees"),
+        cloudFetch("/api/customers/assignment-options"),
+        cloudFetch("/api/identity/employees/summaries"),
       ]);
       const [data, optionsData, summariesData] = await Promise.all([readJsonBody(res), readJsonBody(optionsRes), readJsonBody(summariesRes)]);
       if (res.status === 403) {
@@ -145,7 +146,7 @@ export default function EmployeeManagement() {
         setRouteStops(optionsData.routeStops ?? []);
       }
       if (summariesData?.ok) setSummaries(summariesData.employees ?? []);
-      const customerRes = await authorizedFetch("/api/customers");
+      const customerRes = await cloudFetch("/api/customers");
       const customerData = await readJsonBody(customerRes);
       if (customerData && Array.isArray(customerData.customers)) setCustomers(customerData.customers);
     } catch (err) {
@@ -196,7 +197,7 @@ export default function EmployeeManagement() {
       return;
     }
     try {
-      const res = await authorizedFetch(
+      const res = await cloudFetch(
         editingId ? `/api/identity/employees/${editingId}` : "/api/identity/employees",
         {
           method: editingId ? "PATCH" : "POST",
@@ -206,7 +207,7 @@ export default function EmployeeManagement() {
       );
       const data = await readJsonBody(res);
       if (data?.employee) {
-        const assignmentRes = await authorizedFetch(`/api/identity/employees/${data.employee.id}/assignment`, {
+        const assignmentRes = await cloudFetch(`/api/identity/employees/${data.employee.id}/assignment`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -231,7 +232,7 @@ export default function EmployeeManagement() {
 
   const remove = async (id: string) => {
     try {
-      const res = await authorizedFetch(`/api/identity/employees/${id}`, { method: "DELETE" });
+      const res = await cloudFetch(`/api/identity/employees/${id}`, { method: "DELETE" });
       const data = await readJsonBody(res);
       if (data?.success) {
         setMessage({ type: "ok", text: t('fsm.employees.employeeDeleted') });
@@ -248,7 +249,7 @@ export default function EmployeeManagement() {
 
   const generateInvite = async (emp: Employee): Promise<{ loginId?: string; code?: string; inviteLink?: string; error?: string } | null> => {
     try {
-      const res = await authorizedFetch("/api/identity/staff/invite", {
+      const res = await cloudFetch("/api/identity/staff/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ employeeId: emp.id }),

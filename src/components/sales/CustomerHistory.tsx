@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { cloudFetch } from "@/lib/desktop/cloud-endpoint";
+import { readJsonBody } from "@/lib/tradeos/safe-json";
 import { authorizedFetch } from "@/lib/tradeos/authorized-fetch";
 import HistoricalRecords from "@/components/import-export/HistoricalRecords";
 import { formatBooksMoney } from "@/lib/tradeos/formatters";
@@ -74,10 +76,15 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
 
   useEffect(() => {
     if (!organizationId) return;
-    authorizedFetch("/api/customers/assignment-options")
+    cloudFetch("/api/customers/assignment-options")
       .then(async (response) => {
-        const result = await response.json();
-        if (response.ok && result.ok) setAssignmentOptions(result);
+        const result = await readJsonBody(response);
+        if (response.ok && result?.ok) {
+          const { employees, territories, routes, routeStops } = result;
+          if (Array.isArray(employees) && Array.isArray(territories) && Array.isArray(routes) && Array.isArray(routeStops)) {
+            setAssignmentOptions({ employees, territories, routes, routeStops });
+          }
+        }
       })
       .catch(() => undefined);
   }, [organizationId]);
@@ -235,9 +242,9 @@ export default function CustomerHistory({ organizationId, customerId }: Props) {
     if (!assignmentEmployeeId || !assignmentRouteId) { setAssignmentMessage(t('history.selectEmployeeRouteFirst')); return; }
     setAssignmentSaving(true); setAssignmentMessage(null);
     try {
-      const response = await authorizedFetch(`/api/identity/employees/${assignmentEmployeeId}/assignment`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ territory_id: assignmentTerritoryId || null, route_id: assignmentRouteId, assignment_scope: "route_all", customer_ids: [] }) });
-      const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error ?? t('history.routeAssignError'));
+      const response = await cloudFetch(`/api/identity/employees/${assignmentEmployeeId}/assignment`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ territory_id: assignmentTerritoryId || null, route_id: assignmentRouteId, assignment_scope: "route_all", customer_ids: [] }) });
+      const result = await readJsonBody(response);
+      if (!response.ok || !result?.ok) throw new Error(result?.error ?? t('history.routeAssignError'));
       setAssignmentMessage(t('history.routeAssigned').replace('{count}', String(result.customer_ids?.length ?? 0)));
     } catch (reason) { setAssignmentMessage(reason instanceof Error ? reason.message : t('history.routeAssignError')); }
     finally { setAssignmentSaving(false); }

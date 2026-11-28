@@ -1,3 +1,4 @@
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseUserClient, createSupabaseService } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/identity/authorization";
@@ -32,7 +33,7 @@ export function isValidCustomerClientId(value: unknown): value is string {
   return typeof value === "string" && CLIENT_ID_PATTERN.test(value);
 }
 
-export async function GET(request: NextRequest) {
+async function runGET(request: NextRequest) {
   const permission = await requirePermission(request, "customers_view");
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
@@ -195,5 +196,19 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create customer";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+export function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "GET");
+}
+
+export async function GET(request: NextRequest) {
+  const headers = corsHeadersFor(request);
+  try {
+    return applyCors(await runGET(request), headers);
+  } catch (error) {
+    console.error("Cloud customers GET failed:", error);
+    return applyCors(NextResponse.json({ error: "Unable to complete the request." }, { status: 500 }), headers);
   }
 }

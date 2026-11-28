@@ -8,6 +8,10 @@
 
 ## ✅ Completed
 
+| Fix | Scope |
+|-----|-------|
+| Employees desktop CLOUD migration (S scope, review branch) | Employees and Customer History use authenticated cloud requests for employee CRUD, assignment, summaries, assignment options, customer reads, and invites. Customer creation stays local. Manager and other desktop callers remain tracked for follow-up. |
+
 ### Foundation (v0.1 - v0.5)
 
 | Milestone | Version | Description |

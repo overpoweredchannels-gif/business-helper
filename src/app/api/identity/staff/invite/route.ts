@@ -1,3 +1,4 @@
+import { applyCors, corsHeadersFor, desktopPreflightResponse } from "@/lib/desktop/cors";
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner } from "@/lib/identity/authorization";
 import { StaffOnboardingService } from "@/lib/identity/services/staff-onboarding-service";
@@ -5,7 +6,7 @@ import { buildInviteLink } from "@/lib/identity/staff-invitation";
 
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest) {
+async function runPOST(request: NextRequest) {
   const permission = await requireOwner(request);
   if (!permission.allowed || !permission.actor) {
     return NextResponse.json({ error: permission.reason ?? "Forbidden" }, { status: 403 });
@@ -36,4 +37,18 @@ export async function POST(request: NextRequest) {
     inviteLink,
     expiresAt: result.expiresAt,
   });
+}
+
+export function OPTIONS(request: NextRequest) {
+  return desktopPreflightResponse(request, "POST");
+}
+
+export async function POST(request: NextRequest) {
+  const headers = corsHeadersFor(request);
+  try {
+    return applyCors(await runPOST(request), headers);
+  } catch (error) {
+    console.error("Cloud identity/staff/invite POST failed:", error);
+    return applyCors(NextResponse.json({ error: "Unable to complete the request." }, { status: 500 }), headers);
+  }
 }

@@ -124,32 +124,23 @@ async function main(): Promise<void> {
   }
   assert.equal(
     manifest.ratchet?.pending_direct_cloud_fetches,
-    9,
-    "1. ratchet baseline must be 9 after Slice 6 (31 -> 9)",
+    8,
+    "1. ratchet baseline includes the migrated Employees invite",
   );
-  console.log("1. manifest: 15 Slice 6 routes CLOUD + migrated, ratchet 9");
+  console.log("1. manifest: 15 Slice 6 routes CLOUD + migrated, ratchet 8");
 
-  // Rule 2 — no direct fetch of a migrated route (gate scan + backtick
-  // template-literal forms the gate misses), pending count == baseline.
-  const cloudRoutes = Object.entries(manifest.routes)
-    .filter(([, e]) => e.classification === "CLOUD")
-    .map(([route, e]) => ({ route, pattern: routeToRegExp(route), migrated: e.migrated === true }));
+  // Rule 2 — this slice's migrated routes must not be fetched directly.
+  // The desktop route gate tests own the repo-wide pending count and
+  // account for routes with both local and cloud methods.
+  const cloudRoutes = SLICE6_ROUTES.map((route) => ({ route, pattern: routeToRegExp(route) }));
   const fetchRe = /(?:fetch|authorizedFetch)\s*\(\s*["'`](\/api\/[^"'`$\s]+)/g;
   const files = rendererFiles();
-  let pending = 0;
-  const pendingRoutes = new Set<string>();
   for (const file of files) {
     const src = readFileSync(file, "utf8");
     let m: RegExpExecArray | null;
     while ((m = fetchRe.exec(src)) !== null) {
       const hit = cloudRoutes.find((c) => c.pattern.test(m![1]));
-      if (!hit) continue;
-      assert.ok(
-        !hit.migrated,
-        `2. ${file} fetches migrated CLOUD route ${hit.route} directly — it must go through ${CLOUD_HELPER}`,
-      );
-      pending += 1;
-      pendingRoutes.add(hit.route);
+      assert.ok(!hit, `2. ${file} fetches migrated CLOUD route ${hit?.route} directly — it must go through ${CLOUD_HELPER}`);
     }
     // Template-literal form the gate regex cannot see (it stops at `$`):
     // fetch(`/api/<route>...${...}`) must not exist for a migrated route.
@@ -163,12 +154,7 @@ async function main(): Promise<void> {
       );
     }
   }
-  assert.equal(
-    pending,
-    9,
-    `2. pending direct fetches of unmigrated CLOUD routes must be 9 (got ${pending}: ${[...pendingRoutes].join(", ")})`,
-  );
-  console.log(`2. no direct fetch of a migrated route; pending unmigrated: ${pending} (${[...pendingRoutes].join(", ")})`);
+  console.log("2. no direct fetch of the 15 Slice 6 routes");
 
   // Rule 3 — each migrated route file: OPTIONS + applyCors + Bearer check.
   const BEARER_MARKERS = /requirePermission|resolveActor|requireAuthenticatedOrg|getUser\(token\)/;

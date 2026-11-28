@@ -539,7 +539,11 @@ function checkDirectCloudFetches(manifest) {
   console.log("\n[5] Direct renderer fetches of CLOUD routes");
   const cloudRoutes = Object.entries(manifest.routes)
     .filter(([, e]) => e.classification === "CLOUD")
-    .map(([route, e]) => ({ route, pattern: routeToRegExp(route), migrated: e.migrated === true }));
+    .map(([route, e]) => ({
+      route, pattern: routeToRegExp(route), migrated: e.migrated === true,
+      localMethods: e.local_methods ?? [],
+      deferred: new Map(Object.entries(e.pending_renderer_fetches ?? {})),
+    }));
   const scopes = [join(ROOT, "src", "app"), join(ROOT, "src", "components"), join(ROOT, "src", "lib")];
   const files = scopes.flatMap((dir) =>
     walkFiles(dir, (f) => {
@@ -550,7 +554,7 @@ function checkDirectCloudFetches(manifest) {
       return /\.[tj]sx?$/.test(f);
     }),
   );
-  const fetchRe = /(?:fetch|authorizedFetch)\s*\(\s*["'`](\/api\/[^"'`$\s]+)/g;
+  const fetchRe = /(?:fetch|authorizedFetch)\s*\(\s*["'`](\/api\/[^"'`$\s]+)(?:["'`](?:\s*,\s*\{\s*method:\s*["']([A-Z]+)["'])?)?/g;
   let pending = 0;
   const pendingRoutes = new Set();
   for (const file of files) {
@@ -560,7 +564,14 @@ function checkDirectCloudFetches(manifest) {
       const path = m[1];
       const hit = cloudRoutes.find((c) => c.pattern.test(path));
       if (!hit) continue;
+      if (hit.localMethods.includes(m[2] ?? "GET")) continue;
       if (hit.migrated) {
+        const source = toPosix(relative(ROOT, file));
+        const remaining = hit.deferred.get(source) ?? 0;
+        if (remaining > 0) {
+          hit.deferred.set(source, remaining - 1);
+          continue;
+        }
         fail(
           `${toPosix(relative(ROOT, file))} fetches CLOUD route ${hit.route} directly (migrated: true) — it must go through ${CLOUD_HELPER}`,
         );
@@ -613,7 +624,7 @@ function checkVersionTag(cliTag) {
 
 // -------------------------------------------------------- checks (8) + (9)
 
-const BEARER_MARKERS = /getUser\s*\(|getClaims\s*\(|resolveActor\s*\(|requirePermission\s*\(|requireSalesTool\s*\(|requireAuthenticatedOrg\s*\(|Authorization/;
+const BEARER_MARKERS = /getUser\s*\(|getClaims\s*\(|resolveActor\s*\(|requirePermission\s*\(|requireOwner\s*\(|requireSalesTool\s*\(|requireAuthenticatedOrg\s*\(|Authorization/;
 // Note: requireAuthenticatedOrg (Slice 6, business-brain + conversation
 // routes) delegates to requireOrganization -> resolveActor -> getUser(token);
 // it verifies the Bearer itself, it only spells the check one level up.
